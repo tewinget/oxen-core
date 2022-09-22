@@ -350,7 +350,7 @@ std::pair<bool, nlohmann::json> NodeRPCProxy::get_service_node_blacklisted_key_i
     if (m_service_node_blacklisted_key_images_cached_height != height)
     {
       try {
-        auto res = m_http_client.json_rpc("get_service_nod_blacklisted_key_images", {});
+        auto res = m_http_client.json_rpc("get_service_node_blacklisted_key_images", {});
         m_service_node_blacklisted_key_images_cached_height = height;
         m_service_node_blacklisted_key_images               = std::move(res["blacklist"]);
       } catch (...) {

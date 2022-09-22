@@ -3119,6 +3119,7 @@ namespace cryptonote::rpc {
 
     if (!at_least_one_succeeded)
       throw rpc_error{ERROR_WRONG_PARAM, "Failed to query any service nodes batched amounts at all"};
+    get_accrued_batched_earnings.response["status"] = STATUS_OK;
   }
 
 }  // namespace cryptonote::rpc

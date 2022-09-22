@@ -506,7 +506,8 @@ namespace cryptonote::rpc {
       try {
         jsonrpc = nlohmann::json::parse(body);
       } catch (const std::exception& e) {
-        return data->jsonrpc_error_response(data->res, -32700, "Parse error", nullptr);
+        data->jsonrpc_error_response(data->res, -32700, "Parse error", nullptr);
+        return;
       }
 
       data->jsonrpc_id = std::move(jsonrpc["id"]);
@@ -515,7 +516,8 @@ namespace cryptonote::rpc {
         method = &jsonrpc["method"].get_ref<const std::string&>();
       } catch (const std::exception& e) {
         MINFO("Invalid JSON RPC request from " << data->request.context.remote << ": no 'method' in request");
-        return data->jsonrpc_error_response(data->res, -32600, "Invalid Request", data->jsonrpc_id);
+        data->jsonrpc_error_response(data->res, -32600, "Invalid Request", data->jsonrpc_id);
+        return;
       }
 
       if (auto it = rpc_commands.find(*method);
@@ -523,13 +525,15 @@ namespace cryptonote::rpc {
         data->call = it->second.get();
       else {
         MINFO("Invalid JSON RPC request from " << data->request.context.remote << ": method '" << *method << "' is invalid");
-        return data->jsonrpc_error_response(data->res, -32601, "Method not found", data->jsonrpc_id);
+        data->jsonrpc_error_response(data->res, -32601, "Method not found", data->jsonrpc_id);
+        return;
       }
 
       if (restricted && !data->call->is_public)
       {
         MWARNING("Invalid JSON RPC request from " << data->request.context.remote << ": method '" << *method << "' is restricted");
-        return data->jsonrpc_error_response(data->res, 403, "Forbidden; this command is not available over public RPC", data->jsonrpc_id);
+        data->jsonrpc_error_response(data->res, 403, "Forbidden; this command is not available over public RPC", data->jsonrpc_id);
+        return;
       }
 
       MDEBUG("Incoming JSON RPC request for " << *method << " from " << data->request.context.remote);

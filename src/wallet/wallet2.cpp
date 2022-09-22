@@ -13031,7 +13031,7 @@ void wallet2::refresh_batching_cache()
     {"addresses", std::vector<std::string>{}}
   };
   auto res = m_http_client.json_rpc("get_accrued_batched_earnings", req_params);
-  THROW_WALLET_EXCEPTION_IF(res["status"] == rpc::STATUS_BUSY, error::daemon_busy, "get_output_histogram");
+  THROW_WALLET_EXCEPTION_IF(res["status"] == rpc::STATUS_BUSY, error::daemon_busy, "get_accrued_batched_earnings_error");
   THROW_WALLET_EXCEPTION_IF(res["status"] != rpc::STATUS_OK, error::get_accrued_batched_earnings_error, res["status"]);
 
   auto records = res["balances"].get<std::unordered_map<std::string, uint64_t> >();
