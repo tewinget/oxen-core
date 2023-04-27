@@ -1700,6 +1700,7 @@ namespace tools::wallet_rpc {
       bool hardware_wallet; // Create this wallet from a connected hardware wallet.  (`language` will be ignored).
       std::string device_name; // When `hardware` is true, this specifies the hardware wallet device type (currently supported: "Ledger").  If omitted "Ledger" is used.
       std::optional<std::string> device_label; // Custom label to write to a `wallet.hwdev.txt`. Can be empty; omit the parameter entirely to not write a .hwdev.txt file at all.
+      bool debug_reset; // Can be specified as true to force a hardware wallet in DEBUG mode to reset (and switch networks, if necessary).  Will fail if the hardware wallet is not compiled in debug mode.
 
       KV_MAP_SERIALIZABLE
     };

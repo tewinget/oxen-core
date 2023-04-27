@@ -4931,7 +4931,7 @@ void wallet2::generate(const fs::path& wallet_, const epee::wipeable_string& pas
 }
 
 void wallet2::restore_from_device(const fs::path& wallet_, const epee::wipeable_string& password, const std::string &device_name,
-    bool create_address_file, std::optional<std::string> hwdev_label, std::function<void(std::string msg)> progress_callback)
+    bool create_address_file, std::optional<std::string> hwdev_label, bool debug_reset_device, std::function<void(std::string msg)> progress_callback)
 {
   clear();
   prepare_file_names(wallet_);
@@ -4948,7 +4948,7 @@ void wallet2::restore_from_device(const fs::path& wallet_, const epee::wipeable_
   hwdev.set_derivation_path(m_device_derivation_path);
   hwdev.set_callback(get_device_callback());
 
-  m_account.create_from_device(hwdev);
+  m_account.create_from_device(hwdev, debug_reset_device);
   init_type(m_account.get_device().get_type());
   setup_keys(password);
   if (progress_callback)
