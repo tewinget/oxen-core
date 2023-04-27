@@ -24,13 +24,14 @@ import uuid
 
 import pytest
 
+
 def coins(*args):
     if len(args) != 1:
         return tuple(coins(x) for x in args)
     x = args[0]
     if type(x) in (tuple, list):
         return type(x)(coins(i) for i in x)
-    return round(x * 1000000000)
+    return round(x * 1_000_000_000)
 
 
 def wait_for(callback, timeout=10):
@@ -43,10 +44,12 @@ def wait_for(callback, timeout=10):
             pass
         if time.time() >= expires:
             raise RuntimeError("task timeout expired")
-        time.sleep(.25)
+        time.sleep(0.25)
 
 
 verbose = False
+
+
 def vprint(*args, timestamp=True, **kwargs):
     global verbose
     if verbose:
@@ -56,13 +59,13 @@ def vprint(*args, timestamp=True, **kwargs):
 
 
 class SNNetwork:
-    def __init__(self, datadir, *, binpath='../../build/bin', sns=20, nodes=3):
+    def __init__(self, datadir, *, binpath="../../build/bin", sns=20, nodes=3):
         self.datadir = datadir
         self.binpath = binpath
 
         vprint("Using '{}' for data files and logs".format(datadir))
 
-        nodeopts = dict(oxend=self.binpath+'/oxend', datadir=datadir)
+        nodeopts = dict(oxend=self.binpath + "/oxend", datadir=datadir)
 
         self.sns = [Daemon(service_node=True, **nodeopts) for _ in range(sns)]
         self.nodes = [Daemon(**nodeopts) for _ in range(nodes)]
@@ -70,12 +73,15 @@ class SNNetwork:
         self.all_nodes = self.sns + self.nodes
 
         self.wallets = []
-        for name in ('Alice', 'Bob', 'Mike'):
-            self.wallets.append(Wallet(
-                node=self.nodes[len(self.wallets) % len(self.nodes)],
-                name=name,
-                rpc_wallet=self.binpath+'/oxen-wallet-rpc',
-                datadir=datadir))
+        for name in ("Alice", "Bob", "Mike"):
+            self.wallets.append(
+                Wallet(
+                    node=self.nodes[len(self.wallets) % len(self.nodes)],
+                    name=name,
+                    rpc_wallet=self.binpath + "/oxen-wallet-rpc",
+                    datadir=datadir,
+                )
+            )
 
         self.alice, self.bob, self.mike = self.wallets
 
@@ -86,12 +92,18 @@ class SNNetwork:
                 if i != k:
                     self.all_nodes[i].add_peer(self.all_nodes[k])
 
-        vprint("Starting new oxend service nodes with RPC on {} ports".format(self.sns[0].listen_ip), end="")
+        vprint(
+            "Starting new oxend service nodes with RPC on {} ports".format(self.sns[0].listen_ip),
+            end="",
+        )
         for sn in self.sns:
             vprint(" {}".format(sn.rpc_port), end="", flush=True, timestamp=False)
             sn.start()
         vprint(timestamp=False)
-        vprint("Starting new regular oxend nodes with RPC on {} ports".format(self.nodes[0].listen_ip), end="")
+        vprint(
+            "Starting new regular oxend nodes with RPC on {} ports".format(self.nodes[0].listen_ip),
+            end="",
+        )
         for d in self.nodes:
             vprint(" {}".format(d.rpc_port), end="", flush=True, timestamp=False)
             d.start()
@@ -114,28 +126,29 @@ class SNNetwork:
         for w in self.wallets:
             w.wait_for_json_rpc("refresh")
 
-        # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
-        # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
-        # SN (at height 40, which is the earliest we can submit them without getting an occasional
+        # Mine some blocks; we need 100 per SN registration, and we can mine ~473 on fakenet before
+        # it hits HF16 and kills mining rewards.  This lets us submit the first 4 SN registrations
+        # (at height 50, which is the earliest we can submit them without getting an occasional
         # spurious "Not enough outputs to use" error).
-        # to unlock and the rest to have enough unlocked outputs for mixins), then more some more to
-        # earn SN rewards.  We need 100 per SN registration, and each mined block gives us an input
-        # of 18.9, which means each registration requires 6 inputs.  Thus we need a bare minimum of
-        # 6(N-5) blocks, plus the 30 lock time on coinbase TXes = 6N more blocks (after the initial
-        # 5 registrations).
+        # After this, we need more some more to earn SN rewards: 100 per SN registration, and each
+        # mined block gives us an input of 18.9, which means each registration requires 6 inputs.
+        # Thus we need a bare minimum of 6(N-5) blocks, plus the 30 lock time on coinbase TXes = 6N
+        # more blocks (after the initial 4 registrations).
         self.mine(50)
+        self.print_wallet_balances()
         vprint("Submitting first round of service node registrations: ", end="", flush=True)
-        for sn in self.sns[0:5]:
+        for sn in self.sns[0:3]:
             self.mike.register_sn(sn)
             vprint(".", end="", flush=True, timestamp=False)
         vprint(timestamp=False)
-        if len(self.sns) > 5:
+        if len(self.sns) > 4:
             vprint("Going back to mining", flush=True)
 
-            self.mine(6*len(self.sns))
+            self.mine(6 * (len(self.sns) - 4))
 
+            self.print_wallet_balances()
             vprint("Submitting more service node registrations: ", end="", flush=True)
-            for sn in self.sns[5:]:
+            for sn in self.sns[4:]:
                 self.mike.register_sn(sn)
                 vprint(".", end="", flush=True, timestamp=False)
             vprint(timestamp=False)
@@ -152,8 +165,12 @@ class SNNetwork:
         for sn in self.sns:
             sn.ping()
 
-        all_service_nodes_proofed = lambda sn: all(x['quorumnet_port'] > 0 for x in
-                sn.json_rpc("get_n_service_nodes", {"fields":{"quorumnet_port":True}}).json()['result']['service_node_states'])
+        all_service_nodes_proofed = lambda sn: all(
+            x["quorumnet_port"] > 0
+            for x in sn.json_rpc(
+                "get_n_service_nodes", {"fields": {"quorumnet_port": True}}
+            ).json()["result"]["service_node_states"]
+        )
 
         vprint("Waiting for proofs to propagate: ", end="", flush=True)
         for sn in self.sns:
@@ -164,13 +181,11 @@ class SNNetwork:
 
         vprint("Fake SN network setup complete!")
 
-
     def refresh_wallets(self, *, extra=[]):
         vprint("Refreshing wallets")
         for w in self.wallets + extra:
             w.refresh()
         vprint("All wallets refreshed")
-
 
     def mine(self, blocks=None, wallet=None, *, sync=False):
         """Mine some blocks to the given wallet (or self.mike if None) on the wallet's daemon.
@@ -198,7 +213,6 @@ class SNNetwork:
             self.refresh_wallets()
 
         return height
-
 
     def sync_nodes(self, height=None, *, extra=[], timeout=10):
         """Waits for all nodes to reach the given height, typically invoked after mine()"""
@@ -228,13 +242,11 @@ class SNNetwork:
             raise RuntimeError("Timed out waiting for node syncing")
         vprint("All nodes synced to height {}".format(height))
 
-
     def sync(self, extra_nodes=[], extra_wallets=[]):
         """Synchronizes everything: waits for all nodes to sync, then refreshes all wallets.  Can be
         given external wallets/nodes to sync."""
         self.sync_nodes(extra=extra_nodes)
         self.refresh_wallets(extra=extra_wallets)
-
 
     def print_wallet_balances(self):
         """Instructs the wallets to refresh and prints their balances (does nothing in non-verbose mode)"""
@@ -244,9 +256,11 @@ class SNNetwork:
         vprint("Balances:")
         for w in self.wallets:
             b = w.balances(refresh=True)
-            vprint("    {:5s}: {:.9f} (total) with {:.9f} (unlocked)".format(
-                w.name, b[0] * 1e-9, b[1] * 1e-9))
-
+            vprint(
+                "    {:5s}: {:.9f} (total) with {:.9f} (unlocked)".format(
+                    w.name, b[0] * 1e-9, b[1] * 1e-9
+                )
+            )
 
     def __del__(self):
         for n in self.all_nodes:
@@ -254,17 +268,19 @@ class SNNetwork:
         for w in self.wallets:
             w.terminate()
 
+
 snn = None
 
+
 @pytest.fixture
-def net(pytestconfig, tmp_path, binary_dir):
+def sn_net(pytestconfig, tmp_path, binary_dir):
     """Fixture that returns the service node network.  It is persistent across tests: the first time
     it loads it starts the daemons and wallets, mines a bunch of blocks and submits SN
     registrations.  On subsequent loads it mines 5 blocks so that mike always has some available
-    funds, and sets alice and bob to new wallets."""
+    funds, and resets alice and bob to new wallets."""
     global snn, verbose
     if not snn:
-        verbose = pytestconfig.getoption('verbose') >= 2
+        verbose = pytestconfig.getoption("verbose") >= 2
         if verbose:
             print("\nConstructing initial service node network")
         snn = SNNetwork(datadir=tmp_path, binpath=binary_dir)
@@ -274,7 +290,7 @@ def net(pytestconfig, tmp_path, binary_dir):
 
         # Flush pools because some tests leave behind impossible txes
         for n in snn.all_nodes:
-            assert n.json_rpc("flush_txpool").json()['result']['status'] == 'OK'
+            assert n.json_rpc("flush_txpool").json()["result"]["status"] == "OK"
 
         # Mine a few to clear out anything in the mempool that can be cleared
         snn.mine(5, sync=True)
@@ -285,127 +301,31 @@ def net(pytestconfig, tmp_path, binary_dir):
     return snn
 
 
-# Shortcuts for accessing the named wallets
 @pytest.fixture
-def alice(net):
-    return net.alice
+def basic_net(pytestconfig, tmp_path, binary_dir):
+    """Fixture that returns a network of just one service node (solely for the rewards) and one
+    regular node.  It is persistent across tests: the first time it loads it starts the daemons and
+    wallets, mines a bunch of blocks and submits the SN registration.  On subsequent loads it mines
+    5 blocks so that mike always has some available funds, and resets alice and bob to new
+    wallets."""
+    global snn, verbose
+    if not snn:
+        verbose = pytestconfig.getoption("verbose") >= 2
+        if verbose:
+            print("\nConstructing initial service node network")
+        snn = SNNetwork(datadir=tmp_path, binpath=binary_dir, sns=1, nodes=1)
+    else:
+        snn.alice.new_wallet()
+        snn.bob.new_wallet()
 
-@pytest.fixture
-def bob(net):
-    return net.bob
+        # Flush pools because some tests leave behind impossible txes
+        for n in snn.all_nodes:
+            assert n.json_rpc("flush_txpool").json()["result"]["status"] == "OK"
 
-@pytest.fixture
-def mike(net):
-    return net.mike
+        # Mine a few to clear out anything in the mempool that can be cleared
+        snn.mine(5, sync=True)
 
-@pytest.fixture
-def chuck(net):
-    """
-    `chuck` is the wallet of a potential attacker, with some extra add-ons.  The main `chuck` wallet
-    is connected to one of the three network nodes (like alice or bob), and starts out empty.
+        vprint("Alice has new wallet: {}".format(snn.alice.address()))
+        vprint("Bob   has new wallet: {}".format(snn.bob.address()))
 
-    Chuck also has a second copy of the same wallet, `chuck.hidden`, which is connected to his own
-    private node, `chuck.hidden.node`.  This node is connected to the network exclusively through a
-    second node that Chuck runs, `chuck.bridge`.  This allows chuck to disconnect from the network
-    by stopping the bridge node and reconnect by restarting it.  Note that the bridge and hidden
-    nodes will not have received proofs (and so can't be used to submit blinks).
-    """
-
-    chuck = Wallet(node=net.nodes[0], name='Chuck', rpc_wallet=net.binpath+'/oxen-wallet-rpc', datadir=net.datadir)
-    chuck.ready(wallet="chuck")
-
-    hidden_node = Daemon(oxend=net.binpath+'/oxend', datadir=net.datadir)
-    bridge_node = Daemon(oxend=net.binpath+'/oxend', datadir=net.datadir)
-    for x in (4, 7):
-        bridge_node.add_peer(net.all_nodes[x])
-    bridge_node.add_peer(hidden_node)
-    hidden_node.add_peer(bridge_node)
-
-    vprint("Starting new chuck oxend bridge node with RPC on {}:{}".format(bridge_node.listen_ip, bridge_node.rpc_port))
-    bridge_node.start()
-    bridge_node.wait_for_json_rpc("get_info")
-    net.sync(extra_nodes=[bridge_node], extra_wallets=[chuck])
-
-    vprint("Starting new chuck oxend hidden node with RPC on {}:{}".format(hidden_node.listen_ip, hidden_node.rpc_port))
-    hidden_node.start()
-    hidden_node.wait_for_json_rpc("get_info")
-    net.sync(extra_nodes=[hidden_node, bridge_node], extra_wallets=[chuck])
-    vprint("Done syncing chuck nodes")
-
-    # RPC wallet doesn't provide a way to import from a key or mnemonic, so we have to stop the rpc
-    # wallet then copy the underlying wallet file.
-    chuck.refresh()
-    chuck.stop()
-    chuck.hidden = Wallet(node=hidden_node, name='Chuck (hidden)', rpc_wallet=net.binpath+'/oxen-wallet-rpc', datadir=net.datadir)
-
-    import shutil
-    import os
-    wallet_base = chuck.walletdir + '/chuck'
-    assert os.path.exists(wallet_base)
-    assert os.path.exists(wallet_base + '.keys')
-    os.makedirs(chuck.hidden.walletdir, exist_ok=True)
-    shutil.copy(wallet_base, chuck.hidden.walletdir + '/chuck2')
-    shutil.copy(wallet_base + '.keys', chuck.hidden.walletdir + '/chuck2.keys')
-
-    # Restart the regular wallet and the newly copied hidden wallet
-    chuck.ready(wallet="chuck", existing=True)
-    chuck.hidden.ready(wallet="chuck2", existing=True)
-    chuck.refresh()
-    chuck.hidden.refresh()
-
-    assert chuck.address() == chuck.hidden.address()
-
-    chuck.bridge = bridge_node
-    return chuck
-
-
-@pytest.fixture
-def chuck_double_spend(net, alice, mike, chuck):
-    """
-    Importing this fixture (along with `chuck` itself!) extends the chuck setup to transfer 100
-    coins to chuck, mine them to confirmation, then stop his bridge node to double-spend those
-    funds.  This consists of a blink tx of 95 (sent to alice) on the connected network and a
-    conflicting regular tx (sent to himself) submitted to the mempool of his local hidden (and now
-    disconnected) node.
-
-    The fixture value is a tuple of the submitted tx details as returned by the rpc wallet,
-    `(blinked_tx, hidden_tx)`.
-    """
-
-    assert(chuck.balances() == (0, 0))
-    mike.transfer(chuck, coins(100))
-    net.mine()
-    net.sync(extra_nodes=[chuck.bridge, chuck.hidden.node], extra_wallets=[chuck, chuck.hidden])
-
-    assert chuck.balances() == coins(100, 100)
-    assert chuck.hidden.balances() == coins(100, 100)
-
-    # Now we disconnect chuck's bridge node, which will isolate the hidden node.
-    chuck.bridge.stop()
-
-    tx_blink = chuck.transfer(alice, coins(95), priority=5)
-    assert len(tx_blink['tx_hash_list']) == 1
-    blink_hash = tx_blink['tx_hash_list'][0]
-
-    time.sleep(0.5)  # allow blink to propagate
-
-    # ... but it shouldn't have propagated here because this is disconnected, so we can submit a
-    # conflicting tx:
-    tx_hidden = chuck.hidden.transfer(chuck, coins(95), priority=1)
-    assert len(tx_hidden['tx_hash_list']) == 1
-    hidden_hash = tx_hidden['tx_hash_list'][0]
-    assert hidden_hash != blink_hash
-
-    vprint("double-spend txs: blink: {}, hidden: {}".format(blink_hash, hidden_hash))
-
-    net.sync()
-    alice.refresh()
-    assert alice.balances() == coins(95, 0)
-
-    mike_txpool = [x['id_hash'] for x in mike.node.rpc("/get_transaction_pool").json()['transactions']]
-    assert mike_txpool == [blink_hash]
-
-    hidden_txpool = [x['id_hash'] for x in chuck.hidden.node.rpc("/get_transaction_pool").json()['transactions']]
-    assert hidden_txpool == [hidden_hash]
-
-    return (tx_blink, tx_hidden)
+    return snn
