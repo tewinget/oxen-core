@@ -65,3 +65,8 @@ def alice(net):
 @pytest.fixture
 def bob(net):
     return net.bob
+
+# Gives you an (unstaked) sn
+@pytest.fixture
+def sn(net):
+    return net.unstaked_sns[0]

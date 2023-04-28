@@ -1,6 +1,7 @@
 import pytest
 import time
 import re
+from functools import partial
 
 from service_node_network import coins, vprint
 from ledgerapi import LedgerAPI
@@ -61,7 +62,7 @@ def test_send(net, mike, alice, hal, ledger):
 
     run_with_interactions(
         ledger,
-        lambda: hal.transfer(alice, coins(42.5)),
+        partial(hal.transfer, alice, coins(42.5)),
         ExactScreen(["Processing TX"]),
         MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
         Do.right,
@@ -83,6 +84,7 @@ def test_send(net, mike, alice, hal, ledger):
         Do.left,
         ExactScreen(["Accept"]),
         Do.both,
+        ExactScreen(["Processing TX"]),
     )
 
     net.mine(1)
@@ -129,7 +131,7 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
     hal.timeout = 120 # creating this tx with the ledger takes ages
     run_with_interactions(
         ledger,
-        lambda: hal.multi_transfer((alice, bob, alice, alice, hal), coins(18, 19, 20, 21, 22)),
+        partial(hal.multi_transfer, (alice, bob, alice, alice, hal), coins(18, 19, 20, 21, 22)),
         ExactScreen(["Processing TX"]),
         MatchScreen([r"^Confirm Fee$", r"^(0.\d{1,9})$"], store_fee, fail_index=1),
         Do.right,
@@ -165,6 +167,7 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
         Do.right,
         ExactScreen(["Accept"]),
         Do.both,
+        ExactScreen(["Processing TX"]),
         timeout=120,
     )
 
@@ -183,6 +186,130 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
     assert alice.balances(refresh=True) == coins(18 + 20 + 21, 0)
     assert bob.balances(refresh=True) == coins(19, 0)
     net.mine(9)
-    assert hal.balances(refresh=True) == tuple([remaining] * 2)
-    assert alice.balances(refresh=True) == tuple(coins([18 + 20 + 21] * 2))
+    assert hal.balances(refresh=True) == (remaining,) * 2
+    assert alice.balances(refresh=True) == coins((18 + 20 + 21,) * 2)
     assert bob.balances(refresh=True) == coins(19, 19)
+
+
+def check_sn_rewards(net, hal, sn, starting_bal, reward):
+    net.mine(5)  # 5 blocks until it starts earning rewards (testnet/fakenet)
+
+    hal_bal = hal.balances(refresh=True)
+
+    batch_offset = None
+    assert hal_bal == coins(starting_bal, 0)
+    # We don't know where our batch payment occurs yet, but let's look for it:
+    for i in range(20):
+        net.mine(1)
+        if hal.balances(refresh=True)[0] > coins(starting_bal):
+            batch_offset = sn.height() % 20
+            break
+
+    assert batch_offset is not None
+
+    hal_bal = hal.balances()
+
+    net.mine(19)
+    assert hal.balances(refresh=True)[0] == hal_bal[0]
+    net.mine(1)  # Should be our batch height
+    assert hal.balances(refresh=True)[0] == hal_bal[0] + coins(20 * reward)
+
+
+def test_sn_register(net, mike, hal, ledger, sn):
+    mike.transfer(hal, coins(101))
+    net.mine()
+
+    assert hal.balances(refresh=True) == coins(101, 101)
+
+    fee = None
+
+    def store_fee(_, m):
+        nonlocal fee
+        fee = float(m[1][1])
+
+    run_with_interactions(
+        ledger,
+        partial(hal.register_sn, sn),
+        ExactScreen(["Processing Stake"]),
+        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+        ExactScreen(["Confirm Stake", "100.0"], fail_index=1),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.right,
+        ExactScreen(["Reject"]),
+        Do.left,
+        Do.both,
+        ExactScreen(["Processing Stake"]),
+    )
+
+    # We are half the SN network, so get half of the block reward per block:
+    reward = 0.5 * 16.5
+    check_sn_rewards(net, hal, sn, 101 - fee, reward)
+
+
+def test_sn_stake(net, mike, alice, hal, ledger, sn):
+    mike.multi_transfer([hal, alice], coins(13.02, 87.02))
+    net.mine()
+
+    assert hal.balances(refresh=True) == coins(13.02, 13.02)
+    assert alice.balances(refresh=True) == coins(87.02, 87.02)
+
+    alice.register_sn(sn, stake=coins(87))
+    net.mine(1)
+
+    fee = None
+
+    def store_fee(_, m):
+        nonlocal fee
+        fee = float(m[1][1])
+
+    run_with_interactions(
+        ledger,
+        partial(hal.stake_sn, sn, coins(13)),
+        ExactScreen(["Processing Stake"]),
+        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+        ExactScreen(["Confirm Stake", "13.0"], fail_index=1),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.right,
+        ExactScreen(["Reject"]),
+        Do.left,
+        Do.both,
+        ExactScreen(["Processing Stake"]),
+    )
+
+    # Our SN is 1 or 2 registered, so we get 50% of the 16.5 reward, 10% is removed for operator
+    # fee, then hal gets 13/100 of the rest:
+    reward = 0.5 * 16.5 * 0.9 * 0.13
+
+    check_sn_rewards(net, hal, sn, 13 - fee, reward)
+
+
+def test_sn_unstake(net, mike, hal, ledger, sn):
+    # Do the full registration:
+    test_sn_register(net, mike, hal, ledger, sn)
+
+    run_with_interactions(
+        ledger,
+        partial(hal.unstake_sn, sn),
+        ExactScreen(["Confirm Service", "Node Unlock"]),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.right,
+        ExactScreen(["Reject"]),
+        Do.left,
+        Do.both,
+    )
+    # A fakechain unlock takes 30 blocks, plus add another 20 just so we are sure we've received the
+    # last batch reward:
+    net.mine(30 + 20)
+
+    hal_bal = hal.balances(refresh=True)
+    net.mine(20)
+    assert hal.balances(refresh=True) == hal_bal

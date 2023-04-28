@@ -16,7 +16,7 @@
 # wallets and nodes each time (see the fixture for details).
 
 
-from daemons import Daemon, Wallet
+from daemons import Daemon, Wallet, coins
 import vprint as v
 from vprint import vprint
 import random
@@ -24,15 +24,6 @@ import time
 import uuid
 
 import pytest
-
-
-def coins(*args):
-    if len(args) != 1:
-        return tuple(coins(x) for x in args)
-    x = args[0]
-    if type(x) in (tuple, list):
-        return type(x)(coins(i) for i in x)
-    return round(x * 1_000_000_000)
 
 
 def wait_for(callback, timeout=10):
@@ -49,7 +40,7 @@ def wait_for(callback, timeout=10):
 
 
 class SNNetwork:
-    def __init__(self, datadir, *, binpath, sns=20, nodes=3):
+    def __init__(self, datadir, *, binpath, sns=20, nodes=3, unstaked_sns=0):
         self.datadir = datadir
         self.binpath = binpath
 
@@ -58,9 +49,10 @@ class SNNetwork:
         nodeopts = dict(oxend=self.binpath + "/oxend", datadir=datadir)
 
         self.sns = [Daemon(service_node=True, **nodeopts) for _ in range(sns)]
+        self.unstaked_sns = [Daemon(service_node=True, **nodeopts) for _ in range(unstaked_sns)]
         self.nodes = [Daemon(**nodeopts) for _ in range(nodes)]
 
-        self.all_nodes = self.sns + self.nodes
+        self.all_nodes = self.sns + self.unstaked_sns + self.nodes
 
         self.wallets = []
         for name in ("Alice", "Bob", "Mike"):
@@ -86,7 +78,7 @@ class SNNetwork:
             "Starting new oxend service nodes with RPC on {} ports".format(self.sns[0].listen_ip),
             end="",
         )
-        for sn in self.sns:
+        for sn in self.sns + self.unstaked_sns:
             vprint(" {}".format(sn.rpc_port), end="", flush=True, timestamp=False)
             sn.start()
         vprint(timestamp=False)
@@ -308,7 +300,7 @@ def basic_net(pytestconfig, tmp_path, binary_dir):
         v.verbose = pytestconfig.getoption("verbose") >= 2
         if v.verbose:
             print("\nConstructing initial node network")
-        snn = SNNetwork(datadir=tmp_path, binpath=binary_dir, sns=1, nodes=1)
+        snn = SNNetwork(datadir=tmp_path, binpath=binary_dir, sns=1, nodes=1, unstaked_sns=1)
     else:
         snn.alice.new_wallet()
         snn.bob.new_wallet()

@@ -6,6 +6,16 @@ import requests
 import subprocess
 import time
 
+
+def coins(*args):
+    if len(args) != 1:
+        return tuple(coins(x) for x in args)
+    x = args[0]
+    if type(x) in (tuple, list):
+        return type(x)(coins(i) for i in x)
+    return round(x * 1_000_000_000)
+
+
 # On linux we can pick a random 127.x.y.z IP which is highly likely to not have anything listening
 # on it (so we make bind conflicts highly unlikely).  On most other OSes we have to listen on
 # 127.0.0.1 instead, so we pick a random starting port instead to try to minimize bind conflicts.
@@ -207,6 +217,9 @@ class Daemon(RPCDaemon):
             "/start_mining",
             {"miner_address": a, "threads_count": 1, "num_blocks": num_blocks, "slow_mining": slow},
         )
+
+    def sn_pubkey(self):
+        return self.json_rpc("get_service_keys").json()["result"]["service_node_pubkey"]
 
     def height(self):
         return self.rpc("/get_height").json()["height"]
@@ -414,20 +427,39 @@ class Wallet(RPCDaemon):
 
         return [find_tx(txid) for txid in txids]
 
-    def register_sn(self, sn):
+    def register_sn(self, sn, stake=coins(100), fee=10):
         r = sn.json_rpc(
             "get_service_node_registration_cmd",
             {
-                "operator_cut": "100",
-                "contributions": [{"address": self.address(), "amount": 100000000000}],
-                "staking_requirement": 100000000000,
+                "operator_cut": "100" if stake == coins(100) else f"{fee}",
+                "contributions": [{"address": self.address(), "amount": stake}],
+                "staking_requirement": coins(100),
             },
         ).json()
         if "error" in r:
             raise RuntimeError(f"Registration cmd generation failed: {r['error']['message']}")
         cmd = r["result"]["registration_cmd"]
+        if cmd == "":
+            # everything about this command is dumb, include its error handling
+            raise RuntimeError(f"Registration cmd generation failed: {r['result']['status']}")
+
         r = self.json_rpc("register_service_node", {"register_service_node_str": cmd}).json()
         if "error" in r:
             raise RuntimeError(
                 "Failed to submit service node registration tx: {}".format(r["error"]["message"])
             )
+
+    def stake_sn(self, sn, stake):
+        r = self.json_rpc(
+            "stake",
+            {"destination": self.address(), "amount": stake, "service_node_key": sn.sn_pubkey()},
+        ).json()
+        if "error" in r:
+            raise RuntimeError(f"Failed to submit stake: {r['error']['message']}")
+
+    def unstake_sn(self, sn):
+        r = self.json_rpc("request_stake_unlock", {"service_node_key": sn.sn_pubkey()}).json()
+        if "error" in r:
+            raise RuntimeError(f"Failed to submit unstake: {r['error']['message']}")
+        if not r["result"]["unlocked"]:
+            raise RuntimeError(f"Failed to submit unstake: {r['result']['msg']}")
