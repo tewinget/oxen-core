@@ -37,6 +37,7 @@ class MatchScreen:
         self.callback = callback
         self.allow_extra = allow_extra
         self.fail_index = fail_index or len(self.regexes)
+        self.desc = f"screen match: {regexes}"
 
     def __call__(self, ledger, *, immediate=False):
         text = ledger.curr()
@@ -92,6 +93,7 @@ class MatchMulti:
         self.expected = value
         self.re = re.compile("^" + re.escape(title) + r" \(1/(\d+)\)$")
         self.callback = callback
+        self.desc = f"multi-value {title}"
 
     def __call__(self, ledger, immediate=False):
         text = ledger.curr()
@@ -119,6 +121,7 @@ class Do:
     def __call__(self, ledger, immediate=False):
         self.action(ledger)
         return True
+
 
 # Static Do objects that do a right/left/both push when invoked
 Do.right = Do(lambda ledger: ledger.right())
@@ -153,10 +156,11 @@ def run_with_interactions(ledger, main, *interactions, timeout=30, poll=0.25):
                     break
                 time.sleep(poll)
             else:
+                desc = getattr(f, "desc", "device interaction")
                 if time.time() < timeout_at:
-                    raise TimeoutError("timeout waiting for device interactions")
+                    raise EOFError("command finished before {desc} completed")
                 else:
-                    raise EOFError("command finished before device interactions completed")
+                    raise TimeoutError(f"timeout waiting for {desc}")
     except Exception as e:
         int_fail = e
 
