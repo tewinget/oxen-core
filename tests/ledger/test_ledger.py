@@ -92,7 +92,7 @@ def test_send(net, mike, alice, hal, ledger):
     assert hal_bal[1] < remaining
     assert alice.balances(refresh=True) == coins(42.5, 0)
     net.mine(9)
-    assert hal.balances(refresh=True) == coins(remaining, remaining)
+    assert hal.balances(refresh=True) == (remaining, remaining)
     assert alice.balances(refresh=True) == coins(42.5, 42.5)
 
 
