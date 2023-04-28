@@ -61,3 +61,7 @@ def mike(net):
 @pytest.fixture
 def alice(net):
     return net.alice
+
+@pytest.fixture
+def bob(net):
+    return net.bob

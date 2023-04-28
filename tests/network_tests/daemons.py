@@ -379,6 +379,27 @@ class Wallet(RPCDaemon):
             raise TransferFailed(f"Transfer failed: {r['error']['message']}", r)
         return r["result"]
 
+    def multi_transfer(self, recipients, amounts, *, priority=None):
+        """Attempts a transfer to multiple recipients at once.  Throws TransferFailed if it gets
+        rejected by the daemon, otherwise returns the 'result' key."""
+        assert 0 < len(recipients) == len(amounts)
+        if priority is None:
+            priority = 1
+        r = self.json_rpc(
+            "transfer_split",
+            {
+                "destinations": [
+                    {"address": r.address(), "amount": a} for r, a in zip(recipients, amounts)
+                ],
+                "priority": priority,
+            },
+        )
+
+        r = r.json()
+        if "error" in r:
+            raise TransferFailed(f"Transfer failed: {r['error']['message']}", r)
+        return r["result"]
+
     def find_transfers(self, txids, in_=True, pool=True, out=True, pending=False, failed=False):
         transfers = self.json_rpc(
             "get_transfers",

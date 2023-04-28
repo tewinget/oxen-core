@@ -94,3 +94,57 @@ def test_send(net, mike, alice, hal, ledger):
     net.mine(9)
     assert hal.balances(refresh=True) == coins(remaining, remaining)
     assert alice.balances(refresh=True) == coins(42.5, 42.5)
+
+
+def test_multisend(net, mike, alice, bob, hal, ledger):
+    mike.multi_transfer([hal] * 15, coins([7] * 15))
+    net.mine()
+
+    assert hal.balances(refresh=True) == coins(105, 105)
+
+    fee = None
+
+    def store_fee(_, m):
+        nonlocal fee
+        fee = float(m[1][1])
+
+    print("STARTING HAL MULTI TRANSFER in 3s!")
+    time.sleep(3)
+
+    run_with_interactions(
+        ledger,
+        lambda: hal.multi_transfer((alice, bob, alice, alice, hal), (18, 19, 20, 21, 22)),
+        ExactScreen(["Processing TX"]),
+        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.right,
+        ExactScreen(["Reject"]),
+        Do.left,
+        Do.both,
+        ExactScreen(["Confirm Amount", "42.5"], fail_index=1),
+        Do.right,
+        MatchMulti("Recipient", alice.address()),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.right,
+        ExactScreen(["Reject"]),
+        Do.right,  # This loops back around to the amount:
+        ExactScreen(["Confirm Amount", "42.5"]),
+        Do.left,
+        Do.left,
+        ExactScreen(["Accept"]),
+        Do.both,
+    )
+
+    net.mine(1)
+    remaining = coins(5 - fee + 22)
+    hal_bal = hal.balances(refresh=True)
+    assert hal_bal[0] == remaining
+    assert hal_bal[1] < remaining
+    assert alice.balances(refresh=True) == coins(18 + 20 + 21, 0)
+    assert bob.balances(refresh=True) == coins(19, 0)
+    net.mine(9)
+    assert hal.balances(refresh=True) == coins([remaining] * 2)
+    assert alice.balances(refresh=True) == coins([18 + 20 + 21] * 2)
+    assert bob.balances(refresh=True) == coins(19, 19)
