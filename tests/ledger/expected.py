@@ -161,10 +161,12 @@ def run_with_interactions(ledger, main, *interactions, timeout=30, poll=0.25):
         int_fail = e
 
     if int_fail is not None:
-        # Wait for a result, but discard it.  If the future raises an exception we throw that
-        # because it is probably more relevant:
-        future.result()
-        # Otherwise we throw our timeout/eof exception
+        # Wait for a result, but discard it (and ignore an exception, if it throws one, because we
+        # have an interactions exception that is probably more relevant):
+        try:
+            future.result()
+        except Exception:
+            pass
         raise int_fail
 
     return future.result()
