@@ -17,9 +17,10 @@
 
 
 from daemons import Daemon, Wallet
+import vprint as v
+from vprint import vprint
 import random
 import time
-from datetime import datetime
 import uuid
 
 import pytest
@@ -45,17 +46,6 @@ def wait_for(callback, timeout=10):
         if time.time() >= expires:
             raise RuntimeError("task timeout expired")
         time.sleep(0.25)
-
-
-verbose = False
-
-
-def vprint(*args, timestamp=True, **kwargs):
-    global verbose
-    if verbose:
-        if timestamp:
-            print(datetime.now(), end=" ")
-        print(*args, **kwargs)
 
 
 class SNNetwork:
@@ -256,8 +246,7 @@ class SNNetwork:
 
     def print_wallet_balances(self):
         """Instructs the wallets to refresh and prints their balances (does nothing in non-verbose mode)"""
-        global verbose
-        if not verbose:
+        if not v.verbose:
             return
         vprint("Balances:")
         for w in self.wallets:
@@ -284,10 +273,10 @@ def sn_net(pytestconfig, tmp_path, binary_dir):
     it loads it starts the daemons and wallets, mines a bunch of blocks and submits SN
     registrations.  On subsequent loads it mines 5 blocks so that mike always has some available
     funds, and resets alice and bob to new wallets."""
-    global snn, verbose
+    global snn
     if not snn:
-        verbose = pytestconfig.getoption("verbose") >= 2
-        if verbose:
+        v.verbose = pytestconfig.getoption("verbose") >= 2
+        if v.verbose:
             print("\nConstructing initial service node network")
         snn = SNNetwork(datadir=tmp_path, binpath=binary_dir)
     else:
@@ -314,10 +303,10 @@ def basic_net(pytestconfig, tmp_path, binary_dir):
     wallets, mines a bunch of blocks and submits the SN registration.  On subsequent loads it mines
     5 blocks so that mike always has some available funds, and resets alice and bob to new
     wallets."""
-    global snn, verbose
+    global snn
     if not snn:
-        verbose = pytestconfig.getoption("verbose") >= 2
-        if verbose:
+        v.verbose = pytestconfig.getoption("verbose") >= 2
+        if v.verbose:
             print("\nConstructing initial node network")
         snn = SNNetwork(datadir=tmp_path, binpath=binary_dir, sns=1, nodes=1)
     else:

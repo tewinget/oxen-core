@@ -1,6 +1,7 @@
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from vprint import vprint
 
 
 executor = ThreadPoolExecutor(max_workers=1)
@@ -155,6 +156,7 @@ def run_with_interactions(ledger, main, *interactions, timeout=30, poll=0.25):
         for f in interactions:
             while time.time() < timeout_at and not future.done():
                 if f(ledger):
+                    vprint(f"Interaction success: {f.desc if hasattr(f, 'desc') else f}")
                     break
                 time.sleep(poll)
             else:
