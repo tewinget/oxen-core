@@ -2413,6 +2413,14 @@ namespace {
     if (!wal)
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to create wallet"};
 
+    if (req.subaddress_lookahead_major or req.subaddress_lookahead_minor)
+    {
+      if (not (req.subaddress_lookahead_major and req.subaddress_lookahead_minor))
+        throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Must specify subaddress lookahead major AND minor if specifying either"};
+
+      wal->set_subaddress_lookahead(*req.subaddress_lookahead_major, *req.subaddress_lookahead_minor);
+    }
+
     if (!req.hardware_wallet)
       wal->set_seed_language(req.language);
 
