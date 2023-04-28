@@ -293,6 +293,10 @@ class Wallet(RPCDaemon):
                 params["hardware_wallet"] = True
                 params["device_name"] = "LedgerTCP"
                 params["debug_reset"] = True
+                # These are fairly slow (~0.2s each) for the device to construct during
+                # initialization, so severely reduce them for testing:
+                params["subaddress_lookahead_major"] = 2
+                params["subaddress_lookahead_minor"] = 2
 
             r = self.wait_for_json_rpc("create_wallet", params)
         if "result" not in r.json():
