@@ -97,7 +97,7 @@ def test_send(net, mike, alice, hal, ledger):
 
 
 def test_multisend(net, mike, alice, bob, hal, ledger):
-    mike.multi_transfer([hal] * 15, coins([7] * 15))
+    mike.transfer(hal, coins(105))
     net.mine()
 
     assert hal.balances(refresh=True) == coins(105, 105)
@@ -108,43 +108,81 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
         nonlocal fee
         fee = float(m[1][1])
 
-    print("STARTING HAL MULTI TRANSFER in 3s!")
-    time.sleep(3)
+    recipient_addrs = []
+    def store_addr(val):
+        nonlocal recipient_addrs
+        recipient_addrs.append(val)
+        print(f"recipient addr: {val}")
 
+    recipient_amounts = []
+    def store_amount(_, m):
+        nonlocal recipient_addrs
+        recipient_amounts.append(m[1][1])
+        print(f"recipient amount: {m[1][1]}")
+
+    recipient_expected = [(alice.address(), "18.0"),
+                          (bob.address(), "19.0"),
+                          (alice.address(), "20.0"),
+                          (alice.address(), "21.0"),
+                          (hal.address(), "22.0")]
+
+    hal.timeout = 120 # creating this tx with the ledger takes ages
     run_with_interactions(
         ledger,
-        lambda: hal.multi_transfer((alice, bob, alice, alice, hal), (18, 19, 20, 21, 22)),
+        lambda: hal.multi_transfer((alice, bob, alice, alice, hal), coins(18, 19, 20, 21, 22)),
         ExactScreen(["Processing TX"]),
-        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        MatchScreen([r"^Confirm Fee$", r"^(0.\d{1,9})$"], store_fee, fail_index=1),
         Do.right,
-        ExactScreen(["Accept"]),
-        Do.right,
-        ExactScreen(["Reject"]),
-        Do.left,
-        Do.both,
-        ExactScreen(["Confirm Amount", "42.5"], fail_index=1),
-        Do.right,
-        MatchMulti("Recipient", alice.address()),
-        Do.right,
-        ExactScreen(["Accept"]),
-        Do.right,
-        ExactScreen(["Reject"]),
-        Do.right,  # This loops back around to the amount:
-        ExactScreen(["Confirm Amount", "42.5"]),
-        Do.left,
-        Do.left,
         ExactScreen(["Accept"]),
         Do.both,
+        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
+        Do.right,
+        MatchMulti("Recipient", None, callback=store_addr),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
+        Do.right,
+        MatchMulti("Recipient", None, callback=store_addr),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
+        Do.right,
+        MatchMulti("Recipient", None, callback=store_addr),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
+        Do.right,
+        MatchMulti("Recipient", None, callback=store_addr),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
+        Do.right,
+        MatchMulti("Recipient", None, callback=store_addr),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+        timeout=120,
     )
 
+    recipient_expected.sort()
+
+    recipient_got = list(zip(recipient_addrs, recipient_amounts))
+    recipient_got.sort()
+
+    assert recipient_expected == recipient_got
+
     net.mine(1)
-    remaining = coins(5 - fee + 22)
+    remaining = coins(105 - 100 - fee + 22)
     hal_bal = hal.balances(refresh=True)
     assert hal_bal[0] == remaining
     assert hal_bal[1] < remaining
     assert alice.balances(refresh=True) == coins(18 + 20 + 21, 0)
     assert bob.balances(refresh=True) == coins(19, 0)
     net.mine(9)
-    assert hal.balances(refresh=True) == coins([remaining] * 2)
-    assert alice.balances(refresh=True) == coins([18 + 20 + 21] * 2)
+    assert hal.balances(refresh=True) == tuple([remaining] * 2)
+    assert alice.balances(refresh=True) == tuple(coins([18 + 20 + 21] * 2))
     assert bob.balances(refresh=True) == coins(19, 19)
