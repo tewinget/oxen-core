@@ -262,7 +262,7 @@ class Wallet(RPCDaemon):
         self.name = name or f"wallet@{self.rpc_port}"
         super().__init__(self.name)
 
-        self.timeout = 30 if self.ledger_api else 10
+        self.timeout = 60 if self.ledger_api else 10
 
         self.walletdir = f'{datadir or "."}/wallet-{self.listen_ip}-{self.rpc_port}'
         self.args = [rpc_wallet] + list(self.__class__.base_args)

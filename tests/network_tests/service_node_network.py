@@ -156,28 +156,32 @@ class SNNetwork:
 
         self.print_wallet_balances()
 
-        vprint("Mining 40 blocks (registrations + blink quorum lag) and waiting for nodes to sync")
-        self.sync_nodes(self.mine(40))
+        if len(self.sns) > 4:
+            vprint("Mining 40 blocks (registrations + blink quorum lag) and waiting for nodes to sync")
+            self.sync_nodes(self.mine(40))
 
-        self.print_wallet_balances()
+            self.print_wallet_balances()
+        else:
+            vprint("Mining 2 blocks (registrations) and waiting for nodes to sync")
 
         vprint("Sending fake lokinet/ss pings")
         for sn in self.sns:
             sn.ping()
 
-        all_service_nodes_proofed = lambda sn: all(
-            x["quorumnet_port"] > 0
-            for x in sn.json_rpc(
-                "get_n_service_nodes", {"fields": {"quorumnet_port": True}}
-            ).json()["result"]["service_node_states"]
-        )
+        if len(self.sns) > 1:
+            all_service_nodes_proofed = lambda sn: all(
+                x["quorumnet_port"] > 0
+                for x in sn.json_rpc(
+                    "get_n_service_nodes", {"fields": {"quorumnet_port": True}}
+                ).json()["result"]["service_node_states"]
+            )
 
-        vprint("Waiting for proofs to propagate: ", end="", flush=True)
-        for sn in self.sns:
-            wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
-            vprint(".", end="", flush=True, timestamp=False)
-        vprint(timestamp=False)
-        vprint("Done.")
+            vprint("Waiting for proofs to propagate: ", end="", flush=True)
+            for sn in self.sns:
+                wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
+                vprint(".", end="", flush=True, timestamp=False)
+            vprint(timestamp=False)
+            vprint("Done.")
 
         vprint("Fake SN network setup complete!")
 

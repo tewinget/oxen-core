@@ -3,6 +3,8 @@
 import pytest
 from service_node_network import basic_net as net
 
+from ledgerapi import LedgerAPI
+
 from daemons import Wallet
 
 
@@ -15,6 +17,11 @@ def pytest_addoption(parser):
 @pytest.fixture(scope="session")
 def binary_dir(request):
     return request.config.getoption("--binary-dir")
+
+
+@pytest.fixture(scope="session")
+def ledger(request):
+    return LedgerAPI(request.config.getoption("--ledger-api"))
 
 
 @pytest.fixture
