@@ -115,8 +115,10 @@ class MatchMulti:
 class Do:
     """Fake matcher that just does some side effect (passing the ledger) and always returns True"""
 
-    def __init__(self, action):
+    def __init__(self, action, desc=None):
         self.action = action
+        if desc:
+            self.desc = desc
 
     def __call__(self, ledger, immediate=False):
         self.action(ledger)
@@ -124,9 +126,9 @@ class Do:
 
 
 # Static Do objects that do a right/left/both push when invoked
-Do.right = Do(lambda ledger: ledger.right())
-Do.left = Do(lambda ledger: ledger.left())
-Do.both = Do(lambda ledger: ledger.both())
+Do.right = Do(lambda ledger: ledger.right(), desc="push right")
+Do.left = Do(lambda ledger: ledger.left(), desc="push left")
+Do.both = Do(lambda ledger: ledger.both(), desc="push both")
 
 
 def run_with_interactions(ledger, main, *interactions, timeout=30, poll=0.25):
@@ -158,19 +160,22 @@ def run_with_interactions(ledger, main, *interactions, timeout=30, poll=0.25):
             else:
                 desc = getattr(f, "desc", "device interaction")
                 if time.time() < timeout_at:
-                    raise EOFError("command finished before {desc} completed")
+                    raise EOFError(f"command finished before {desc} completed")
                 else:
                     raise TimeoutError(f"timeout waiting for {desc}")
     except Exception as e:
         int_fail = e
 
     if int_fail is not None:
-        # Wait for a result, but discard it (and ignore an exception, if it throws one, because we
-        # have an interactions exception that is probably more relevant):
         try:
             future.result()
-        except Exception:
-            pass
+        except Exception as e:
+            # Both raised, so throw containing both messages:
+            raise RuntimeError(
+                "Failed to run with interactions:\n"
+                f"Run failure: {e}\n"
+                f"Interactions failure: {int_fail}"
+            )
         raise int_fail
 
     return future.result()
