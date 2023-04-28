@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import pytest
+import os.path
 from service_node_network import basic_net as net
 
 from ledgerapi import LedgerAPI
@@ -16,7 +17,16 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session")
 def binary_dir(request):
-    return request.config.getoption("--binary-dir")
+    binpath = request.config.getoption("--binary-dir")
+    for exe in ("oxend", "oxen-wallet-rpc"):
+        b = f"{binpath}/{exe}"
+        if not os.path.exists(b):
+            raise FileNotFoundError(
+                b,
+                f"Required executable ({b}) not found; build the project, or specify an alternate build/bin dir with --binary-dir",
+            )
+
+    return binpath
 
 
 @pytest.fixture(scope="session")

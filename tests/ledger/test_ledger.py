@@ -1,12 +1,10 @@
 import pytest
 import time
 import re
-from concurrent.futures import ThreadPoolExecutor
 
 from service_node_network import coins, vprint
 from ledgerapi import LedgerAPI
-
-executor = ThreadPoolExecutor(max_workers=1)
+from expected import *
 
 
 def test_init(net, mike, hal, ledger):
@@ -27,18 +25,17 @@ def test_init(net, mike, hal, ledger):
 
     address = hal.address()
 
-    text = ledger.curr()
-    assert text[0] == "OXEN wallet"
-    m = re.search(r"^(\w+)\.\.(\w+)$", text[1])
-    assert m
-    assert address.startswith(m[1])
-    assert address.endswith(m[2])
+    def check_addr(_, m):
+        assert address.startswith(m[1][1]) and address.endswith(m[1][2])
 
-    # Hit "both" on the address overview to see the full address
-    ledger.both()
-    assert ledger.curr() == ["Regular address", "(fakenet)"]
-    ledger.right()
-    assert ledger.read_multi_value("Address") == address
+    check_interactions(
+        ledger,
+        MatchScreen([r"^OXEN wallet$", r"^(\w+)\.\.(\w+)$"], check_addr),
+        Do.both,  # Hitting both on the main screen shows us the full address details
+        ExactScreen(["Regular address", "(fakenet)"]),
+        Do.right,
+        MatchMulti("Address", address),
+    )
 
 
 def test_receive(net, mike, hal):
@@ -56,56 +53,44 @@ def test_send(net, mike, alice, hal, ledger):
     net.mine()
     hal.refresh()
 
-    def do_transfer():
-        hal.transfer(alice, coins(42.5))
+    fee = None
 
-    future = executor.submit(do_transfer)
+    def store_fee(_, m):
+        nonlocal fee
+        fee = float(m[1][1])
 
-    time.sleep(1)
-    assert ledger.curr() == ["Processing TX"]
+    run_with_interactions(
+        ledger,
+        lambda: hal.transfer(alice, coins(42.5)),
+        ExactScreen(["Processing TX"]),
+        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.right,
+        ExactScreen(["Reject"]),
+        Do.left,
+        Do.both,
+        ExactScreen(["Confirm Amount", "42.5"], fail_index=1),
+        Do.right,
+        MatchMulti("Recipient", alice.address()),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.right,
+        ExactScreen(["Reject"]),
+        Do.right,  # This loops back around to the amount:
+        ExactScreen(["Confirm Amount", "42.5"]),
+        Do.left,
+        Do.left,
+        ExactScreen(["Accept"]),
+        Do.both,
+    )
 
-    timeout_at = time.time() + 30
-    while time.time() < timeout_at:
-        text = ledger.curr()
-        if text[0] != "Confirm Fee":
-            time.sleep(0.5)
-            continue
-
-        fee = re.search(r"^(0.01\d{1,7})$", text[1])
-        assert fee
-        fee = float(fee[1])
-        ledger.right()
-        assert ledger.curr() == ["Accept"]
-        ledger.right()
-        assert ledger.curr() == ["Reject"]
-        ledger.left()
-        ledger.both()
-        break
-    else:
-        assert not "Timeout waiting for transaction on device"
-
-    while time.time() < timeout_at:
-        text = ledger.curr()
-        if text[0] != "Confirm Amount":
-            time.sleep(0.5)
-            continue
-
-        assert text[1] == "42.5"
-        ledger.right()
-        assert ledger.read_multi_value("Recipient") == alice.address()
-        ledger.right()
-        assert ledger.curr() == ["Accept"]
-        ledger.right()
-        assert ledger.curr() == ["Reject"]
-        ledger.right()
-        assert ledger.curr() == ["Confirm Amount", "42.5"]
-        ledger.left()
-        ledger.left()
-        assert ledger.curr() == ["Accept"]
-        ledger.both()
-
-    future.result(max(1, timeout_at - time.time()))
-
-    net.mine()
-    assert hal.balances(refresh=True) == coins((100 - 42.5 - fee,) * 2)
+    net.mine(1)
+    remaining = coins(100 - 42.5 - fee)
+    hal_bal = hal.balances(refresh=True)
+    assert hal_bal[0] == remaining
+    assert hal_bal[1] < remaining
+    assert alice.balances(refresh=True) == coins(42.5, 0)
+    net.mine(9)
+    assert hal.balances(refresh=True) == coins(remaining, remaining)
     assert alice.balances(refresh=True) == coins(42.5, 42.5)

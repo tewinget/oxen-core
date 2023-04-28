@@ -45,13 +45,14 @@ class LedgerAPI:
         self._touch("both", action, delay, sleep)
 
     def read_multi_value(self, title):
-        """Feed this the ledger on the first "{title} (1/N)" screen and it will read through, collect
-        the multi-part value, and return it.  Throws assert failures if there aren't screens 1/N through
-        N/N.  Leaves it on the N/N screen."""
+        """Feed this the ledger on the first "{title} (1/N)" screen and it will read through,
+        collect the multi-part value, and return it.  Throws ValueError if there aren't screens 1/N
+        through N/N.  Leaves the ledger on the final (N/N) screen."""
 
         text = self.curr()
         disp_n = re.search("^" + re.escape(title) + r" \(1/(\d+)\)$", text[0])
-        assert disp_n
+        if not disp_n:
+            raise ValueError(f"Did not match a multi-screen {title} value: {text}")
         disp_n = int(disp_n[1])
         full_value = text[1]
         i = 1
@@ -59,9 +60,11 @@ class LedgerAPI:
             self.right()
             i += 1
             text = self.curr()
-            assert text[0] == f"{title} ({i}/{disp_n})"
+            expected = f"{title} ({i}/{disp_n})"
+            if text[0] != expected:
+                raise ValueError(
+                    f"Unexpected multi-screen value: expected {expected}, got {text[0]}"
+                )
             full_value += text[1]
 
         return full_value
-
-

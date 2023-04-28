@@ -59,7 +59,7 @@ def vprint(*args, timestamp=True, **kwargs):
 
 
 class SNNetwork:
-    def __init__(self, datadir, *, binpath="../../build/bin", sns=20, nodes=3):
+    def __init__(self, datadir, *, binpath, sns=20, nodes=3):
         self.datadir = datadir
         self.binpath = binpath
 
@@ -157,7 +157,9 @@ class SNNetwork:
         self.print_wallet_balances()
 
         if len(self.sns) > 4:
-            vprint("Mining 40 blocks (registrations + blink quorum lag) and waiting for nodes to sync")
+            vprint(
+                "Mining 40 blocks (registrations + blink quorum lag) and waiting for nodes to sync"
+            )
             self.sync_nodes(self.mine(40))
 
             self.print_wallet_balances()
@@ -316,7 +318,7 @@ def basic_net(pytestconfig, tmp_path, binary_dir):
     if not snn:
         verbose = pytestconfig.getoption("verbose") >= 2
         if verbose:
-            print("\nConstructing initial service node network")
+            print("\nConstructing initial node network")
         snn = SNNetwork(datadir=tmp_path, binpath=binary_dir, sns=1, nodes=1)
     else:
         snn.alice.new_wallet()
