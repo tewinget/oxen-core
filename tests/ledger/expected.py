@@ -48,14 +48,14 @@ class MatchScreen:
                 matches.append(self.regexes[i].search(text[i]))
                 if not matches[-1]:
                     if i >= self.fail_index or immediate:
-                        raise ValueError(f"wrong screen value: {text}")
+                        raise ValueError(f"wrong screen value: {text}, expected {self.desc}")
                     return False
             if self.callback:
                 res = self.callback(text, matches)
                 if res is not None:
                     res = bool(res)
                     if immediate and not res:
-                        raise ValueError(f"wrong screen value: {text}")
+                        raise ValueError(f"wrong screen value: {text}, expected {self.desc}")
                     return res
             return True
         if immediate:
