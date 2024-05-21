@@ -30,6 +30,7 @@ add_library(oxen_bls
   bls_signer.cpp
   bls_aggregator.cpp
   bls_utils.cpp
+  bls_omq.cpp
   )
 
 target_link_libraries(oxen_bls
@@ -38,6 +39,7 @@ target_link_libraries(oxen_bls
     cncrypto
     cryptonote_basic
   PRIVATE
+    SQLiteCpp
     common
     logging
     ethyl

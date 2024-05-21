@@ -66,6 +66,8 @@ extern "C" {
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
+#include "bls/bls_omq.h"
+#include "bls/bls_utils.h"
 #include "epee/memwipe.h"
 #include "epee/net/local_ip.h"
 #include "epee/warnings.h"
@@ -1093,50 +1095,32 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
 
         m_quorumnet_state = quorumnet_new(*this);
 
+        static constexpr std::string_view OMQ_BAD_REQUEST = "400";
         m_omq->add_category("bls", oxenmq::Access{oxenmq::AuthLevel::none})
                 .add_request_command(
                         "get_reward_balance",
                         [&](oxenmq::Message& m) {
-                            oxen::log::debug(logcat, "Received omq rewards signature request");
-                            if (m.data.size() != 1)
-                                m.send_reply(
-                                        "400",
-                                        "Bad request: BLS rewards command should have one data "
-                                        "part containing the address"
-                                        "(received " +
-                                                std::to_string(m.data.size()) + ")");
+                            oxen::bls::GetRewardBalanceResponse response =
+                                    oxen::bls::create_reward_balance_request(
+                                            m,
+                                            m_bls_signer.get(),
+                                            get_blockchain_storage().sqlite_db().get());
 
-                            std::string eth_address = tools::lowercase_ascii_string(m.data[0]);
-                            if (!eth_address.starts_with("0x")) {
-                                eth_address = "0x" + eth_address;
+                            if (response.success) {
+                                // NOTE: Transmit the response
+                                // TODO(doyle): Binary request/responses
+                                // Returns status, address, amount, height, bls_pubkey, signature
+                                m.send_reply(
+                                        response.status,
+                                        oxenc::type_to_hex(response.address),
+                                        std::to_string(response.amount),
+                                        std::to_string(response.height),
+                                        bls_utils::PublicKeyToHex(response.bls_pkey),
+                                        response.message_hash_signature.getStr());
+                            } else {
+                                oxen::log::trace(logcat, "OMQ command '{}' failed: {}", oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD, response.error);
+                                m.send_reply(OMQ_BAD_REQUEST, std::move(response.error));
                             }
-                            auto [batchdb_height, amount] =
-                                    get_blockchain_storage().sqlite_db()->get_accrued_earnings(
-                                            eth_address);
-                            if (amount == 0)
-                                m.send_reply("400", "Address has a zero balance in the database");
-                            // bytes memory encodedMessage = abi.encodePacked(rewardTag,
-                            // recipientAddress, recipientAmount);
-                            std::string encoded_message =
-                                    "0x" + m_bls_signer->buildTag(m_bls_signer->rewardTag) +
-                                    ethyl::utils::padToNBytes(
-                                            eth_address.substr(2),
-                                            20,
-                                            ethyl::utils::PaddingDirection::LEFT) +
-                                    ethyl::utils::padTo32Bytes(
-                                            ethyl::utils::decimalToHex(amount),
-                                            ethyl::utils::PaddingDirection::LEFT);
-                            const auto h = m_bls_signer->hash(encoded_message);
-                            // Returns status, address, amount, height, bls_pubkey, signed message,
-                            // signature
-                            m.send_reply(
-                                    "200",
-                                    m.data[0],
-                                    std::to_string(amount),
-                                    std::to_string(batchdb_height),
-                                    m_bls_signer->getPublicKeyHex(),
-                                    encoded_message,
-                                    m_bls_signer->signHash(h).getStr());
                         })
                 .add_request_command(
                         "get_exit",
@@ -2870,9 +2854,29 @@ core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
-aggregateWithdrawalResponse core::aggregate_withdrawal_request(
-        const std::string& ethereum_address) {
-    const auto resp = m_bls_aggregator->aggregateRewards(ethereum_address);
+aggregateWithdrawalResponse core::aggregate_withdrawal_request(const std::string& eth_address) {
+    std::string_view eth_address_trimmed = oxenc::trim_prefix(eth_address, "0x");
+    eth_address_trimmed                  = oxenc::trim_prefix(eth_address_trimmed, "0x");
+
+    crypto::eth_address eth_address_bytes = {};
+    switch (auto convert_result = oxenc::hex_to_type(eth_address_trimmed, eth_address_bytes)) {
+        case oxenc::hex_to_type_result::ok: break;
+
+        case oxenc::hex_to_type_result::non_hex_chars: {
+            throw std::runtime_error(fmt::format("Bad ethereum address '{}', address had non-hex characters", eth_address));
+        } break;
+
+        case oxenc::hex_to_type_result::invalid_size: {
+            throw std::runtime_error(fmt::format(
+                    "Bad ethereum address '{}', address had wrong size {}, expected {}",
+                    eth_address,
+                    eth_address.size(),
+                    sizeof(crypto::eth_address) * 2));
+        } break;
+    }
+
+    auto [batch_db_height, amount] = get_blockchain_storage().sqlite_db()->get_accrued_earnings(eth_address);
+    const auto resp = m_bls_aggregator->aggregateRewards(eth_address_bytes, amount, batch_db_height);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------

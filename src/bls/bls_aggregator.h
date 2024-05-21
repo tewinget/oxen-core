@@ -2,6 +2,7 @@
 
 #include <oxenmq/oxenmq.h>
 
+#include <span>
 #include <string>
 #include <vector>
 
@@ -50,7 +51,14 @@ class BLSAggregator {
             std::shared_ptr<BLSSigner> _bls_signer);
 
     std::vector<std::pair<std::string, std::string>> getPubkeys();
-    aggregateWithdrawalResponse aggregateRewards(const std::string& address);
+
+    /** Request the service node network to sign the requested amount of
+     * 'rewards' for the given Ethereum 'address' if by consensus they agree
+     * that the amount is valid. This node (the aggregator) will aggregate the
+     * signatures into the response
+     */
+    aggregateWithdrawalResponse aggregateRewards(const crypto::eth_address& address, uint64_t rewards, uint64_t height);
+
     aggregateExitResponse aggregateExit(const std::string& bls_key);
     aggregateExitResponse aggregateLiquidation(const std::string& bls_key);
     blsRegistrationResponse registration(
@@ -64,5 +72,5 @@ class BLSAggregator {
             std::function<void(
                     const BLSRequestResult& request_result, const std::vector<std::string>& data)>
                     callback,
-            const std::optional<std::string>& message = std::nullopt);
+            std::span<const std::string> message = {});
 };
