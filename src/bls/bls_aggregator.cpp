@@ -59,14 +59,15 @@ blsRegistrationResponse BLSAggregator::registration(
 void BLSAggregator::processNodes(
         std::string_view request_name,
         std::function<void(const BLSRequestResult&, const std::vector<std::string>&)> callback,
-        std::span<const std::string> message) {
+        std::span<const std::string> message,
+        std::span<const crypto::x25519_public_key> exclude) {
     std::mutex connection_mutex;
     std::condition_variable cv;
     size_t active_connections = 0;
     const size_t MAX_CONNECTIONS = 900;
 
     std::vector<service_nodes::service_node_address> sn_nodes = {};
-    service_node_list.copy_active_service_node_addresses(std::back_inserter(sn_nodes));
+    service_node_list.copy_active_service_node_addresses(std::back_inserter(sn_nodes), exclude);
 
     for (const service_nodes::service_node_address& sn_address : sn_nodes) {
         if (1) {
@@ -117,7 +118,11 @@ static void logNetworkRequestFailedWarning(
             omq_cmd);
 }
 
-AggregateRewardsResponse BLSAggregator::aggregateRewards(const crypto::eth_address& address, uint64_t amount, uint64_t height) {
+AggregateRewardsResponse BLSAggregator::aggregateRewards(
+        const crypto::eth_address& address,
+        uint64_t amount,
+        uint64_t height,
+        std::span<const crypto::x25519_public_key> exclude) {
 
     // NOTE: List of BLS public keys that signed the signature
     BLSSigner* signer = bls_signer.get();
@@ -224,7 +229,8 @@ AggregateRewardsResponse BLSAggregator::aggregateRewards(const crypto::eth_addre
                 agg_sig.add(response.message_hash_signature);
                 signers.push_back(bls_utils::PublicKeyToHex(response.bls_pkey));
             },
-            std::array{oxenc::type_to_hex(address), std::to_string(amount)});
+            std::array{oxenc::type_to_hex(address), std::to_string(amount)},
+            exclude);
 
     const auto sig_str = bls_utils::SignatureToHex(agg_sig);
     auto result = AggregateRewardsResponse{

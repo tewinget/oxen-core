@@ -57,7 +57,11 @@ class BLSAggregator {
      * that the amount is valid. This node (the aggregator) will aggregate the
      * signatures into the response.
      */
-    AggregateRewardsResponse aggregateRewards(const crypto::eth_address& address, uint64_t rewards, uint64_t height);
+    AggregateRewardsResponse aggregateRewards(
+            const crypto::eth_address& address,
+            uint64_t rewards,
+            uint64_t height,
+            std::span<const crypto::x25519_public_key> exclude);
 
     aggregateExitResponse aggregateExit(const std::string& bls_key);
     aggregateExitResponse aggregateLiquidation(const std::string& bls_key);
@@ -72,5 +76,6 @@ class BLSAggregator {
             std::function<void(
                     const BLSRequestResult& request_result, const std::vector<std::string>& data)>
                     callback,
-            std::span<const std::string> message = {});
+            std::span<const std::string> message = {},
+            std::span<const crypto::x25519_public_key> exclude = {});
 };

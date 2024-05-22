@@ -2875,8 +2875,10 @@ AggregateRewardsResponse core::aggregate_rewards_request(const std::string& eth_
         } break;
     }
 
-    auto [batch_db_height, amount] = get_blockchain_storage().sqlite_db()->get_accrued_earnings(eth_address);
-    const auto result = m_bls_aggregator->aggregateRewards(eth_address_bytes, amount, batch_db_height);
+    auto exclude = std::span(&m_service_keys.pub_x25519, &m_service_keys.pub_x25519 + 1);
+    auto [batch_db_height, amount] =
+            get_blockchain_storage().sqlite_db()->get_accrued_earnings(eth_address);
+    const auto result = m_bls_aggregator->aggregateRewards(eth_address_bytes, amount, batch_db_height, exclude);
     return result;
 }
 //-----------------------------------------------------------------------------------------------
