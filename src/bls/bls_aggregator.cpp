@@ -79,20 +79,25 @@ void BLSAggregator::processNodes(
                     [&active_connections] { return active_connections < MAX_CONNECTIONS; });
         }
 
+        // NOTE:  Connect to the SN. Note that we do a request directly to the public key, this
+        // should allow OMQ to re-use a connection (for potential subsequent calls) but also
+        // automatically kill connections on our behalf.
         BLSRequestResult request_result = {};
         request_result.sn_address = sn_address;
-        auto conn = omq->connect_sn(tools::view_guts(sn_address.x_pkey), oxenmq::AuthLevel::basic);
+
         omq->request(
-                conn,
+                oxenmq::ConnectionID(tools::copy_guts(sn_address.x_pkey)),
                 request_name,
-                [&connection_mutex, &active_connections, &cv, callback, &request_result](
-                        bool success, std::vector<std::string> data) {
+                [&connection_mutex, &active_connections, &cv, callback, &request_result](bool success, std::vector<std::string> data) {
                     request_result.success = success;
                     callback(request_result, data);
+
                     std::lock_guard<std::mutex> connection_lock(connection_mutex);
+                    assert(active_connections);
                     --active_connections;
-                    cv.notify_all();
-                    // omq->disconnect(c);
+                    if (active_connections == 0) {
+                        cv.notify_all();
+                    }
                 },
                 oxenmq::send_option::data_parts(message.begin(), message.end()));
     }
