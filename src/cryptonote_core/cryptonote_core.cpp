@@ -2854,7 +2854,7 @@ core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
-aggregateWithdrawalResponse core::aggregate_withdrawal_request(const std::string& eth_address) {
+AggregateRewardsResponse core::aggregate_rewards_request(const std::string& eth_address) {
     std::string_view eth_address_trimmed = oxenc::trim_prefix(eth_address, "0x");
     eth_address_trimmed                  = oxenc::trim_prefix(eth_address_trimmed, "0x");
 
@@ -2876,8 +2876,8 @@ aggregateWithdrawalResponse core::aggregate_withdrawal_request(const std::string
     }
 
     auto [batch_db_height, amount] = get_blockchain_storage().sqlite_db()->get_accrued_earnings(eth_address);
-    const auto resp = m_bls_aggregator->aggregateRewards(eth_address_bytes, amount, batch_db_height);
-    return resp;
+    const auto result = m_bls_aggregator->aggregateRewards(eth_address_bytes, amount, batch_db_height);
+    return result;
 }
 //-----------------------------------------------------------------------------------------------
 aggregateExitResponse core::aggregate_exit_request(const std::string& bls_key) {

@@ -16,7 +16,7 @@ struct aggregateExitResponse {
     std::string signature;
 };
 
-struct aggregateWithdrawalResponse {
+struct AggregateRewardsResponse {
     std::string address;
     uint64_t amount;
     uint64_t height;
@@ -55,9 +55,9 @@ class BLSAggregator {
     /** Request the service node network to sign the requested amount of
      * 'rewards' for the given Ethereum 'address' if by consensus they agree
      * that the amount is valid. This node (the aggregator) will aggregate the
-     * signatures into the response
+     * signatures into the response.
      */
-    aggregateWithdrawalResponse aggregateRewards(const crypto::eth_address& address, uint64_t rewards, uint64_t height);
+    AggregateRewardsResponse aggregateRewards(const crypto::eth_address& address, uint64_t rewards, uint64_t height);
 
     aggregateExitResponse aggregateExit(const std::string& bls_key);
     aggregateExitResponse aggregateLiquidation(const std::string& bls_key);

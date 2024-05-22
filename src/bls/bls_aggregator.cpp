@@ -117,25 +117,37 @@ static void logNetworkRequestFailedWarning(
             omq_cmd);
 }
 
-aggregateWithdrawalResponse BLSAggregator::aggregateRewards(const crypto::eth_address& address, uint64_t amount, uint64_t height) {
-    bls::Signature agg_sig;
-    agg_sig.clear();
+AggregateRewardsResponse BLSAggregator::aggregateRewards(const crypto::eth_address& address, uint64_t amount, uint64_t height) {
+
+    // NOTE: List of BLS public keys that signed the signature
+    BLSSigner* signer = bls_signer.get();
 
     std::vector<std::string> signers;
     std::mutex signers_mutex;
 
-    // TODO(doyle): Do we need to verify the height?
-    BLSSigner* signer = bls_signer.get();
-    std::string message_to_sign =
+    // NOTE: Add our own signature to the aggregate signature
+    const std::string message_to_sign =
             oxen::bls::get_reward_balance_request_message(signer, address, amount);
+    bls::Signature agg_sig;
+    agg_sig.clear();
+    {
+        crypto::bytes<32> message_to_sign_hash = signer->hash(message_to_sign);
+        bls::Signature my_signature = signer->signHash(message_to_sign_hash);
+
+        agg_sig.add(my_signature);
+        signers.push_back(signer->getPublicKeyHex());
+    }
+
+    // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
+    // call!
     processNodes(
             oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD,
-            [signer,
-             &agg_sig,
+            [&agg_sig,
              &signers,
              &signers_mutex,
              &address,
-             &amount,
+             amount,
+             height,
              &message_to_sign](
                     const BLSRequestResult& request_result, const std::vector<std::string>& data) {
                 // NOTE: Sanity check the response
@@ -150,25 +162,31 @@ aggregateWithdrawalResponse BLSAggregator::aggregateRewards(const crypto::eth_ad
                     return;
                 }
 
-                if (address != response.address || amount != response.amount) {
+                // NOTE: Verify that the values that compose the signature are correct
+                if (address != response.address || amount != response.amount || height != response.height) {
                     oxen::log::trace(
                             logcat,
                             "OMQ request '{}' rejected: Service node with BLS public key {} "
-                            "(x25519 {} @ {}:{}), produced different values to sign than ours:\n"
+                            "(x25519 {} @ {}:{}) produced different values to sign than ours:\n"
+                            "  - height:  {}\n"
                             "  - address: {}\n"
                             "  - amount:  {}\n"
                             "\n"
                             "Their values were:\n"
+                            "  - height:  {}\n"
                             "  - address: {}\n"
-                            "  - amount:  {}\n",
+                            "  - amount:  {}\n"
+                            "\n"
+                            "Signature was not aggregated into the response.",
                             oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD,
                             bls_utils::PublicKeyToHex(response.bls_pkey),
                             request_result.sn_address.x_pkey,
                             request_result.sn_address.ip,
                             request_result.sn_address.port,
+                            height,
                             address,
                             amount,
-                            message_to_sign,
+                            response.height,
                             response.address,
                             response.amount);
                     return;
@@ -176,30 +194,29 @@ aggregateWithdrawalResponse BLSAggregator::aggregateRewards(const crypto::eth_ad
 
                 // NOTE: Validate that the signature signed what we thought it
                 // did by reconstructing the message.
-                std::string message_to_sign = oxen::bls::get_reward_balance_request_message(signer, address, amount);
                 if (!response.message_hash_signature.verifyHash(response.bls_pkey, message_to_sign)) {
                     oxen::log::trace(
                             logcat,
                             "OMQ request '{}' rejected: Service node with BLS public key {} "
-                            "(x25519 {} @ {}:{}), produced a signature that could not be verified "
-                            "given our values:\n"
+                            "(x25519 {} @ {}:{}) produced a signature that could not be verified "
+                            "using the values:\n"
+                            "  - height:          {}\n"
                             "  - address:         {}\n"
                             "  - amount:          {}\n"
                             "  - message to sign: {}\n"
                             "\n"
-                            "Their values were:\n"
-                            "  - address: {}\n"
-                            "  - amount:  {}\n",
+                            "They generated signature that didn't use the values "
+                            "they reported in their response (above). Signature was not aggregated "
+                            "into the response.",
                             oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD,
                             bls_utils::PublicKeyToHex(response.bls_pkey),
                             request_result.sn_address.x_pkey,
                             request_result.sn_address.ip,
                             request_result.sn_address.port,
+                            height,
                             address,
                             amount,
-                            message_to_sign,
-                            response.address,
-                            response.amount);
+                            message_to_sign);
                     return;
                 }
 
@@ -210,13 +227,14 @@ aggregateWithdrawalResponse BLSAggregator::aggregateRewards(const crypto::eth_ad
             std::array{oxenc::type_to_hex(address), std::to_string(amount)});
 
     const auto sig_str = bls_utils::SignatureToHex(agg_sig);
-    return aggregateWithdrawalResponse{
+    auto result = AggregateRewardsResponse{
             "0x" + oxenc::type_to_hex(address),
             amount,
             height,
             message_to_sign,
             signers,
             sig_str};
+    return result;
 }
 
 aggregateExitResponse BLSAggregator::aggregateExit(const std::string& bls_key) {
