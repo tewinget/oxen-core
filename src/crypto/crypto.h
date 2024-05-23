@@ -108,7 +108,7 @@ struct eth_address : bytes<20, true, uint32_t> {
     explicit operator bool() const { return data_ != null<eth_address>.data_; }
 };
 
-struct bls_public_key : bytes<64, true, uint32_t> {
+struct bls_public_key : bytes<64, true> {
     // Returns true if non-null, i.e. not all 0.
     explicit operator bool() const { return data_ != null<bls_public_key>.data_; }
 };
@@ -319,3 +319,7 @@ template <>
 struct std::hash<crypto::x25519_public_key> : crypto::raw_hasher<crypto::x25519_public_key> {};
 template <>
 struct std::hash<crypto::ed25519_signature> : crypto::raw_hasher<crypto::ed25519_signature> {};
+template <>
+struct std::hash<crypto::bls_public_key> : crypto::raw_hasher<crypto::bls_public_key> {};
+template <>
+struct std::hash<crypto::eth_address> : crypto::raw_hasher<crypto::eth_address> {};

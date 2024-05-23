@@ -61,12 +61,19 @@ std::string to_hex_string(const T& val) {
 }
 
 template <hash_hex_comparable T>
-    requires(
-            std::is_standard_layout_v<T> && sizeof(T) >= sizeof(size_t) &&
-            alignof(T) >= sizeof(size_t))
+    requires(std::is_standard_layout_v<T> && sizeof(T) >= sizeof(size_t))
 struct raw_hasher {
-    size_t operator()(const T& val) const { return *reinterpret_cast<const size_t*>(val.data()); }
+    size_t operator()(const T& val) const {
+        if constexpr (alignof(T) >= sizeof(size_t))
+            return *reinterpret_cast<const size_t*>(val.data());
+        else {
+            size_t x;
+            std::memcpy(&x, val.data(), sizeof(x));
+            return x;
+        }
+    }
 };
+
 }  // namespace crypto
 
 template <crypto::hash_hex_comparable T>
