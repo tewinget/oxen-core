@@ -1,6 +1,8 @@
 #include "rewards_contract.h"
 
 #include <ethyl/utils.hpp>
+#include <common/oxen.h>
+#include <common/string_util.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wuseless-cast"
