@@ -45,6 +45,12 @@ BLSSigner::BLSSigner(const cryptonote::network_type nettype, const fs::path& key
 }
 
 void BLSSigner::initCurve() {
+    static bool need_init = true;
+    static std::mutex init_mutex;
+    std::lock_guard lock{init_mutex};
+    if (!need_init)
+        return;
+
     // Initialize parameters for BN256 curve, this has a different name in our library
     bls::init(mclBn_CurveSNARK1);
     // Try and Inc method for hashing to the curve
@@ -62,6 +68,8 @@ void BLSSigner::initCurve() {
     std::memcpy(&publicKey.v, &gen, sizeof(gen));
 
     blsSetGeneratorOfPublicKey(&publicKey);
+
+    need_init = false;
 }
 
 std::string BLSSigner::buildTag(

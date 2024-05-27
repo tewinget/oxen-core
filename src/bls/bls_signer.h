@@ -24,7 +24,7 @@ class BLSSigner {
     uint32_t chainID;
     std::string contractAddress;
 
-    void initCurve();
+    static void initCurve();
 
   public:
     BLSSigner(const cryptonote::network_type nettype, const fs::path& key_filepath);
