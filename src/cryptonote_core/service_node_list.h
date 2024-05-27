@@ -459,6 +459,11 @@ struct service_node_keys {
     /// ed25519 key).
     crypto::x25519_secret_key key_x25519;
     crypto::x25519_public_key pub_x25519;
+
+    /// BLS keypair of this service node, used for SENT registrations and interacting with the SENT
+    /// staking contract.
+    crypto::bls_secret_key key_bls;
+    crypto::bls_public_key pub_bls;
 };
 
 class service_node_list {

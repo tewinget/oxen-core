@@ -617,9 +617,6 @@ bool core::init(
     }
     auto sqliteDB = std::make_shared<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
 
-    auto bls_key_file_path = folder / "bls.key";
-    m_bls_signer = std::make_shared<BLSSigner>(m_nettype, bls_key_file_path);
-
     folder /= db->get_db_name();
     log::info(logcat, "Loading blockchain from folder {} ...", folder);
 
@@ -844,14 +841,20 @@ bool core::init(
     return true;
 }
 
-/// Loads a key pair from disk, if it exists, otherwise generates a new key pair and saves it to
-/// disk.
+/// Loads a key from disk, if it exists, otherwise generates a new key pair and saves it to disk.
+///
+/// The existing key can be encoded as raw bytes; or hex (with or without a 0x prefix and/or \n
+/// suffix).
 ///
 /// get_pubkey - a function taking (privkey &, pubkey &) that sets the pubkey from the privkey;
 ///              returns true for success/false for failure
 /// generate_pair - a void function taking (privkey &, pubkey &) that sets them to the generated
 /// values; can throw on error.
-template <typename Privkey, typename Pubkey, typename GetPubkey, typename GeneratePair>
+template <
+        typename Privkey,
+        typename Pubkey,
+        std::invocable<const Privkey&, Pubkey&> GetPubkey,
+        std::invocable<Privkey&, Pubkey&> GeneratePair>
 bool init_key(
         const fs::path& keypath,
         Privkey& privkey,
@@ -862,14 +865,29 @@ bool init_key(
     if (fs::exists(keypath, ec)) {
         std::string keystr;
         bool r = tools::slurp_file(keypath, keystr);
-        memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
-        memwipe(&keystr[0], keystr.size());
         CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from {}", keypath);
-        CHECK_AND_ASSERT_MES(
-                keystr.size() == sizeof(privkey),
-                false,
-                "service node key file {} has an invalid size",
-                keypath);
+
+        OXEN_DEFER {
+            memwipe(keystr.data(), keystr.size());
+        };
+
+        if (keystr.size() == sizeof(privkey))
+            // raw bytes:
+            memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
+        else {
+            // Try to load as hex with a 0x prefix and optional \n suffix
+            std::string_view keyv{keystr};
+            if (keyv.starts_with("0x"))
+                keyv.remove_prefix(2);
+            if (keyv.ends_with('\n'))
+                keyv.remove_suffix(1);
+            if (keyv.size() == 2 * sizeof(privkey) && oxenc::is_hex(keyv))
+                oxenc::from_hex(keyv.begin(), keyv.end(), privkey.data());
+            else {
+                log::error(logcat, "service node key file {} is invalid", keypath);
+                return false;
+            }
+        }
 
         r = get_pubkey(privkey, pubkey);
         CHECK_AND_ASSERT_MES(r, false, "failed to generate pubkey from secret key");
@@ -881,7 +899,16 @@ bool init_key(
             return false;
         }
 
-        bool r = tools::dump_file(keypath, tools::view_guts(privkey));
+        std::string privkey_hex;
+        OXEN_DEFER {
+            memwipe(privkey_hex.data(), privkey_hex.size());
+        };
+        privkey_hex.reserve(2 * sizeof(privkey) + 3);
+        privkey_hex += "0x";
+        auto guts = tools::view_guts(privkey);
+        oxenc::to_hex(guts.begin(), guts.end(), std::back_inserter(privkey_hex));
+        privkey_hex += '\n';
+        bool r = tools::dump_file(keypath, privkey_hex);
         CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to {}", keypath);
 
         fs::permissions(keypath, fs::perms::owner_read, ec);
@@ -914,7 +941,7 @@ bool core::init_service_keys() {
                 m_config_folder / "key_ed25519",
                 keys.key_ed25519,
                 keys.pub_ed25519,
-                [](crypto::ed25519_secret_key& sk, crypto::ed25519_public_key& pk) {
+                [](const crypto::ed25519_secret_key& sk, crypto::ed25519_public_key& pk) {
                     crypto_sign_ed25519_sk_to_pk(pk.data(), sk.data());
                     return true;
                 },
@@ -928,6 +955,30 @@ bool core::init_service_keys() {
     int rc = crypto_sign_ed25519_pk_to_curve25519(keys.pub_x25519.data(), keys.pub_ed25519.data());
     CHECK_AND_ASSERT_MES(rc == 0, false, "failed to convert ed25519 pubkey to x25519");
     crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data(), keys.key_ed25519.data());
+
+    // BLS pubkey, used by service nodes when interacting with the Ethereum smart contract
+    if (!init_key(
+                m_config_folder / "key_bls",
+                keys.key_bls,
+                keys.pub_bls,
+                [this](const crypto::bls_secret_key& sk, crypto::bls_public_key& pk) {
+                    // Load from existing
+                    try {
+                        m_bls_signer = std::make_shared<BLSSigner>(m_nettype, &sk);
+                    } catch (const std::exception& e) {
+                        log::critical(logcat, "Invalid BLS key: {}", e.what());
+                        return false;
+                    }
+                    pk = m_bls_signer->getCryptoPubkey();
+                    return true;
+                },
+                [this](crypto::bls_secret_key& sk, crypto::bls_public_key& pk) {
+                    // Generate new one
+                    m_bls_signer = std::make_shared<BLSSigner>(m_nettype);
+                    sk = m_bls_signer->getCryptoSeckey();
+                    pk = m_bls_signer->getCryptoPubkey();
+                }))
+        return false;
 
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
     // for the primary SN keypair.  (This key predates the Ed25519 keys and so is needed for
@@ -993,8 +1044,14 @@ bool core::init_service_keys() {
         log::info(
                 logcat,
                 fg(fmt::terminal_color::yellow),
-                "-  x25519: {}",
+                "- x25519: {}",
                 tools::type_to_hex(keys.pub_x25519));
+        log::info(
+                logcat,
+                fg(fmt::terminal_color::yellow),
+                "- bls: {}",
+                m_bls_signer->getPublicKeyHex());
+
     } else {
         // Only print the x25519 version because it's the only thing useful for a non-SN (for
         // encrypted OMQ RPC connections).

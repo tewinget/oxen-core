@@ -2,45 +2,40 @@
 
 #include <epee/memwipe.h>
 #include <fmt/core.h>
-#include <fmt/std.h>
 #include <oxenc/hex.h>
 
+#include <bls/bls.hpp>
 #include <ethyl/utils.hpp>
 
 #include "bls_utils.h"
-#include "common/file.h"
+#include "common/oxen.h"
 #include "common/string_util.h"
+#include "crypto/crypto.h"
 #include "logging/oxen_logger.h"
 
 static auto logcat = oxen::log::Cat("bls_signer");
 
-BLSSigner::BLSSigner(const cryptonote::network_type nettype, const fs::path& key_filepath) {
+BLSSigner::BLSSigner(const cryptonote::network_type nettype, const crypto::bls_secret_key* key) :
+        chainID{get_config(nettype).ETHEREUM_CHAIN_ID},
+        contractAddress{get_config(nettype).ETHEREUM_REWARDS_CONTRACT} {
     initCurve();
     const auto config = get_config(nettype);
     chainID = config.ETHEREUM_CHAIN_ID;
     contractAddress = config.ETHEREUM_REWARDS_CONTRACT;
 
-    // NOTE: ioMode is taken from bls::SecretKey operator<< implementation
-    int blsIoMode = 16 | bls::IoPrefix;
-    if (fs::exists(key_filepath)) {
-        oxen::log::info(logcat, "Loading BLS key from: {}", key_filepath);
-
+    if (key) {
+        // This interface to load a key from an existing chunk of memory by having to first copy it
+        // into a std::string is just terrible.
         std::string key_bytes;
-        bool r = tools::slurp_file(key_filepath, key_bytes);
-        secretKey.setStr(key_bytes, blsIoMode);
-        memwipe(key_bytes.data(), key_bytes.size());
-        if (!r)
-            throw std::runtime_error(
-                    fmt::format("Failed to read BLS key at: {}", key_filepath));
+        OXEN_DEFER {
+            memwipe(key_bytes.data(), key_bytes.size());
+        };
+        key_bytes.reserve(sizeof(crypto::bls_secret_key));
+        key_bytes.append(reinterpret_cast<const char*>(key->data()), key->size());
+        secretKey.setStr(key_bytes, bls::IoSerialize);
     } else {
         // This init function generates a secret key calling blsSecretKeySetByCSPRNG
         secretKey.init();
-        oxen::log::info(logcat, "No bls key found, saving new key to: {}", key_filepath);
-
-        bool r = tools::dump_file(key_filepath, secretKey.getStr(blsIoMode));
-        if (!r)
-            throw std::runtime_error(
-                    fmt::format("Failed to write BLS key to: {}", key_filepath));
     }
 }
 
@@ -110,10 +105,9 @@ std::string BLSSigner::proofOfPossession(
     std::string_view hexPrefix = "0x";
     std::string_view senderAddressOutput = utils::trimPrefix(senderEthAddress, hexPrefix);
 
-    // TODO(doyle): padTo32Bytes should take a string_view
     std::string publicKeyHex = getPublicKeyHex();
     std::string serviceNodePubkeyHex =
-            utils::padTo32Bytes(std::string(serviceNodePubkey), utils::PaddingDirection::LEFT);
+            utils::padTo32Bytes(serviceNodePubkey, utils::PaddingDirection::LEFT);
 
     std::string message;
     message.reserve(
@@ -143,16 +137,33 @@ bls::PublicKey BLSSigner::getPublicKey() {
     return publicKey;
 }
 
+crypto::bls_public_key BLSSigner::getCryptoPubkey() {
+    auto pk = getPublicKey().getStr(bls::IoSerialize);
+    assert(pk.size() == sizeof(crypto::bls_public_key));
+
+    crypto::bls_public_key cpk;
+    std::memcpy(cpk.data(), pk.data(), sizeof(cpk));
+    return cpk;
+}
+
+crypto::bls_secret_key BLSSigner::getCryptoSeckey() {
+    std::string sec_key = secretKey.getStr(bls::IoSerialize);
+    assert(sec_key.size() == sizeof(crypto::bls_secret_key));
+
+    crypto::bls_secret_key csk;
+    std::memcpy(csk.data(), sec_key.data(), sizeof(csk));
+    memwipe(sec_key.data(), sec_key.size());
+    return csk;
+}
+
 crypto::bytes<32> BLSSigner::hash(std::string_view in) {
-    // TODO(doyle): hash should take in a string_view
     crypto::bytes<32> result = {};
-    result.data_ = utils::hash(std::string(in));
+    result.data_ = utils::hash(in);
     return result;
 }
 
 crypto::bytes<32> BLSSigner::hashModulus(std::string_view message) {
-    // TODO(doyle): hash should take in a string_view
-    crypto::bytes<32> hash = BLSSigner::hash(std::string(message));
+    crypto::bytes<32> hash = BLSSigner::hash(message);
     mcl::bn::Fp x;
     x.clear();
     x.setArrayMask(hash.data(), hash.size());

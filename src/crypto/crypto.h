@@ -113,6 +113,9 @@ struct bls_public_key : bytes<64, true> {
     explicit operator bool() const { return data_ != null<bls_public_key>.data_; }
 };
 
+struct bls_secret_key_ : bytes<32> {};
+using bls_secret_key = epee::mlocked<tools::scrubbed<bls_secret_key_>>;
+
 void hash_to_scalar(const void* data, size_t length, ec_scalar& res);
 ec_scalar hash_to_scalar(const void* data, size_t length);
 void random_scalar(unsigned char* bytes);

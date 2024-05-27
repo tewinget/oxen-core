@@ -14,8 +14,8 @@
 #undef MCLBN_NO_AUTOLINK
 #pragma GCC diagnostic pop
 
-#include "common/fs.h"
 #include "crypto/base.h"
+#include "crypto/crypto.h"
 #include "cryptonote_config.h"
 
 class BLSSigner {
@@ -27,13 +27,20 @@ class BLSSigner {
     static void initCurve();
 
   public:
-    BLSSigner(const cryptonote::network_type nettype, const fs::path& key_filepath);
+    // Constructs a BLSSigner; if the `key` is nullptr, a key is generated; otherwise the key is
+    // loaded from the given bls_secret_key data.
+    explicit BLSSigner(const cryptonote::network_type nettype, const crypto::bls_secret_key* key = nullptr);
 
     bls::Signature signHash(const crypto::bytes<32>& hash);
     std::string proofOfPossession(
             std::string_view senderEthAddress, std::string_view serviceNodePubkey);
     std::string getPublicKeyHex();
     bls::PublicKey getPublicKey();
+
+    // Gets the public key as our crypto::bls_public_key type
+    crypto::bls_public_key getCryptoPubkey();
+    // Gets the secret key as our crypto::bls_secret_key type
+    crypto::bls_secret_key getCryptoSeckey();
 
     static std::string buildTag(
             std::string_view baseTag, uint32_t chainID, std::string_view contractAddress);
