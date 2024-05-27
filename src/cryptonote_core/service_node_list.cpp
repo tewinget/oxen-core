@@ -3193,8 +3193,11 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
         if (block_leader.key != check_block_leader_pubkey)
             throw std::runtime_error{
-                    "Service node reward winner is incorrect! Expected {}, block has {}"_format(
-                            block_leader.key, check_block_leader_pubkey)};
+                    "Service node reward winner is incorrect! Expected {}, block {} hf{} has {}"_format(
+                            block_leader.key,
+                            height,
+                            static_cast<size_t>(block.major_version),
+                            check_block_leader_pubkey)};
     }
 
     enum struct verify_mode {

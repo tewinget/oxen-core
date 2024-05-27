@@ -114,7 +114,7 @@ bool L2Tracker::check_state_in_history(uint64_t height, const crypto::hash& stat
 
 bool L2Tracker::check_state_in_history(uint64_t height, const std::string& state_root) {
     if (provider.clients.empty()) {
-        return false;
+        return true;
     }
     std::lock_guard lock{mutex};
     auto it = std::find_if(
