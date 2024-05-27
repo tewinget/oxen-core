@@ -2,6 +2,7 @@
 
 #include <epee/memwipe.h>
 #include <fmt/core.h>
+#include <fmt/std.h>
 #include <oxenc/hex.h>
 
 #include <ethyl/utils.hpp>
@@ -22,7 +23,7 @@ BLSSigner::BLSSigner(const cryptonote::network_type nettype, const fs::path& key
     // NOTE: ioMode is taken from bls::SecretKey operator<< implementation
     int blsIoMode = 16 | bls::IoPrefix;
     if (fs::exists(key_filepath)) {
-        oxen::log::info(logcat, "Loading bls key from: {}", key_filepath.string());
+        oxen::log::info(logcat, "Loading BLS key from: {}", key_filepath);
 
         std::string key_bytes;
         bool r = tools::slurp_file(key_filepath, key_bytes);
@@ -30,16 +31,16 @@ BLSSigner::BLSSigner(const cryptonote::network_type nettype, const fs::path& key
         memwipe(key_bytes.data(), key_bytes.size());
         if (!r)
             throw std::runtime_error(
-                    fmt::format("Failed to read BLS key at: {}", key_filepath.string()));
+                    fmt::format("Failed to read BLS key at: {}", key_filepath));
     } else {
         // This init function generates a secret key calling blsSecretKeySetByCSPRNG
         secretKey.init();
-        oxen::log::info(logcat, "No bls key found, saving new key to: {}", key_filepath.string());
+        oxen::log::info(logcat, "No bls key found, saving new key to: {}", key_filepath);
 
         bool r = tools::dump_file(key_filepath, secretKey.getStr(blsIoMode));
         if (!r)
             throw std::runtime_error(
-                    fmt::format("Failed to write BLS key to: {}", key_filepath.string()));
+                    fmt::format("Failed to write BLS key to: {}", key_filepath));
     }
 }
 
