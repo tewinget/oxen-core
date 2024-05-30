@@ -237,6 +237,8 @@ quorumnet_pulse_relay_message_to_quorum_proc* quorumnet_pulse_relay_message_to_q
 };
 
 //-----------------------------------------------------------------------------------------------
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuninitialized"
 core::core() :
         m_mempool(m_blockchain_storage),
         m_service_node_list(m_blockchain_storage),
@@ -261,6 +263,7 @@ core::core() :
         m_pad_transactions(false),
         ss_version{0},
         lokinet_version{0} {
+#pragma GCC diagnostic pop
     m_checkpoints_updating.clear();
 }
 void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol) {
