@@ -2554,8 +2554,8 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_context context) {
-    const AggregateRewardsResponse bls_withdrawal_signature_response =
-            m_core.aggregate_rewards_request(bls_rewards_request.request.address);
+    const BLSRewardsResponse bls_withdrawal_signature_response =
+            m_core.bls_rewards_request(bls_rewards_request.request.address);
     bls_rewards_request.response["status"] = STATUS_OK;
     bls_rewards_request.response["address"] = bls_withdrawal_signature_response.address;
     bls_rewards_request.response["amount"] = bls_withdrawal_signature_response.amount;

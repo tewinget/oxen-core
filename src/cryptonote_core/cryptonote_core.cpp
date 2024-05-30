@@ -1145,7 +1145,7 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
                             std::string encoded_message =
                                     "0x" + m_bls_signer->buildTag(m_bls_signer->removalTag) +
                                     bls_key_requesting_exit;
-                            const auto h = m_bls_signer->hash(encoded_message);
+                            const auto h = m_bls_signer->hashHex(encoded_message);
                             // Data contains -> status, bls_key, bls_pubkey, signed message,
                             // signature
                             m.send_reply(
@@ -1180,7 +1180,7 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
                                             bls_key_requesting_exit,
                                             64,
                                             ethyl::utils::PaddingDirection::LEFT);
-                            const auto h = m_bls_signer->hash(encoded_message);
+                            const auto h = m_bls_signer->hashHex(encoded_message);
                             // Data contains -> status, bls_key, bls_pubkey, signed message,
                             // signature
                             m.send_reply(
@@ -2854,7 +2854,7 @@ core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
-AggregateRewardsResponse core::aggregate_rewards_request(const std::string& eth_address) {
+BLSRewardsResponse core::bls_rewards_request(const std::string& eth_address) {
     std::string_view eth_address_trimmed = oxenc::trim_prefix(eth_address, "0x");
     eth_address_trimmed                  = oxenc::trim_prefix(eth_address_trimmed, "0x");
 
@@ -2878,7 +2878,7 @@ AggregateRewardsResponse core::aggregate_rewards_request(const std::string& eth_
     auto exclude = std::span(&m_service_keys.pub_x25519, &m_service_keys.pub_x25519 + 1);
     auto [batch_db_height, amount] =
             get_blockchain_storage().sqlite_db()->get_accrued_earnings(eth_address);
-    const auto result = m_bls_aggregator->aggregateRewards(eth_address_bytes, amount, batch_db_height, exclude);
+    const auto result = m_bls_aggregator->rewards_request(eth_address_bytes, amount, batch_db_height, exclude);
     return result;
 }
 //-----------------------------------------------------------------------------------------------

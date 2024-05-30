@@ -116,7 +116,7 @@ std::string BLSSigner::proofOfPossession(
     message.append(senderAddressOutput);
     message.append(serviceNodePubkeyHex);
 
-    const crypto::bytes<32> hash = BLSSigner::hash(message);  // Get the hash of the publickey
+    const crypto::bytes<32> hash = BLSSigner::hashHex(message);  // Get the hash of the publickey
     bls::Signature sig;
     secretKey.signHash(sig, hash.data(), hash.size());
     return bls_utils::SignatureToHex(sig);
@@ -134,23 +134,14 @@ bls::PublicKey BLSSigner::getPublicKey() {
     return publicKey;
 }
 
-crypto::bytes<32> BLSSigner::hash(std::string_view in) {
-    // TODO(doyle): hash should take in a string_view
+crypto::bytes<32> BLSSigner::hashHex(std::string_view hex) {
     crypto::bytes<32> result = {};
-    result.data_ = ethyl::utils::hashHex(std::string(in));
+    result.data_ = ethyl::utils::hashHex(hex);
     return result;
 }
 
-crypto::bytes<32> BLSSigner::hashModulus(std::string_view message) {
-    // TODO(doyle): hash should take in a string_view
-    crypto::bytes<32> hash = BLSSigner::hash(std::string(message));
-    mcl::bn::Fp x;
-    x.clear();
-    x.setArrayMask(hash.data(), hash.size());
-    crypto::bytes<32> serialized_hash;
-    uint8_t* hdst = serialized_hash.data();
-    if (x.serialize(hdst, serialized_hash.data_.max_size(), mcl::IoSerialize | mcl::IoBigEndian) ==
-        0)
-        throw std::runtime_error("size of x is zero");
-    return serialized_hash;
+crypto::bytes<32> BLSSigner::hashBytes(std::span<const unsigned char> bytes) {
+    crypto::bytes<32> result = {};
+    result.data_ = ethyl::utils::hashBytes(bytes);
+    return result;
 }

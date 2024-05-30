@@ -118,42 +118,40 @@ static void logNetworkRequestFailedWarning(
             omq_cmd);
 }
 
-AggregateRewardsResponse BLSAggregator::aggregateRewards(
+BLSRewardsResponse BLSAggregator::rewards_request(
         const crypto::eth_address& address,
         uint64_t amount,
         uint64_t height,
         std::span<const crypto::x25519_public_key> exclude) {
 
-    // NOTE: List of BLS public keys that signed the signature
     BLSSigner* signer = bls_signer.get();
 
-    std::vector<std::string> signers;
-    std::mutex signers_mutex;
+    struct WorkPayload
+    {
+        std::mutex mutex;                   /// `processNodes` dispatches to a threadpool hence we require synchronisation
+        std::vector<std::string> signers;   /// List of BLS public keys that signed the signature
+        bls::Signature aggregate_signature; /// The signature we aggregate BLS responses to
+        std::string message_to_sign;        /// The message that each node must be signing against
+    };
+
+    // NOTE: Setup the work data for `processNodes`
+    WorkPayload work = {};
+    work.aggregate_signature.clear();
+    work.message_to_sign = oxen::bls::get_reward_balance_request_message(signer, address, amount);
 
     // NOTE: Add our own signature to the aggregate signature
-    const std::string message_to_sign =
-            oxen::bls::get_reward_balance_request_message(signer, address, amount);
-    bls::Signature agg_sig;
-    agg_sig.clear();
     {
-        crypto::bytes<32> message_to_sign_hash = signer->hash(message_to_sign);
+        crypto::bytes<32> message_to_sign_hash = BLSSigner::hashHex(work.message_to_sign);
         bls::Signature my_signature = signer->signHash(message_to_sign_hash);
-
-        agg_sig.add(my_signature);
-        signers.push_back(signer->getPublicKeyHex());
+        work.aggregate_signature.add(my_signature);
+        work.signers.push_back(signer->getPublicKeyHex());
     }
 
     // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
     // call!
     processNodes(
             oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD,
-            [&agg_sig,
-             &signers,
-             &signers_mutex,
-             &address,
-             amount,
-             height,
-             &message_to_sign](
+            [&work, &address, amount, height](
                     const BLSRequestResult& request_result, const std::vector<std::string>& data) {
                 // NOTE: Sanity check the response
                 if (!request_result.success) {
@@ -199,7 +197,7 @@ AggregateRewardsResponse BLSAggregator::aggregateRewards(
 
                 // NOTE: Validate that the signature signed what we thought it
                 // did by reconstructing the message.
-                if (!response.message_hash_signature.verifyHash(response.bls_pkey, message_to_sign)) {
+                if (!response.message_hash_signature.verifyHash(response.bls_pkey, work.message_to_sign)) {
                     oxen::log::trace(
                             logcat,
                             "OMQ request '{}' rejected: Service node with BLS public key {} "
@@ -221,25 +219,25 @@ AggregateRewardsResponse BLSAggregator::aggregateRewards(
                             height,
                             address,
                             amount,
-                            message_to_sign);
+                            work.message_to_sign);
                     return;
                 }
 
-                std::lock_guard<std::mutex> lock(signers_mutex);
-                agg_sig.add(response.message_hash_signature);
-                signers.push_back(bls_utils::PublicKeyToHex(response.bls_pkey));
+                std::lock_guard<std::mutex> lock(work.mutex);
+                work.aggregate_signature.add(response.message_hash_signature);
+                work.signers.push_back(bls_utils::PublicKeyToHex(response.bls_pkey));
             },
             std::array{oxenc::type_to_hex(address), std::to_string(amount)},
             exclude);
 
-    const auto sig_str = bls_utils::SignatureToHex(agg_sig);
-    auto result = AggregateRewardsResponse{
-            "0x" + oxenc::type_to_hex(address),
-            amount,
-            height,
-            message_to_sign,
-            signers,
-            sig_str};
+    const auto sig_str = bls_utils::SignatureToHex(work.aggregate_signature);
+    BLSRewardsResponse result = {
+            .address = "0x" + oxenc::type_to_hex(address),
+            .amount = amount,
+            .height = height,
+            .signed_message = work.message_to_sign,
+            .signers_bls_pubkeys = work.signers,
+            .signature = sig_str};
     return result;
 }
 

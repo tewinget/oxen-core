@@ -14,6 +14,7 @@ static auto logcat = oxen::log::Cat("bls_omq");
 namespace oxen::bls {
 std::string get_reward_balance_request_message(BLSSigner* signer, const crypto::eth_address& eth_address, uint64_t amount)
 {
+    // NOTE: Reconstruct the C++ equivalent of Solidity's `abi.encodePacked(rewardTag, address, amount)`
     std::string result;
     if (signer) {
         result = fmt::format(
@@ -25,27 +26,31 @@ std::string get_reward_balance_request_message(BLSSigner* signer, const crypto::
     return result;
 }
 
-static void write_and_3_dot_truncate(fmt::memory_buffer& buffer, std::string_view data, size_t threshold_for_3_dots) {
+static std::string write_and_3_dot_truncate(std::string_view data, size_t threshold_for_3_dots) {
+    fmt::memory_buffer buffer;
     if (data.size() > threshold_for_3_dots) {
         fmt::format_to_n(std::back_inserter(buffer), threshold_for_3_dots, "{}", data);
         fmt::format_to(std::back_inserter(buffer), "...");
     } else {
         fmt::format_to(std::back_inserter(buffer), "{}", data);
     }
+    std::string result = fmt::to_string(buffer);
+    return result;
 }
 
-// TODO(doyle): Need to 3 dot truncate because this is all untrusted input
-struct PayloadResult
+struct VerifyDataResult
 {
     bool good;
     std::string error;
 };
 
-static PayloadResult payload_is_hex(
+/// Verify that the `payload` is valid and has the expected size. On failure a
+/// descriptive message is failure message is written to the result.
+static VerifyDataResult payload_is_hex(
         std::string_view payload_description,
         std::string_view payload,
         size_t required_hex_size) {
-    PayloadResult result = {};
+    VerifyDataResult result = {};
     payload = oxenc::trim_prefix(payload, "0x");
     payload = oxenc::trim_prefix(payload, "0x");
 
@@ -54,7 +59,7 @@ static PayloadResult payload_is_hex(
                 "Specified an {} '{}' with length {} which does not have the "
                 "correct length ({}) to be an {}",
                 payload_description,
-                payload,
+                write_and_3_dot_truncate(payload, 128),
                 payload.size(),
                 required_hex_size,
                 payload_description);
@@ -65,7 +70,7 @@ static PayloadResult payload_is_hex(
         result.error = fmt::format(
                 "Specified a {} '{}' which contains non-hex characters",
                 payload_description,
-                payload,
+                write_and_3_dot_truncate(payload, 128),
                 payload.size());
         return result;
     }
@@ -74,21 +79,49 @@ static PayloadResult payload_is_hex(
     return result;
 }
 
-static PayloadResult payload_to_number(
+/// Verify that the `payload` is a number that can be parsed in base 10. On
+/// failure a descriptive message is failure message is written to the result.
+static VerifyDataResult payload_to_number(
         std::string_view payload_description,
         std::string_view payload,
         uint64_t& number) {
 
-    PayloadResult result = {};
+    VerifyDataResult result = {};
     if (!tools::parse_int(payload, number)) {
         result.error = fmt::format(
                 "Specified {} '{}' that is not a valid number",
                 payload_description,
-                payload);
+                write_and_3_dot_truncate(payload, 32));
         return result;
     }
 
     result.good = true;
+    return result;
+}
+
+template <typename T>
+static VerifyDataResult data_parts_count_is_valid(std::span<const T> data, size_t expected_size)
+    requires std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>
+{
+    VerifyDataResult result = {};
+    if (data.size() == expected_size) {
+        result.good = true;
+    } else {
+        auto fmt_buffer = fmt::memory_buffer();
+        fmt::format_to(
+                std::back_inserter(fmt_buffer),
+                "Command should have {} data part(s), we received {}. The data was:\n",
+                expected_size,
+                data.size());
+
+        // NOTE: Dump the data
+        for (size_t index = 0; index < data.size(); index++) {
+            std::string_view part = data[index];
+            fmt::format_to(std::back_inserter(fmt_buffer), "{}{} - {}", index ? "\n" : "", index, write_and_3_dot_truncate(part, 128));
+        }
+        result.error = fmt::to_string(fmt_buffer);
+    }
+
     return result;
 }
 
@@ -123,23 +156,9 @@ GetRewardBalanceResponse create_reward_balance_request(
 
     // NOTE: Verify the data-segment count
     size_t field_count = tools::enum_count<GetRewardBalanceRequestField>;
-    if (m.data.size() != field_count) {
-
-        auto fmt_buffer = fmt::memory_buffer();
-        fmt::format_to(
-                std::back_inserter(fmt_buffer),
-                "Bad request: BLS rewards command should have {} part(s), we received {}. The data was:\n",
-                field_count,
-                m.data.size());
-
-        // NOTE: Dump the data
-        for (size_t index = 0; index < m.data.size(); index++) {
-            std::string_view part = m.data[index];
-            fmt::format_to(std::back_inserter(fmt_buffer), "{}{} - ", index ? "\n" : "", index);
-            write_and_3_dot_truncate(fmt_buffer, part, 48);
-        }
-
-        result.error = fmt::to_string(fmt_buffer);
+    VerifyDataResult data_parts_check = data_parts_count_is_valid(std::span(m.data.data(), m.data.size()), field_count);
+    if (!data_parts_check.good) {
+        result.error = std::move(data_parts_check.error);
         return result;
     }
 
@@ -153,7 +172,7 @@ GetRewardBalanceResponse create_reward_balance_request(
         switch (field_value) {
             case GetRewardBalanceRequestField::Address: {
                 size_t required_hex_size = sizeof(crypto::eth_address) * 2;
-                PayloadResult to_result = payload_is_hex("BLS public key", payload, required_hex_size);
+                VerifyDataResult to_result = payload_is_hex("BLS public key", payload, required_hex_size);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
                     return result;
@@ -162,7 +181,7 @@ GetRewardBalanceResponse create_reward_balance_request(
             } break;
 
             case GetRewardBalanceRequestField::Amount: {
-                PayloadResult to_result = payload_to_number("rewards amount", payload, request.amount);
+                VerifyDataResult to_result = payload_to_number("rewards amount", payload, request.amount);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
                     return result;
@@ -200,16 +219,9 @@ GetRewardBalanceResponse create_reward_balance_request(
     }
 
     // NOTE: Prepare the signature
-    // bytes memory encodedMessage = abi.encodePacked(rewardTag, recipientAddress, recipientAmount);
-    std::string encoded_message = fmt::format(
-            "0x{}{}{}",
-            signer->buildTag(signer->rewardTag),
-            ethyl::utils::padToNBytes(fmt::format("{}", request.address), 20, ethyl::utils::PaddingDirection::LEFT),
-            ethyl::utils::padTo32Bytes(ethyl::utils::decimalToHex(amount), ethyl::utils::PaddingDirection::LEFT));
-
     std::string const message_to_sign =
             oxen::bls::get_reward_balance_request_message(signer, request.address, amount);
-    crypto::bytes<32> const hash_message = signer->hash(encoded_message);
+    crypto::bytes<32> const hash_message = signer->hashHex(message_to_sign);
 
     // NOTE: Fill a response
     assert(result.error.empty());
@@ -225,8 +237,10 @@ GetRewardBalanceResponse create_reward_balance_request(
 
 GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::string> data) {
     GetRewardBalanceResponse result = {};
-    size_t field_count = tools::enum_count<GetRewardBalanceResponseField>;
-    if (data.size() != field_count) {
+    size_t const field_count = tools::enum_count<GetRewardBalanceResponseField>;
+    VerifyDataResult data_parts_check = data_parts_count_is_valid(data, field_count);
+    if (!data_parts_check.good) {
+        result.error = std::move(data_parts_check.error);
         return result;
     }
 
@@ -235,16 +249,12 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
         std::string_view payload = data[enum_index];
         auto enum_value          = static_cast<oxen::bls::GetRewardBalanceResponseField>(enum_index);
         switch (enum_value) {
-
             case oxen::bls::GetRewardBalanceResponseField::Status: {
                 if (payload != "200") {
-                    // TODO(doyle): Better error message
-                    oxen::log::error(
-                            logcat,
-                            "error message received when getting reward balance {} : "
-                            "{}",
-                            data[0],
-                            data[1]);
+                    result.error = fmt::format(
+                            "Command status ({}) indicates an error that cannot be handled has "
+                            "occurred",
+                            payload);
                     return result;
                 }
                 result.status = payload;
@@ -252,7 +262,7 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
 
             case oxen::bls::GetRewardBalanceResponseField::Address: {
                 size_t required_hex_size = sizeof(crypto::bls_public_key) * 2;
-                PayloadResult to_result = payload_is_hex("Ethereum address", payload, required_hex_size);
+                VerifyDataResult to_result = payload_is_hex("Ethereum address", payload, required_hex_size);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
                     return result;
@@ -261,7 +271,7 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
             } break;
 
             case oxen::bls::GetRewardBalanceResponseField::Amount: {
-                PayloadResult to_result = payload_to_number("rewards amount", payload, result.height);
+                VerifyDataResult to_result = payload_to_number("rewards amount", payload, result.height);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
                     return result;
@@ -269,7 +279,7 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
             } break;
 
             case oxen::bls::GetRewardBalanceResponseField::Height: {
-                PayloadResult to_result = payload_to_number("height", payload, result.height);
+                VerifyDataResult to_result = payload_to_number("height", payload, result.height);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
                     return result;
@@ -278,7 +288,7 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
 
             case oxen::bls::GetRewardBalanceResponseField::BLSPKeyHex: {
                 size_t required_hex_size = sizeof(crypto::bls_public_key) * 2;
-                PayloadResult to_result = payload_is_hex("BLS public key", payload, required_hex_size);
+                VerifyDataResult to_result = payload_is_hex("BLS public key", payload, required_hex_size);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
                     return result;
@@ -288,7 +298,7 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
 
             case oxen::bls::GetRewardBalanceResponseField::MessageHashSignature: {
                 size_t required_hex_size = sizeof(blsSignature) * 2;
-                PayloadResult to_result = payload_is_hex("BLS signature", payload, required_hex_size);
+                VerifyDataResult to_result = payload_is_hex("BLS signature", payload, required_hex_size);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
                     return result;
