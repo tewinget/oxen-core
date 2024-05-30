@@ -1119,13 +1119,13 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
                             // recipientAddress, recipientAmount);
                             std::string encoded_message =
                                     "0x" + m_bls_signer->buildTag(m_bls_signer->rewardTag) +
-                                    utils::padToNBytes(
+                                    ethyl::utils::padToNBytes(
                                             eth_address.substr(2),
                                             20,
-                                            utils::PaddingDirection::LEFT) +
-                                    utils::padTo32Bytes(
-                                            utils::decimalToHex(amount),
-                                            utils::PaddingDirection::LEFT);
+                                            ethyl::utils::PaddingDirection::LEFT) +
+                                    ethyl::utils::padTo32Bytes(
+                                            ethyl::utils::decimalToHex(amount),
+                                            ethyl::utils::PaddingDirection::LEFT);
                             const auto h = m_bls_signer->hash(encoded_message);
                             // Returns status, address, amount, height, bls_pubkey, signed message,
                             // signature
@@ -1192,10 +1192,10 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
                             // bytes memory encodedMessage = abi.encodePacked(liquidateTag, blsKey);
                             std::string encoded_message =
                                     "0x" + m_bls_signer->buildTag(m_bls_signer->liquidateTag) +
-                                    utils::padToNBytes(
+                                    ethyl::utils::padToNBytes(
                                             bls_key_requesting_exit,
                                             64,
-                                            utils::PaddingDirection::LEFT);
+                                            ethyl::utils::PaddingDirection::LEFT);
                             const auto h = m_bls_signer->hash(encoded_message);
                             // Data contains -> status, bls_key, bls_pubkey, signed message,
                             // signature

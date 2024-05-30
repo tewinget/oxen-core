@@ -80,9 +80,9 @@ using TransactionStateChangeVariant = std::variant<
         ServiceNodeDeregisterTx,
         ServiceNodeExitTx>;
 
-class RewardsLogEntry : public LogEntry {
+class RewardsLogEntry : public ethyl::LogEntry {
   public:
-    RewardsLogEntry(const LogEntry& log) : LogEntry(log) {}
+    RewardsLogEntry(const ethyl::LogEntry& log) : ethyl::LogEntry(log) {}
     TransactionType getLogType() const;
     std::optional<TransactionStateChangeVariant> getLogTransaction() const;
 };

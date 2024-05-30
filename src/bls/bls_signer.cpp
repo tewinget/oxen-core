@@ -66,10 +66,10 @@ void BLSSigner::initCurve() {
 std::string BLSSigner::buildTag(
         std::string_view baseTag, uint32_t chainID, std::string_view contractAddress) {
     std::string_view hexPrefix = "0x";
-    std::string_view contractAddressOutput = utils::trimPrefix(contractAddress, hexPrefix);
-    std::string baseTagHex = utils::toHexString(baseTag);
+    std::string_view contractAddressOutput = ethyl::utils::trimPrefix(contractAddress, hexPrefix);
+    std::string baseTagHex = oxenc::to_hex(baseTag);
     std::string chainIDHex =
-            utils::padTo32Bytes(utils::decimalToHex(chainID), utils::PaddingDirection::LEFT);
+            ethyl::utils::padTo32Bytes(ethyl::utils::decimalToHex(chainID), ethyl::utils::PaddingDirection::LEFT);
 
     std::string concatenatedTag;
     concatenatedTag.reserve(
@@ -80,8 +80,8 @@ std::string BLSSigner::buildTag(
     concatenatedTag.append(chainIDHex);
     concatenatedTag.append(contractAddressOutput);
 
-    std::array<unsigned char, 32> hash = utils::hash(concatenatedTag);
-    std::string result = utils::toHexString(hash);
+    std::array<unsigned char, 32> hash = ethyl::utils::hashHex(concatenatedTag);
+    std::string result = oxenc::to_hex(hash.begin(), hash.end());
     return result;
 }
 
@@ -99,12 +99,12 @@ std::string BLSSigner::proofOfPossession(
         std::string_view senderEthAddress, std::string_view serviceNodePubkey) {
     std::string fullTag = buildTag(proofOfPossessionTag, chainID, contractAddress);
     std::string_view hexPrefix = "0x";
-    std::string_view senderAddressOutput = utils::trimPrefix(senderEthAddress, hexPrefix);
+    std::string_view senderAddressOutput = ethyl::utils::trimPrefix(senderEthAddress, hexPrefix);
 
     // TODO(doyle): padTo32Bytes should take a string_view
     std::string publicKeyHex = getPublicKeyHex();
     std::string serviceNodePubkeyHex =
-            utils::padTo32Bytes(std::string(serviceNodePubkey), utils::PaddingDirection::LEFT);
+            ethyl::utils::padTo32Bytes(std::string(serviceNodePubkey), ethyl::utils::PaddingDirection::LEFT);
 
     std::string message;
     message.reserve(
@@ -137,7 +137,7 @@ bls::PublicKey BLSSigner::getPublicKey() {
 crypto::bytes<32> BLSSigner::hash(std::string_view in) {
     // TODO(doyle): hash should take in a string_view
     crypto::bytes<32> result = {};
-    result.data_ = utils::hash(std::string(in));
+    result.data_ = ethyl::utils::hashHex(std::string(in));
     return result;
 }
 

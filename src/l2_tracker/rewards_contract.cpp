@@ -60,7 +60,7 @@ std::optional<TransactionStateChangeVariant> RewardsLogEntry::getLogTransaction(
             pos += 128;
             // pull 32 bytes (64 characters) for fee
             std::string fee_str = data.substr(pos, 64);
-            uint64_t fee = utils::fromHexStringToUint64(fee_str);
+            uint64_t fee = ethyl::utils::hexStringToU64(fee_str);
             pos += 64;
             // There are 32 bytes describing the size of contributors data here, ignore because we
             // always get the same data out of it
@@ -69,7 +69,7 @@ std::optional<TransactionStateChangeVariant> RewardsLogEntry::getLogTransaction(
             std::vector<Contributor> contributors;
             std::string num_contributors_str = data.substr(pos, 64);
 
-            uint64_t num_contributors = utils::fromHexStringToUint64(num_contributors_str);
+            uint64_t num_contributors = ethyl::utils::hexStringToU64(num_contributors_str);
             pos += 64;
             std::string contributor_address_str;
             std::string contributor_amount_str;
@@ -80,7 +80,7 @@ std::optional<TransactionStateChangeVariant> RewardsLogEntry::getLogTransaction(
                 tools::hex_to_type(contributor_address_str, contributor_address);
                 pos += 64;
                 contributor_amount_str = data.substr(pos, 64);
-                uint64_t contributor_amount = utils::fromHexStringToUint64(contributor_amount_str);
+                uint64_t contributor_amount = ethyl::utils::hexStringToU64(contributor_amount_str);
                 pos += 64;
                 contributors.emplace_back(contributor_address, contributor_amount);
             }
@@ -125,7 +125,7 @@ std::optional<TransactionStateChangeVariant> RewardsLogEntry::getLogTransaction(
             // from position 64 (32 bytes -> 64 characters) + 2 for '0x' pull 32 bytes (64
             // characters)
             std::string amount_str = data.substr(64 + 2, 64);
-            uint64_t amount = utils::fromHexStringToUint64(amount_str);
+            uint64_t amount = ethyl::utils::hexStringToU64(amount_str);
             // pull 64 bytes (128 characters)
             std::string bls_key_str = data.substr(64 + 64 + 2, 128);
             crypto::bls_public_key bls_key;
@@ -189,12 +189,12 @@ std::vector<std::string> RewardsContract::getAllBLSPubkeys(uint64_t blockNumber)
 ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_view blockNumber)
 {
     ethyl::ReadCallData callData     = {};
-    std::string  indexABI            = utils::padTo32Bytes(utils::decimalToHex(index), utils::PaddingDirection::LEFT);
+    std::string  indexABI            = ethyl::utils::padTo32Bytes(ethyl::utils::decimalToHex(index), ethyl::utils::PaddingDirection::LEFT);
     callData.contractAddress         = contractAddress;
-    callData.data                    = utils::getFunctionSignature("serviceNodes(uint64)") + indexABI;
+    callData.data                    = ethyl::utils::toEthFunctionSignature("serviceNodes(uint64)") + indexABI;
     nlohmann::json     callResult    = provider.callReadFunctionJSON(callData, blockNumber);
     const std::string& callResultHex = callResult.get_ref<nlohmann::json::string_t&>();
-    std::string_view   callResultIt  = utils::trimPrefix(callResultHex, "0x");
+    std::string_view   callResultIt  = ethyl::utils::trimPrefix(callResultHex, "0x");
 
     const size_t        U256_HEX_SIZE                  = (256 / 8) * 2;
     const size_t        BLS_PKEY_XY_COMPONENT_HEX_SIZE = 32 * 2;
@@ -226,7 +226,7 @@ ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_vi
 
     const size_t HEX_PER_CONTRIBUTOR = ADDRESS_HEX_SIZE /*address of contributor*/ + U256_HEX_SIZE /*amount contributed*/;
     if (contributorDataRemaining.size() > 0) {
-        size_t contributorCount = utils::fromHexStringToUint64(contributorSize);
+        size_t contributorCount = ethyl::utils::hexStringToU64(contributorSize);
         size_t expectedContributorDataRemaining = contributorCount * HEX_PER_CONTRIBUTOR;
 
         if (contributorCount > result.contributors.max_size()) {
@@ -280,25 +280,25 @@ ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_vi
                 return result;
             }
 
-            contributor.amount = utils::fromHexStringToUint64(stakedAmountHex);
+            contributor.amount = ethyl::utils::hexStringToU64(stakedAmountHex);
         }
     }
 
     // NOTE: Deserialize linked list
-    result.next                = utils::fromHexStringToUint64(nextHex);
-    result.prev                = utils::fromHexStringToUint64(prevHex);
+    result.next                = ethyl::utils::hexStringToU64(nextHex);
+    result.prev                = ethyl::utils::hexStringToU64(prevHex);
 
     // NOTE: Deserialise recipient
     const size_t ETH_ADDRESS_HEX_SIZE = 20 * 2;
-    std::vector<unsigned char> recipientBytes = utils::fromHexString(operatorHex.substr(operatorHex.size() - ETH_ADDRESS_HEX_SIZE, ETH_ADDRESS_HEX_SIZE));
+    std::vector<unsigned char> recipientBytes = ethyl::utils::fromHexString(operatorHex.substr(operatorHex.size() - ETH_ADDRESS_HEX_SIZE, ETH_ADDRESS_HEX_SIZE));
     assert(recipientBytes.size() == result.operatorAddr.data_.max_size());
     std::memcpy(result.operatorAddr.data(), recipientBytes.data(), recipientBytes.size());
 
     result.pubkey = std::string(pubkeyHex);
 
     // NOTE: Deserialise metadata
-    result.leaveRequestTimestamp = utils::fromHexStringToUint64(leaveRequestTimestampHex);
-    result.deposit = utils::fromHexStringToUint64(depositHex);
+    result.leaveRequestTimestamp = ethyl::utils::hexStringToU64(leaveRequestTimestampHex);
+    result.deposit = ethyl::utils::hexStringToU64(depositHex);
     result.good = true;
     return result;
 }
