@@ -17145,25 +17145,6 @@ std::string wallet2::get_rpc_status(const std::string& s) const {
     return "<error>";
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::hash_m_transfer(const transfer_details& transfer, crypto::hash& hash) const {
-    KECCAK_CTX state;
-    keccak_init(&state);
-    keccak_update(&state, transfer.m_txid.data(), transfer.m_txid.size());
-    keccak_update(
-            &state,
-            reinterpret_cast<const unsigned char*>(&transfer.m_internal_output_index),
-            sizeof(transfer.m_internal_output_index));
-    keccak_update(
-            &state,
-            reinterpret_cast<const unsigned char*>(&transfer.m_global_output_index),
-            sizeof(transfer.m_global_output_index));
-    keccak_update(
-            &state,
-            reinterpret_cast<const unsigned char*>(&transfer.m_amount),
-            sizeof(transfer.m_amount));
-    keccak_finish(&state, hash.data());
-}
-//----------------------------------------------------------------------------------------------------
 uint64_t wallet2::hash_m_transfers(int64_t transfer_height, crypto::hash& hash) const {
     CHECK_AND_ASSERT_THROW_MES(
             transfer_height > (int64_t)m_transfers.size(),
@@ -17179,17 +17160,19 @@ uint64_t wallet2::hash_m_transfers(int64_t transfer_height, crypto::hash& hash) 
             break;
         }
 
-        hash_m_transfer(transfer, tmp_hash);
         keccak_update(
-                &state,
-                reinterpret_cast<const unsigned char*>(&transfer.m_block_height),
-                sizeof(transfer.m_block_height));
-        keccak_update(
-                &state, reinterpret_cast<const unsigned char*>(tmp_hash.data()), tmp_hash.size());
+                state,
+                transfer.m_txid,
+                "{}|{}|{}|{}|"_format(
+                        transfer.m_internal_output_index,
+                        transfer.m_global_output_index,
+                        transfer.m_amount,
+                        transfer.m_block_height));
+
         current_height += 1;
     }
 
-    keccak_finish(&state, hash.data());
+    keccak_finish(&state, hash.data(), hash.size());
     return current_height;
 }
 

@@ -79,13 +79,14 @@ void keccakf(uint64_t st[25], int rounds) {
 // compute a keccak hash (md) of given byte length from "in"
 typedef uint64_t state_t[25];
 
-void keccak(const uint8_t* in, size_t inlen, uint8_t* md, int mdlen) {
+void keccak(const uint8_t* in, size_t inlen, uint8_t* md, size_t mdlen) {
     state_t st;
     uint8_t temp[144];
     size_t i, rsiz, rsizw;
 
     static_assert(HASH_DATA_AREA <= sizeof(temp), "Bad keccak preconditions");
-    if (mdlen <= 0 || (mdlen > 100 && sizeof(st) != (size_t)mdlen)) {
+    if (mdlen == 0 || (mdlen > 100 && sizeof(st) != mdlen) ||
+        mdlen % sizeof(uint64_t) != 0) {
         local_abort("Bad keccak use");
     }
 
@@ -120,9 +121,6 @@ void keccak(const uint8_t* in, size_t inlen, uint8_t* md, int mdlen) {
 
     keccakf(st, KECCAK_ROUNDS);
 
-    if (((size_t)mdlen % sizeof(uint64_t)) != 0) {
-        local_abort("Bad keccak use");
-    }
     memcpy_swap64le(md, st, mdlen / sizeof(uint64_t));
 }
 
@@ -133,8 +131,6 @@ void keccak1600(const uint8_t* in, size_t inlen, uint8_t* md) {
 #define KECCAK_FINALIZED 0x80000000
 #define KECCAK_BLOCKLEN 136
 #define KECCAK_WORDS 17
-#define KECCAK_DIGESTSIZE 32
-#define IS_ALIGNED_64(p) (0 == (7 & ((const char*)(p) - (const char*)0)))
 #define KECCAK_PROCESS_BLOCK(st, block)             \
     {                                               \
         for (int i_ = 0; i_ < KECCAK_WORDS; i_++) { \
@@ -168,7 +164,7 @@ void keccak_update(KECCAK_CTX* ctx, const uint8_t* in, size_t inlen) {
         inlen -= left;
     }
 
-    const bool is_aligned = IS_ALIGNED_64(in);
+    const bool is_aligned = ((uintptr_t)(void*)in) % sizeof(uint64_t) == 0;
     while (inlen >= KECCAK_BLOCKLEN) {
         const uint64_t* aligned_message_block;
         if (is_aligned) {
@@ -187,7 +183,7 @@ void keccak_update(KECCAK_CTX* ctx, const uint8_t* in, size_t inlen) {
     }
 }
 
-void keccak_finish(KECCAK_CTX* ctx, uint8_t* md) {
+void keccak_finish(KECCAK_CTX* ctx, uint8_t* md, size_t mdlen) {
     if (!(ctx->rest & KECCAK_FINALIZED)) {
         // clear the rest of the data queue
         memset((char*)ctx->message + ctx->rest, 0, KECCAK_BLOCKLEN - ctx->rest);
@@ -199,9 +195,11 @@ void keccak_finish(KECCAK_CTX* ctx, uint8_t* md) {
         ctx->rest = KECCAK_FINALIZED;  // mark context as finalized
     }
 
-    static_assert(KECCAK_BLOCKLEN > KECCAK_DIGESTSIZE, "");
-    static_assert(KECCAK_DIGESTSIZE % sizeof(uint64_t) == 0, "");
     if (md) {
-        memcpy_swap64le(md, ctx->hash, KECCAK_DIGESTSIZE / sizeof(uint64_t));
+        if (mdlen == 0 || (mdlen > 100 && mdlen != sizeof(ctx->hash)) ||
+            mdlen % sizeof(uint64_t) != 0) {
+            local_abort("Bad keccak use");
+        }
+        memcpy_swap64le(md, ctx->hash, mdlen / sizeof(uint64_t));
     }
 }

@@ -68,9 +68,9 @@ void hmac_keccak_update(hmac_keccak_state* S, const uint8_t* data, size_t datale
 
 void hmac_keccak_finish(hmac_keccak_state* S, uint8_t* digest) {
     uint8_t ihash[HASH_SIZE];
-    keccak_finish(&S->inner, ihash);
+    keccak_finish(&S->inner, ihash, HASH_SIZE);
     keccak_update(&S->outer, ihash, HASH_SIZE);
-    keccak_finish(&S->outer, digest);
+    keccak_finish(&S->outer, digest, HASH_SIZE);
     memwipe(ihash, HASH_SIZE);
 }
 

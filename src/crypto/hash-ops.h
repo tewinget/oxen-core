@@ -30,7 +30,9 @@
 
 #pragma once
 
-#if !defined(__cplusplus)
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #include <assert.h>
 #include <stdbool.h>
@@ -47,8 +49,6 @@ static_assert(sizeof(union hash_state) == 200, "Invalid structure size");
 
 void hash_permutation(union hash_state* state);
 void hash_process(union hash_state* state, const uint8_t* buf, size_t count);
-
-#endif
 
 enum { HASH_SIZE = 32, HASH_DATA_AREA = 136 };
 
@@ -89,3 +89,7 @@ void rx_slow_hash(
         int miners,
         int is_alt);
 void rx_reorg(const uint64_t split_height);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif

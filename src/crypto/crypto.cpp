@@ -570,7 +570,7 @@ struct rs_comm {
         static_assert(sizeof(ab[0]) == 64);  // Ensure no padding
         keccak_update(&state, reinterpret_cast<const uint8_t*>(ab.data()), 64 * ab.size());
         ec_scalar result;
-        keccak_finish(&state, result.data());
+        keccak_finish(&state, result.data(), 32);
         sc_reduce32(result.data());
         return result;
     };
