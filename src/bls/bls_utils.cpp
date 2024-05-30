@@ -87,7 +87,7 @@ std::string bls_utils::PublicKeyToHex(const bls::PublicKey& publicKey) {
 bls::PublicKey bls_utils::HexToPublicKey(std::string_view hex) {
     const size_t BLS_PKEY_COMPONENT_HEX_SIZE = 32 * 2;
     const size_t BLS_PKEY_HEX_SIZE           = BLS_PKEY_COMPONENT_HEX_SIZE * 2;
-    hex                                      = utils::trimPrefix(hex, "0x");
+    hex                                      = ethyl::utils::trimPrefix(hex, "0x");
 
     if (hex.size() != BLS_PKEY_HEX_SIZE) {
         std::stringstream stream;
@@ -98,8 +98,8 @@ bls::PublicKey bls_utils::HexToPublicKey(std::string_view hex) {
     // NOTE: Divide the 2 keys into the X,Y component
     std::string_view              pkeyXHex = hex.substr(0,                           BLS_PKEY_COMPONENT_HEX_SIZE);
     std::string_view              pkeyYHex = hex.substr(BLS_PKEY_COMPONENT_HEX_SIZE, BLS_PKEY_COMPONENT_HEX_SIZE);
-    std::array<unsigned char, 32> pkeyX    = utils::fromHexString32Byte(pkeyXHex);
-    std::array<unsigned char, 32> pkeyY    = utils::fromHexString32Byte(pkeyYHex);
+    std::array<unsigned char, 32> pkeyX    = ethyl::utils::fromHexString32Byte(pkeyXHex);
+    std::array<unsigned char, 32> pkeyY    = ethyl::utils::fromHexString32Byte(pkeyYHex);
 
     // NOTE: In `PublicKeyToHex` before we serialize the G1 point, we normalize
     // the point which divides X, Y by the Z component. This transformation then
