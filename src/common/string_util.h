@@ -148,6 +148,29 @@ std::basic_string<To> convert_str(const std::basic_string<From>& from) {
     return {reinterpret_cast<const To*>(from.data()), from.size()};
 }
 
+namespace detail {
+    template <size_t N>
+    struct usv_literal {
+        consteval usv_literal(const char (&s)[N]) {
+            for (size_t i = 0; i < N; i++)
+                str[i] = static_cast<unsigned char>(s[i]);
+        }
+        unsigned char str[N];  // we keep the null on the end, in case you pass .data() to a C func
+        using size = std::integral_constant<size_t, N - 1>;
+    };
+}  // namespace detail
+
+namespace literals {
+    // unsigned char string literals
+    inline std::basic_string<unsigned char> operator""_us(const char* str, size_t len) noexcept {
+        return {reinterpret_cast<const unsigned char*>(str), len};
+    }
+    template <detail::usv_literal UStr>
+    constexpr std::basic_string_view<unsigned char> operator""_usv() {
+        return {UStr.str, decltype(UStr)::size::value};
+    }
+}  // namespace literals
+
 /// Converts a duration into a human friendlier string, such as "3d7d47m12s" or "347µs"
 std::string friendly_duration(std::chrono::nanoseconds dur);
 

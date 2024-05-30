@@ -1874,7 +1874,7 @@ static std::string dump_pulse_block_data(
                     cryptonote::get_block_hash(block),
                     !quorum                   ? "(invalid quorum)"
                     : quorum->workers.empty() ? "(invalid leader)"
-                                              : oxenc::to_hex(tools::view_guts(quorum->workers[0])),
+                                              : tools::hex_guts(quorum->workers[0]),
                     block.pulse.round,
                     validator_bitset.to_string());
     auto append = std::back_inserter(s);
