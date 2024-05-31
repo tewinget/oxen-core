@@ -1217,11 +1217,12 @@ std::vector<std::string> core::get_removable_nodes()
         bls_pubkeys_in_snl.push_back(tools::type_to_hex(sni.info->bls_public_key));
 
 
-    uint64_t oxen_height = m_blockchain_storage.get_current_blockchain_height();
+    uint64_t oxen_height = m_blockchain_storage.get_current_blockchain_height() - 1;
     std::vector<cryptonote::block> blocks;
     if (!get_blocks(oxen_height, 1, blocks)) {
-        log::error(logcat, "Could not get latest block");
-        throw std::runtime_error("Could not get latest block");
+        std::string msg = fmt::format("Failed to get the latest block at {} to determine the removable Service Nodes", oxen_height);
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error(msg);
     }
     std::vector<std::string> bls_pubkeys_in_smart_contract = m_blockchain_storage.m_l2_tracker->get_all_bls_public_keys(blocks[0].l2_height);
 
