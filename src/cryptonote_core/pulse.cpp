@@ -811,13 +811,13 @@ bool get_round_timings(
     times.ideal_timestamp = pulse::time_point(
             times.genesis_timestamp + (cryptonote::TARGET_BLOCK_TIME * delta_height));
 
-#if 1
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+    times.r0_timestamp = times.prev_timestamp + service_nodes::PULSE_ROUND_TIME;
+#else  // NOTE: Debug, make next block start relatively soon
     times.r0_timestamp = std::clamp(
             times.ideal_timestamp,
             times.prev_timestamp + service_nodes::PULSE_MIN_TARGET_BLOCK_TIME,
             times.prev_timestamp + service_nodes::PULSE_MAX_TARGET_BLOCK_TIME);
-#else  // NOTE: Debug, make next block start relatively soon
-    times.r0_timestamp = times.prev_timestamp + service_nodes::PULSE_ROUND_TIME;
 #endif
 
     times.miner_fallback_timestamp = times.r0_timestamp + (service_nodes::PULSE_ROUND_TIME * 255);

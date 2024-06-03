@@ -56,6 +56,9 @@ class BLSAggregator {
     /// 'rewards' for the given Ethereum 'address' if by consensus they agree
     /// that the amount is valid. This node (the aggregator) will aggregate the
     /// signatures into the response.
+    ///
+    /// This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
+    /// amount is `0` or height is greater than the current blockchain height.
     BLSRewardsResponse rewards_request(
             const crypto::eth_address& address,
             uint64_t rewards,

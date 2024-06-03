@@ -124,8 +124,37 @@ BLSRewardsResponse BLSAggregator::rewards_request(
         uint64_t height,
         std::span<const crypto::x25519_public_key> exclude) {
 
-    BLSSigner* signer = bls_signer.get();
+    // NOTE: Validate the arguments
+    if (address == crypto::eth_address{}) {
+        throw std::invalid_argument(fmt::format(
+                "Aggregating a rewards request for the zero address for {} SENT at height {} is "
+                "invalid because address is invalid. Request rejected",
+                address,
+                amount,
+                height,
+                service_node_list.height()));
+    }
 
+    if (amount == 0) {
+        throw std::invalid_argument(fmt::format(
+                "Aggregating a rewards request for '{}' for 0 SENT at height {} is invalid because "
+                "no rewards are available. Request rejected.",
+                address,
+                height));
+    }
+
+    if (height >= service_node_list.height()) {
+        throw std::invalid_argument(fmt::format(
+                "Aggregating a rewards request for '{}' for {} SENT at height {} is invalid "
+                "because the height is greater than the blockchain height {}. Request rejected",
+                address,
+                amount,
+                height,
+                service_node_list.height()));
+    }
+
+    // NOTE: Setup the work data for `processNodes`
+    BLSSigner* signer = bls_signer.get();
     struct WorkPayload
     {
         std::mutex mutex;                   /// `processNodes` dispatches to a threadpool hence we require synchronisation
@@ -134,7 +163,6 @@ BLSRewardsResponse BLSAggregator::rewards_request(
         std::string message_to_sign;        /// The message that each node must be signing against
     };
 
-    // NOTE: Setup the work data for `processNodes`
     WorkPayload work = {};
     work.aggregate_signature.clear();
     work.message_to_sign = oxen::bls::get_reward_balance_request_message(signer, address, amount);

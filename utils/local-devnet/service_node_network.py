@@ -244,8 +244,13 @@ class SNNetwork:
         # vprint("Submitted transaction to liquidate service node : {}".format(ethereum_add_bls_args["bls_pubkey"]))
         # vprint("liquidated node: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
 
+        # Sleep and let pulse quorum do work
+        sleep_time = 150
+        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
+        time.sleep(sleep_time)
+        vprint(f"Waking now {sleep_time}, blockchain height is {self.ethsns[0].height()}");
+
         # Claim rewards for Address
-        time.sleep(10)
         rewards = self.ethsns[0].get_bls_rewards(self.servicenodecontract.hardhatAccountAddress())
         vprint(rewards)
         vprint("Balance before claim {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.hardhatAccountAddress())))

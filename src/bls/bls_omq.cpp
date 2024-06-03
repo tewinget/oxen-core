@@ -59,7 +59,7 @@ static VerifyDataResult payload_is_hex(
                 "Specified an {} '{}' with length {} which does not have the "
                 "correct length ({}) to be an {}",
                 payload_description,
-                write_and_3_dot_truncate(payload, 128),
+                write_and_3_dot_truncate(payload, 256),
                 payload.size(),
                 required_hex_size,
                 payload_description);
@@ -70,7 +70,7 @@ static VerifyDataResult payload_is_hex(
         result.error = fmt::format(
                 "Specified a {} '{}' which contains non-hex characters",
                 payload_description,
-                write_and_3_dot_truncate(payload, 128),
+                write_and_3_dot_truncate(payload, 256),
                 payload.size());
         return result;
     }
@@ -91,7 +91,7 @@ static VerifyDataResult payload_to_number(
         result.error = fmt::format(
                 "Specified {} '{}' that is not a valid number",
                 payload_description,
-                write_and_3_dot_truncate(payload, 32));
+                write_and_3_dot_truncate(payload, 64));
         return result;
     }
 
@@ -117,7 +117,7 @@ static VerifyDataResult data_parts_count_is_valid(std::span<const T> data, size_
         // NOTE: Dump the data
         for (size_t index = 0; index < data.size(); index++) {
             std::string_view part = data[index];
-            fmt::format_to(std::back_inserter(fmt_buffer), "{}{} - {}", index ? "\n" : "", index, write_and_3_dot_truncate(part, 128));
+            fmt::format_to(std::back_inserter(fmt_buffer), "{}{} - {}", index ? "\n" : "", index, write_and_3_dot_truncate(part, 256));
         }
         result.error = fmt::to_string(fmt_buffer);
     }

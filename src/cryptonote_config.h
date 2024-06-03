@@ -68,7 +68,11 @@ inline constexpr uint64_t LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE = 100000;
 inline constexpr uint64_t SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR = 50;
 inline constexpr uint64_t COINBASE_BLOB_RESERVED_SIZE = 600;
 
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+inline constexpr auto TARGET_BLOCK_TIME = 6s;
+#else
 inline constexpr auto TARGET_BLOCK_TIME = 2min;
+#endif
 inline constexpr uint64_t BLOCKS_PER_HOUR = 1h / TARGET_BLOCK_TIME;
 inline constexpr uint64_t BLOCKS_PER_DAY = 24h / TARGET_BLOCK_TIME;
 
@@ -508,7 +512,7 @@ namespace config {
 
         inline constexpr auto UPTIME_PROOF_STARTUP_DELAY = 5s;
 
-#if defined(OXEN_USE_LOCAL_DEVNET_ETH_ADDRESSES)
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
         // NOTE: A local-devnet involves launching typically a local Ethereum
         // blockchain via Hardhat, Ganache or Foundry's Anvil for example.
         // These use local-developer wallets which deploy our rewards contract

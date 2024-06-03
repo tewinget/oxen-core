@@ -198,92 +198,153 @@ ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_vi
     const std::string& callResultHex = callResult.get_ref<nlohmann::json::string_t&>();
     std::string_view   callResultIt  = ethyl::utils::trimPrefix(callResultHex, "0x");
 
-    const size_t        U256_HEX_SIZE                  = (256 / 8) * 2;
-    const size_t        BLS_PKEY_XY_COMPONENT_HEX_SIZE = 32 * 2;
-    const size_t        BLS_PKEY_HEX_SIZE              = BLS_PKEY_XY_COMPONENT_HEX_SIZE + BLS_PKEY_XY_COMPONENT_HEX_SIZE;
-    const size_t        ADDRESS_HEX_SIZE               = 32 * 2;
+    const size_t U256_HEX_SIZE                  = (256 / 8) * 2;
+    const size_t BLS_PKEY_XY_COMPONENT_HEX_SIZE = 32 * 2;
+    const size_t BLS_PKEY_HEX_SIZE              = BLS_PKEY_XY_COMPONENT_HEX_SIZE + BLS_PKEY_XY_COMPONENT_HEX_SIZE;
+    const size_t ADDRESS_HEX_SIZE               = 32 * 2;
+    const size_t HEX_PER_CONTRIBUTOR            = ADDRESS_HEX_SIZE /*address of contributor*/ + U256_HEX_SIZE /*amount contributed*/;
 
-    ContractServiceNode result                   = {};
-    size_t              walkIt                   = 0;
-    std::string_view    totalSize                = tools::string_safe_substr(callResultIt, walkIt, U256_HEX_SIZE);                walkIt += totalSize.size();
-    std::string_view    nextHex                  = tools::string_safe_substr(callResultIt, walkIt, U256_HEX_SIZE);                walkIt += nextHex.size();
-    std::string_view    prevHex                  = tools::string_safe_substr(callResultIt, walkIt, U256_HEX_SIZE);                walkIt += prevHex.size();
-    std::string_view    operatorHex              = tools::string_safe_substr(callResultIt, walkIt, ADDRESS_HEX_SIZE);             walkIt += operatorHex.size();
-    std::string_view    pubkeyHex                = tools::string_safe_substr(callResultIt, walkIt, BLS_PKEY_HEX_SIZE);            walkIt += pubkeyHex.size();
-    std::string_view    leaveRequestTimestampHex = tools::string_safe_substr(callResultIt, walkIt, U256_HEX_SIZE);                walkIt += leaveRequestTimestampHex.size();
-    std::string_view    depositHex               = tools::string_safe_substr(callResultIt, walkIt, U256_HEX_SIZE);                walkIt += depositHex.size();
-    std::string_view    contributorSize          = tools::string_safe_substr(callResultIt, walkIt, U256_HEX_SIZE);                walkIt += contributorSize.size();
-    std::string_view    contributorDataRemaining = tools::string_safe_substr(callResultIt, walkIt, callResultIt.size() - walkIt); walkIt += contributorDataRemaining.size();
+    // NOTE: Parse the blob into chunks of hex
+    ContractServiceNode result                     = {};
+    size_t              parsingIt                  = 0;
 
-    if (walkIt != callResultIt.size()) {
+    // NOTE: The ServiceNode struct is a dynamic type (because its child `Contributor` field is
+    // dynamic) hence the offset struct is encoded in the first 32 byte element.
+    std::string_view    offsetToServiceNodeBlobHex = tools::string_safe_substr(callResultIt, parsingIt, U256_HEX_SIZE);
+    size_t              offsetToServiceNodeBlob    = ethyl::utils::hexStringToU64(offsetToServiceNodeBlobHex);
+    const size_t        serviceNodeIt              = offsetToServiceNodeBlob;
+    parsingIt                                      = serviceNodeIt;
+
+    // NOTE: Walk and grab each static element of the struct
+    std::string_view    nextHex                     = tools::string_safe_substr(callResultIt, parsingIt, U256_HEX_SIZE);     parsingIt += nextHex.size();
+    std::string_view    prevHex                     = tools::string_safe_substr(callResultIt, parsingIt, U256_HEX_SIZE);     parsingIt += prevHex.size();
+    std::string_view    operatorHex                 = tools::string_safe_substr(callResultIt, parsingIt, ADDRESS_HEX_SIZE);  parsingIt += operatorHex.size();
+    std::string_view    pubkeyHex                   = tools::string_safe_substr(callResultIt, parsingIt, BLS_PKEY_HEX_SIZE); parsingIt += pubkeyHex.size();
+    std::string_view    leaveRequestTimestampHex    = tools::string_safe_substr(callResultIt, parsingIt, U256_HEX_SIZE);     parsingIt += leaveRequestTimestampHex.size();
+    std::string_view    depositHex                  = tools::string_safe_substr(callResultIt, parsingIt, U256_HEX_SIZE);     parsingIt += depositHex.size();
+
+    // NOTE: `Contributor` field is dynamic, hence the static encoding of it is the offset to the
+    // array.
+    std::string_view    offsetToContributorArrayHex = tools::string_safe_substr(callResultIt, parsingIt, U256_HEX_SIZE);
+    size_t              offsetToContributorArray    = ethyl::utils::hexStringToU64(offsetToContributorArrayHex);
+
+    // NOTE: Now jump to parsing the contributor array, first the static field (number of
+    // contributors)
+    parsingIt                                       = serviceNodeIt + offsetToContributorArray;
+    std::string_view    contributorSizeHex          = tools::string_safe_substr(callResultIt, parsingIt, U256_HEX_SIZE); parsingIt += contributorSizeHex.size();
+    const size_t        contributorSize             = ethyl::utils::hexStringToU64(contributorSizeHex);
+
+    // NOTE: Then the remaining stream is the blobs for each contributor
+    std::string_view    contributorArrayHex         = tools::string_safe_substr(callResultIt, parsingIt, contributorSize * HEX_PER_CONTRIBUTOR);
+    parsingIt += contributorArrayHex.size();
+
+    // NOTE: Validate the parsing iterator
+    if (parsingIt != callResultIt.size()) {
         oxen::log::error(
                 logcat,
                 "Deserializing error when attempting to unpack service node ABI blob from rewards "
                 "contract. We parsed {} bytes but the payload had {} bytes. The payload was\n{}",
-                walkIt,
+                parsingIt,
                 callResultIt.size(),
                 callResultHex);
         return result;
     }
 
-    const size_t HEX_PER_CONTRIBUTOR = ADDRESS_HEX_SIZE /*address of contributor*/ + U256_HEX_SIZE /*amount contributed*/;
-    if (contributorDataRemaining.size() > 0) {
-        size_t contributorCount = ethyl::utils::hexStringToU64(contributorSize);
-        size_t expectedContributorDataRemaining = contributorCount * HEX_PER_CONTRIBUTOR;
+    // NOTE: Start parsing the contributors blobs
+    if (contributorSize > result.contributors.max_size()) {
+        oxen::log::error(
+                logcat,
+                "The number of contributors ({}) in the service node blob exceeded the "
+                "available storage ({}) for service node {} with BLS public key {} at height "
+                "{}. The service node blob components were\n"
+                "\n"
+                "  - nextHex:                   {}\n"
+                "  - prevHex:                   {}\n"
+                "  - operatorHex:               {}\n"
+                "  - pubkeyHex:                 {}\n"
+                "  - leaveRequestTimestampHex:  {}\n"
+                "  - depositHex:                {}\n"
+                "  - contributorSize:           {}\n"
+                "  - contributorArray:          {}\n"
+                "\n"
+                "The raw blob was:\n\n{}"
+                ,
+                contributorSize,
+                result.contributors.max_size(),
+                index,
+                pubkeyHex,
+                blockNumber
+                ,
+                nextHex,
+                prevHex,
+                operatorHex,
+                pubkeyHex,
+                leaveRequestTimestampHex,
+                depositHex,
+                contributorSizeHex,
+                contributorArrayHex,
+                callResultHex);
+        return result;
+    }
 
-        if (contributorCount > result.contributors.max_size()) {
+    size_t expectedContributorHexSize = contributorSize * HEX_PER_CONTRIBUTOR;
+    if (contributorArrayHex.size() != expectedContributorHexSize) {
+        oxen::log::error(
+                logcat,
+                "The contributor payload in the unpacked service node ABI blob does not have "
+                "the correct amount of bytes. We parsed {} bytes but the payload had {} bytes "
+                "for service node {} with BLS public key {} at height {}.\n"
+                "The service node blob components were:\n"
+                "\n"
+                "  - nextHex:                   {}\n"
+                "  - prevHex:                   {}\n"
+                "  - operatorHex:               {}\n"
+                "  - pubkeyHex:                 {}\n"
+                "  - leaveRequestTimestampHex:  {}\n"
+                "  - depositHex:                {}\n"
+                "  - contributorSize:           {}\n"
+                "  - contributorDataRemaining:  {}\n"
+                "\n"
+                "The raw blob was:\n\n{}"
+                ,
+                contributorArrayHex.size() / 2,
+                expectedContributorHexSize,
+                index,
+                pubkeyHex,
+                blockNumber
+                ,
+                nextHex,
+                prevHex,
+                operatorHex,
+                pubkeyHex,
+                leaveRequestTimestampHex,
+                depositHex,
+                contributorSizeHex,
+                contributorArrayHex,
+                callResultHex);
+        return result;
+    }
+
+    for (size_t it = 0; it < contributorArrayHex.size(); it += HEX_PER_CONTRIBUTOR) {
+        std::string_view addressHex      = tools::string_safe_substr(contributorArrayHex, it + 0,                ADDRESS_HEX_SIZE);
+        std::string_view stakedAmountHex = tools::string_safe_substr(contributorArrayHex, it + ADDRESS_HEX_SIZE, U256_HEX_SIZE);
+
+        Contributor& contributor = result.contributors[result.contributorsSize++];
+        if (!tools::hex_to_type(addressHex, contributor.addr)) {
             oxen::log::error(
                     logcat,
-                    "The number of contributors ({}) in the service node blob exceeded the "
-                    "available storage ({}) for service node {} with BLS public key {} at height "
-                    "{}. The service node blob was \n{}",
-                    contributorCount,
-                    result.contributors.max_size(),
+                    "Contributor address hex '{}' ({} bytes) failed to be parsed into address "
+                    "({} bytes) for service node {} with BLS public key {} at height {}.",
+                    addressHex,
+                    addressHex.size(),
+                    contributor.addr.data_.max_size(),
                     index,
                     pubkeyHex,
-                    blockNumber,
-                    callResultHex);
+                    blockNumber);
             return result;
         }
 
-        if (contributorDataRemaining.size() != expectedContributorDataRemaining) {
-            oxen::log::error(
-                    logcat,
-                    "The contributor payload in the unpacked service node ABI blob does not have "
-                    "the correct amount of bytes. We parsed {} bytes but the payload had {} bytes "
-                    "for service node {} with BLS public key {} at height {}."
-                    "The payload was\n{}\n\nThe service node payload was \n{}",
-                    contributorDataRemaining.size() / 2,
-                    expectedContributorDataRemaining / 2,
-                    index,
-                    pubkeyHex,
-                    blockNumber,
-                    contributorDataRemaining,
-                    callResultHex);
-            return result;
-        }
-
-        for (size_t it = 0; it < contributorDataRemaining.size(); it += HEX_PER_CONTRIBUTOR) {
-            std::string_view addressHex      = tools::string_safe_substr(contributorDataRemaining, it + 0,                ADDRESS_HEX_SIZE);
-            std::string_view stakedAmountHex = tools::string_safe_substr(contributorDataRemaining, it + ADDRESS_HEX_SIZE, U256_HEX_SIZE);
-
-            Contributor& contributor = result.contributors[result.contributorsSize++];
-            if (!tools::hex_to_type(addressHex, contributor.addr)) {
-                oxen::log::error(
-                        logcat,
-                        "Contributor address hex '{}' ({} bytes) failed to be parsed into address "
-                        "({} bytes) for service node {} with BLS public key {} at height {}.",
-                        addressHex,
-                        addressHex.size(),
-                        contributor.addr.data_.max_size(),
-                        index,
-                        pubkeyHex,
-                        blockNumber);
-                return result;
-            }
-
-            contributor.amount = ethyl::utils::hexStringToU64(stakedAmountHex);
-        }
+        contributor.amount = ethyl::utils::hexStringToU64(stakedAmountHex);
     }
 
     // NOTE: Deserialize linked list
