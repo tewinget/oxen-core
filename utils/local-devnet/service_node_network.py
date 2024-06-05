@@ -56,7 +56,6 @@ class SNNetwork:
         self.binpath = binpath
         self.servicenodecontract = ServiceNodeRewardContract()
 
-
         vprint("Using '{}' for data files and logs".format(datadir))
 
         nodeopts = dict(oxend=str(self.binpath / 'oxend'), datadir=datadir)
@@ -137,9 +136,6 @@ class SNNetwork:
         configfile=self.datadir+'config.py'
         with open(configfile, 'w') as filetowrite:
             filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
-
-        # TODO sean remove this
-        # input("Press Enter to continue...")
 
         # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
         # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
@@ -245,23 +241,42 @@ class SNNetwork:
         # vprint("liquidated node: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
 
         # Sleep and let pulse quorum do work
-        sleep_time = 20
+        sleep_time = 30
         vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
         time.sleep(sleep_time)
-        vprint(f"Waking now {sleep_time}, blockchain height is {self.ethsns[0].height()}");
+        vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
 
         # Claim rewards for Address
-        rewards = self.ethsns[0].get_bls_rewards(self.servicenodecontract.hardhatAccountAddress(), self.mike.address())
+        hardhatAccount = self.servicenodecontract.hardhatAccountAddress()
+        rewards        = self.ethsns[0].get_bls_rewards(hardhatAccount, self.mike.address())
+        rewardsAccount = rewards["result"]["address"]
+        assert rewardsAccount.lower() == hardhatAccount.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhatAccount.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
         vprint(rewards)
-        vprint("Balance before claim {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.hardhatAccountAddress())))
+
+        vprint("Contract rewards before updating has ['available', 'claimed'] respectively: ",
+               self.servicenodecontract.recipients(hardhatAccount),
+               " for ",
+               hardhatAccount)
+
         result = self.servicenodecontract.updateRewardsBalance(
-                rewards["result"]["address"],
+                hardhatAccount,
                 rewards["result"]["amount"],
                 rewards["result"]["signature"],
                 rewards["result"]["non_signers_bls_pubkeys"])
-                # self.servicenodecontract.getNonSigners(rewards["result"]["signers_bls_pubkeys"]))
-        result = self.servicenodecontract.claimRewards()
-        vprint("Balance after claim {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.hardhatAccountAddress())))
+
+        vprint("Contract rewards update exected, has ['available', 'claimed'] now respectively: ",
+               self.servicenodecontract.recipients(hardhatAccount),
+               " for ",
+               hardhatAccount)
+
+        vprint("Balance for '{}' before claim {}".format(hardhatAccount, self.servicenodecontract.erc20balance(hardhatAccount)))
+
+        self.servicenodecontract.claimRewards()
+        vprint("Contract rewards after claim is now ['available', 'claimed'] respectively: ",
+               self.servicenodecontract.recipients(hardhatAccount),
+               " for ",
+               hardhatAccount)
+        vprint("Balance for '{}' after claim {}".format(hardhatAccount, self.servicenodecontract.erc20balance(hardhatAccount)))
 
         # Initiate Removeal of BLS Key
         # result = self.servicenodecontract.initiateRemoveBLSPublicKey(self.servicenodecontract.getServiceNodeID(ethereum_add_bls_args["bls_pubkey"]))

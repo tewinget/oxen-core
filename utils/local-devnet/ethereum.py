@@ -149,6 +149,9 @@ class ServiceNodeRewardContract:
     def numberServiceNodes(self):
         return self.contract.functions.serviceNodesLength().call()
 
+    def recipients(self, address):
+        return self.contract.functions.recipients(address).call()
+
     def updateRewardsBalance(self, recipientAddress, recipientAmount, blsSig, ids):
         sig_param = {
                 'sigs0': int(blsSig[:64], 16),
@@ -179,7 +182,23 @@ class ServiceNodeRewardContract:
         })
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+
+        if tx_receipt["status"] == 0:
+            # build a new transaction to replay:
+            tx_to_replay = self.web3.eth.get_transaction(tx_hash)
+            replay_tx = {
+                'to': tx_to_replay['to'],
+                'from': tx_to_replay['from'],
+                'value': tx_to_replay['value'],
+                'data': tx_to_replay['input'],
+            }
+
+            try: # replay the transaction locally:
+                self.web3.eth.call(replay_tx, tx_to_replay.blockNumber - 1)
+            except Exception as e:
+                print(f"Claim rewards TX {tx_hash} reverted {e}")
+
         return tx_hash
 
     def getServiceNodeID(self, bls_public_key):
