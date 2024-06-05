@@ -188,6 +188,15 @@ std::vector<std::string> RewardsContract::getAllBLSPubkeys(uint64_t blockNumber)
     return blsPublicKeys;
 }
 
+static std::string_view hex64ToAddress40Hex(std::string_view src)
+{
+    // NOTE: The address is 20 bytes but padded to 32. Here we extract the
+    // address from the 32 bytes.
+    const size_t ADDRESS_HEX_SIZE = sizeof(crypto::eth_address) * 2;
+    std::string_view result = tools::string_safe_substr(src, src.size() - ADDRESS_HEX_SIZE, ADDRESS_HEX_SIZE);
+    return result;
+}
+
 ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_view blockNumber)
 {
     ethyl::ReadCallData callData     = {};
@@ -212,7 +221,7 @@ ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_vi
     // dynamic) hence the offset struct is encoded in the first 32 byte element.
     std::string_view    offsetToServiceNodeBlobHex = tools::string_safe_substr(callResultIt, parsingIt, U256_HEX_SIZE);
     size_t              offsetToServiceNodeBlob    = ethyl::utils::hexStringToU64(offsetToServiceNodeBlobHex);
-    const size_t        serviceNodeIt              = offsetToServiceNodeBlob;
+    const size_t        serviceNodeIt              = (offsetToServiceNodeBlob * 2); // Denoted in bytes, hence x2 for hex
     parsingIt                                      = serviceNodeIt;
 
     // NOTE: Walk and grab each static element of the struct
@@ -230,7 +239,7 @@ ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_vi
 
     // NOTE: Now jump to parsing the contributor array, first the static field (number of
     // contributors)
-    parsingIt                                       = serviceNodeIt + offsetToContributorArray;
+    parsingIt                                       = serviceNodeIt + (offsetToContributorArray * 2); // Denoted in bytes, hence x2 for hex
     std::string_view    contributorSizeHex          = tools::string_safe_substr(callResultIt, parsingIt, U256_HEX_SIZE); parsingIt += contributorSizeHex.size();
     const size_t        contributorSize             = ethyl::utils::hexStringToU64(contributorSizeHex);
 
@@ -356,10 +365,12 @@ ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_vi
             callResultHex);
 
     for (size_t it = 0; it < contributorArrayHex.size(); it += HEX_PER_CONTRIBUTOR) {
-        std::string_view addressHex      = tools::string_safe_substr(contributorArrayHex, it + 0,                ADDRESS_HEX_SIZE);
+        Contributor& contributor    = result.contributors[result.contributorsSize++];
+        std::string_view addressHex = tools::string_safe_substr(contributorArrayHex, it + 0, ADDRESS_HEX_SIZE);
+        addressHex                  = hex64ToAddress40Hex(addressHex);
+
         std::string_view stakedAmountHex = tools::string_safe_substr(contributorArrayHex, it + ADDRESS_HEX_SIZE, U256_HEX_SIZE);
 
-        Contributor& contributor = result.contributors[result.contributorsSize++];
         if (!tools::hex_to_type(addressHex, contributor.addr)) {
             oxen::log::error(
                     logcat,
@@ -378,14 +389,24 @@ ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_vi
     }
 
     // NOTE: Deserialize linked list
-    result.next                = ethyl::utils::hexStringToU64(nextHex);
-    result.prev                = ethyl::utils::hexStringToU64(prevHex);
+    result.next = ethyl::utils::hexStringToU64(nextHex);
+    result.prev = ethyl::utils::hexStringToU64(prevHex);
 
-    // NOTE: Deserialise recipient
-    const size_t ETH_ADDRESS_HEX_SIZE = 20 * 2;
-    std::vector<unsigned char> recipientBytes = ethyl::utils::fromHexString(operatorHex.substr(operatorHex.size() - ETH_ADDRESS_HEX_SIZE, ETH_ADDRESS_HEX_SIZE));
-    assert(recipientBytes.size() == result.operatorAddr.data_.max_size());
-    std::memcpy(result.operatorAddr.data(), recipientBytes.data(), recipientBytes.size());
+    // NOTE: Deserialise operator
+    operatorHex = hex64ToAddress40Hex(operatorHex);
+    if (!tools::hex_to_type(operatorHex, result.operatorAddr)) {
+        oxen::log::error(
+                logcat,
+                "Operator address hex '{}' ({} bytes) failed to be parsed into address "
+                "({} bytes) for service node {} with BLS public key {} at height {}.",
+                operatorHex,
+                operatorHex.size(),
+                result.operatorAddr.data_.max_size(),
+                index,
+                pubkeyHex,
+                blockNumber);
+        return result;
+    }
 
     result.pubkey = std::string(pubkeyHex);
 
