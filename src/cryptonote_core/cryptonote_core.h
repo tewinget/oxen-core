@@ -951,7 +951,7 @@ class core : public i_miner_handler {
     const std::vector<service_nodes::key_image_blacklist_entry>&
     get_service_node_blacklisted_key_images() const;
 
-    BLSRewardsResponse bls_rewards_request(const std::string& eth_address);
+    BLSRewardsResponse bls_rewards_request(const std::string& eth_address, const std::string& oxen_address);
     aggregateExitResponse aggregate_exit_request(const std::string& bls_key);
     aggregateExitResponse aggregate_liquidation_request(const std::string& bls_key);
     std::vector<std::pair<std::string, uint64_t>> get_bls_pubkeys() const;

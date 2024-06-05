@@ -12,16 +12,20 @@
 static auto logcat = oxen::log::Cat("bls_omq");
 
 namespace oxen::bls {
-std::string get_reward_balance_request_message(BLSSigner* signer, const crypto::eth_address& eth_address, uint64_t amount)
+GetRewardBalanceSignatureParts get_reward_balance_request_message(BLSSigner* signer, const crypto::eth_address& eth_address, uint64_t amount)
 {
     // NOTE: Reconstruct the C++ equivalent of Solidity's `abi.encodePacked(rewardTag, address, amount)`
-    std::string result;
+    GetRewardBalanceSignatureParts result = {};
     if (signer) {
-        result = fmt::format(
+        result.message_to_sign = fmt::format(
                 "0x{}{}{}",
                 signer->buildTag(signer->rewardTag),
-                ethyl::utils::padToNBytes(oxenc::type_to_hex(eth_address), 20, ethyl::utils::PaddingDirection::LEFT),
-                ethyl::utils::padTo32Bytes(ethyl::utils::decimalToHex(amount), ethyl::utils::PaddingDirection::LEFT));
+                ethyl::utils::padToNBytes(
+                        oxenc::type_to_hex(eth_address), 20, ethyl::utils::PaddingDirection::LEFT),
+                ethyl::utils::padTo32Bytes(
+                        ethyl::utils::decimalToHex(amount), ethyl::utils::PaddingDirection::LEFT));
+
+        result.hash_to_sign = BLSSigner::hashHex(result.message_to_sign);
     }
     return result;
 }
@@ -128,12 +132,14 @@ static VerifyDataResult data_parts_count_is_valid(std::span<const T> data, size_
 enum class GetRewardBalanceRequestField
 {
     Address,
+    OxenAddress,
     Amount,
     _count,
 };
 
 struct GetRewardBalanceRequest {
     crypto::eth_address address;
+    std::string oxen_address;
     uint64_t amount;
 };
 
@@ -180,6 +186,10 @@ GetRewardBalanceResponse create_reward_balance_request(
                 oxenc::from_hex(payload.begin(), payload.end(), reinterpret_cast<char*>(&request.address));
             } break;
 
+            case GetRewardBalanceRequestField::OxenAddress: {
+                request.oxen_address = m.data[field_index];
+            } break;
+
             case GetRewardBalanceRequestField::Amount: {
                 VerifyDataResult to_result = payload_to_number("rewards amount", payload, request.amount);
                 if (!to_result.good) {
@@ -195,8 +205,8 @@ GetRewardBalanceResponse create_reward_balance_request(
     }
 
     // NOTE: Get the rewards amount from the DB
-    std::string address_str = fmt::format("0x{}", request.address);
-    auto [batchdb_height, amount] = sql_db->get_accrued_earnings(address_str);
+    // std::string address_str = fmt::format("0x{}", request.address);
+    auto [batchdb_height, amount] = sql_db->get_accrued_earnings(request.oxen_address);
     if (amount == 0) {
         result.error = fmt::format(
                 "OMQ command '{}' requested an address '{}' that has a zero balance in the "
@@ -219,9 +229,7 @@ GetRewardBalanceResponse create_reward_balance_request(
     }
 
     // NOTE: Prepare the signature
-    std::string const message_to_sign =
-            oxen::bls::get_reward_balance_request_message(signer, request.address, amount);
-    crypto::bytes<32> const hash_message = signer->hashHex(message_to_sign);
+    GetRewardBalanceSignatureParts const signature_parts = get_reward_balance_request_message(signer, request.address, amount);
 
     // NOTE: Fill a response
     assert(result.error.empty());
@@ -231,7 +239,24 @@ GetRewardBalanceResponse create_reward_balance_request(
     result.amount                 = amount;
     result.height                 = batchdb_height;
     result.bls_pkey               = signer->getPublicKey();
-    result.message_hash_signature = signer->signHash(hash_message);
+    result.message_hash_signature = signer->signHash(signature_parts.hash_to_sign);
+
+    oxen::log::trace(
+            logcat,
+            "Response generated for BLS reward request:\n"
+            "  - status:                 {}\n"
+            "  - address:                {}\n"
+            "  - amount:                 {}\n"
+            "  - height:                 {}\n"
+            "  - bls_pkey:               {}\n"
+            "  - message_hash_signature: {}\n"
+            ,
+            result.status,
+            result.address,
+            result.amount,
+            result.height,
+            result.bls_pkey.getStr(),
+            result.message_hash_signature.getStr());
     return result;
 }
 
@@ -261,7 +286,7 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
             } break;
 
             case oxen::bls::GetRewardBalanceResponseField::Address: {
-                size_t required_hex_size = sizeof(crypto::bls_public_key) * 2;
+                size_t required_hex_size = sizeof(crypto::eth_address) * 2;
                 VerifyDataResult to_result = payload_is_hex("Ethereum address", payload, required_hex_size);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
@@ -271,7 +296,7 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
             } break;
 
             case oxen::bls::GetRewardBalanceResponseField::Amount: {
-                VerifyDataResult to_result = payload_to_number("rewards amount", payload, result.height);
+                VerifyDataResult to_result = payload_to_number("rewards amount", payload, result.amount);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
                     return result;
@@ -297,13 +322,19 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
             } break;
 
             case oxen::bls::GetRewardBalanceResponseField::MessageHashSignature: {
-                size_t required_hex_size = sizeof(blsSignature) * 2;
-                VerifyDataResult to_result = payload_is_hex("BLS signature", payload, required_hex_size);
-                if (!to_result.good) {
-                    result.error = std::move(to_result.error);
-                    return result;
+                // NOTE: Deserializing the hex will produce a fixed sized signature. Any errors here
+                // will be thrown.
+                try {
+                    result.message_hash_signature = bls_utils::HexToSignature(payload);
+                } catch ([[maybe_unused]] const std::exception &e) {
+                    // NOTE: herumi/bls throws a generic setStr failed error which we ignore. We
+                    // will emit a better error.
+                    result.error = fmt::format(
+                            "Specified a BLS signature '{}' with length {} which could not be "
+                            "validly deserialised into a signature",
+                            write_and_3_dot_truncate(payload, 512),
+                            payload.size());
                 }
-                result.message_hash_signature = bls_utils::HexToSignature(payload);
             } break;
 
             case oxen::bls::GetRewardBalanceResponseField::_count: {

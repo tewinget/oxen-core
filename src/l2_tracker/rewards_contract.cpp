@@ -325,6 +325,36 @@ ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_vi
         return result;
     }
 
+    oxen::log::trace(
+            logcat,
+            "We parsed service node {} with BLS public key {} at height {}.\n"
+            "The service node blob components were:\n"
+            "\n"
+            "  - nextHex:                   {}\n"
+            "  - prevHex:                   {}\n"
+            "  - operatorHex:               {}\n"
+            "  - pubkeyHex:                 {}\n"
+            "  - leaveRequestTimestampHex:  {}\n"
+            "  - depositHex:                {}\n"
+            "  - contributorSize:           {}\n"
+            "  - contributorDataRemaining:  {}\n"
+            "\n"
+            "The raw blob was:\n\n{}"
+            ,
+            index,
+            pubkeyHex,
+            blockNumber
+            ,
+            nextHex,
+            prevHex,
+            operatorHex,
+            pubkeyHex,
+            leaveRequestTimestampHex,
+            depositHex,
+            contributorSizeHex,
+            contributorArrayHex,
+            callResultHex);
+
     for (size_t it = 0; it < contributorArrayHex.size(); it += HEX_PER_CONTRIBUTOR) {
         std::string_view addressHex      = tools::string_safe_substr(contributorArrayHex, it + 0,                ADDRESS_HEX_SIZE);
         std::string_view stakedAmountHex = tools::string_safe_substr(contributorArrayHex, it + ADDRESS_HEX_SIZE, U256_HEX_SIZE);
@@ -361,7 +391,7 @@ ContractServiceNode RewardsContract::serviceNodes(uint64_t index, std::string_vi
 
     // NOTE: Deserialise metadata
     result.leaveRequestTimestamp = ethyl::utils::hexStringToU64(leaveRequestTimestampHex);
-    result.deposit = ethyl::utils::hexStringToU64(depositHex);
+    result.deposit = depositHex;
     result.good = true;
     return result;
 }

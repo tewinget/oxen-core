@@ -120,9 +120,11 @@ static void logNetworkRequestFailedWarning(
 
 BLSRewardsResponse BLSAggregator::rewards_request(
         const crypto::eth_address& address,
+        const std::string& oxen_address,
         uint64_t amount,
         uint64_t height,
         std::span<const crypto::x25519_public_key> exclude) {
+    oxen::log::trace(logcat, "Initiating rewards request of {} SENT for {} at height {}", amount, address, height);
 
     // NOTE: Validate the arguments
     if (address == crypto::eth_address{}) {
@@ -143,7 +145,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
                 height));
     }
 
-    if (height >= service_node_list.height()) {
+    if (height > service_node_list.height()) {
         throw std::invalid_argument(fmt::format(
                 "Aggregating a rewards request for '{}' for {} SENT at height {} is invalid "
                 "because the height is greater than the blockchain height {}. Request rejected",
@@ -160,17 +162,20 @@ BLSRewardsResponse BLSAggregator::rewards_request(
         std::mutex mutex;                   /// `processNodes` dispatches to a threadpool hence we require synchronisation
         std::vector<std::string> signers;   /// List of BLS public keys that signed the signature
         bls::Signature aggregate_signature; /// The signature we aggregate BLS responses to
-        std::string message_to_sign;        /// The message that each node must be signing against
+        std::string message_to_hash;        /// The message that each node must hash
+        crypto::bytes<32> hash_to_sign;     /// The hash of the message that will be signed
     };
 
     WorkPayload work = {};
     work.aggregate_signature.clear();
-    work.message_to_sign = oxen::bls::get_reward_balance_request_message(signer, address, amount);
 
     // NOTE: Add our own signature to the aggregate signature
     {
-        crypto::bytes<32> message_to_sign_hash = BLSSigner::hashHex(work.message_to_sign);
-        bls::Signature my_signature = signer->signHash(message_to_sign_hash);
+        oxen::bls::GetRewardBalanceSignatureParts signature_parts = oxen::bls::get_reward_balance_request_message(signer, address, amount);
+        work.message_to_hash = std::move(signature_parts.message_to_sign);
+        work.hash_to_sign    = signature_parts.hash_to_sign;
+
+        bls::Signature my_signature = signer->signHash(work.hash_to_sign);
         work.aggregate_signature.add(my_signature);
         work.signers.push_back(signer->getPublicKeyHex());
     }
@@ -212,7 +217,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
                             oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD,
                             bls_utils::PublicKeyToHex(response.bls_pkey),
                             request_result.sn_address.x_pkey,
-                            request_result.sn_address.ip,
+                            epee::string_tools::get_ip_string_from_int32(request_result.sn_address.ip),
                             request_result.sn_address.port,
                             height,
                             address,
@@ -225,7 +230,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
 
                 // NOTE: Validate that the signature signed what we thought it
                 // did by reconstructing the message.
-                if (!response.message_hash_signature.verifyHash(response.bls_pkey, work.message_to_sign)) {
+                if (!response.message_hash_signature.verifyHash(response.bls_pkey, work.hash_to_sign.data(), work.hash_to_sign.size())) {
                     oxen::log::trace(
                             logcat,
                             "OMQ request '{}' rejected: Service node with BLS public key {} "
@@ -242,12 +247,12 @@ BLSRewardsResponse BLSAggregator::rewards_request(
                             oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD,
                             bls_utils::PublicKeyToHex(response.bls_pkey),
                             request_result.sn_address.x_pkey,
-                            request_result.sn_address.ip,
+                            epee::string_tools::get_ip_string_from_int32(request_result.sn_address.ip),
                             request_result.sn_address.port,
                             height,
                             address,
                             amount,
-                            work.message_to_sign);
+                            work.message_to_hash);
                     return;
                 }
 
@@ -255,7 +260,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
                 work.aggregate_signature.add(response.message_hash_signature);
                 work.signers.push_back(bls_utils::PublicKeyToHex(response.bls_pkey));
             },
-            std::array{oxenc::type_to_hex(address), std::to_string(amount)},
+            std::array{oxenc::type_to_hex(address), oxen_address, std::to_string(amount)},
             exclude);
 
     const auto sig_str = bls_utils::SignatureToHex(work.aggregate_signature);
@@ -263,7 +268,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
             .address = "0x" + oxenc::type_to_hex(address),
             .amount = amount,
             .height = height,
-            .signed_message = work.message_to_sign,
+            .signed_message = work.message_to_hash,
             .signers_bls_pubkeys = work.signers,
             .signature = sig_str};
     return result;

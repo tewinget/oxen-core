@@ -99,7 +99,7 @@ struct ContractServiceNode {
     crypto::eth_address operatorAddr;
     std::string pubkey;
     uint64_t leaveRequestTimestamp;
-    uint64_t deposit;
+    std::string deposit;
     std::array<Contributor, 10> contributors;
     size_t contributorsSize;
 };

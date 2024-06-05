@@ -69,7 +69,7 @@ inline constexpr uint64_t SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR = 50;
 inline constexpr uint64_t COINBASE_BLOB_RESERVED_SIZE = 600;
 
 #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
-inline constexpr auto TARGET_BLOCK_TIME = 6s;
+inline constexpr auto TARGET_BLOCK_TIME = 14s;
 #else
 inline constexpr auto TARGET_BLOCK_TIME = 2min;
 #endif

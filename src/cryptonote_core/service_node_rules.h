@@ -19,12 +19,12 @@ inline constexpr size_t PULSE_QUORUM_ENTROPY_LAG =
              // quorums.
 #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
 inline constexpr auto PULSE_ROUND_TIME = cryptonote::TARGET_BLOCK_TIME + 6s;
-inline constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION = 2s;
-inline constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 2s;
-inline constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION = 2s;
-inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_HASH_DURATION = 2s;
-inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_DURATION = 2s;
-inline constexpr auto PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION = 2s;
+inline constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_HASH_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION = 1s;
 #else
 inline constexpr auto PULSE_ROUND_TIME = 60s;
 inline constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION = 10s;

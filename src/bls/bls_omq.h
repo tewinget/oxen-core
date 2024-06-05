@@ -41,9 +41,15 @@ struct GetRewardBalanceResponse {
     ::bls::Signature message_hash_signature;
 };
 
+struct GetRewardBalanceSignatureParts
+{
+    std::string message_to_sign;    // Message in hex that must be signed via BLSSigner::hasHex
+    crypto::bytes<32> hash_to_sign; // Hash that must be signed via BLSSigner::signHash
+};
+
 constexpr static inline std::string_view BLS_OMQ_REWARD_BALANCE_CMD = "bls.get_reward_balance";
 
-std::string get_reward_balance_request_message(
+GetRewardBalanceSignatureParts get_reward_balance_request_message(
         BLSSigner* signer, const crypto::eth_address& address, uint64_t amount);
 GetRewardBalanceResponse create_reward_balance_request(
         const oxenmq::Message& m, BLSSigner* signer, cryptonote::BlockchainSQLite* sql_db);
