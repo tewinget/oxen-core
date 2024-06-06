@@ -253,8 +253,8 @@ class Daemon(RPCDaemon):
     def get_bls_pubkeys(self):
         return self.json_rpc("bls_pubkey_request", {}).json()["result"]["nodes"]
 
-    def get_bls_rewards(self, address):
-        return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
+    def get_bls_rewards(self, address, oxen_address):
+        return self.json_rpc("bls_rewards_request", {"address": address, "oxen_address": oxen_address}, timeout=1000).json()
 
     def get_exit_request(self, bls_key):
         return self.json_rpc("bls_exit_request", {"bls_key": bls_key}).json()

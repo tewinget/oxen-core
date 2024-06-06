@@ -132,12 +132,14 @@ static VerifyDataResult data_parts_count_is_valid(std::span<const T> data, size_
 enum class GetRewardBalanceRequestField
 {
     Address,
+    OxenAddress,
     Amount,
     _count,
 };
 
 struct GetRewardBalanceRequest {
     crypto::eth_address address;
+    std::string oxen_address;
     uint64_t amount;
 };
 
@@ -184,6 +186,10 @@ GetRewardBalanceResponse create_reward_balance_request(
                 oxenc::from_hex(payload.begin(), payload.end(), reinterpret_cast<char*>(&request.address));
             } break;
 
+            case GetRewardBalanceRequestField::OxenAddress: {
+                request.oxen_address = m.data[field_index];
+            } break;
+
             case GetRewardBalanceRequestField::Amount: {
                 VerifyDataResult to_result = payload_to_number("rewards amount", payload, request.amount);
                 if (!to_result.good) {
@@ -199,8 +205,8 @@ GetRewardBalanceResponse create_reward_balance_request(
     }
 
     // NOTE: Get the rewards amount from the DB
-    std::string address_str = fmt::format("0x{}", request.address);
-    auto [batchdb_height, amount] = sql_db->get_accrued_earnings(address_str);
+    // std::string address_str = fmt::format("0x{}", request.address);
+    auto [batchdb_height, amount] = sql_db->get_accrued_earnings(request.oxen_address);
     if (amount == 0) {
         result.error = fmt::format(
                 "OMQ command '{}' requested an address '{}' that has a zero balance in the "

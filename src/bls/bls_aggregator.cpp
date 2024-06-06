@@ -120,6 +120,7 @@ static void logNetworkRequestFailedWarning(
 
 BLSRewardsResponse BLSAggregator::rewards_request(
         const crypto::eth_address& address,
+        const std::string& oxen_address,
         uint64_t amount,
         uint64_t height,
         std::span<const crypto::x25519_public_key> exclude) {
@@ -259,7 +260,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
                 work.aggregate_signature.add(response.message_hash_signature);
                 work.signers.push_back(bls_utils::PublicKeyToHex(response.bls_pkey));
             },
-            std::array{oxenc::type_to_hex(address), std::to_string(amount)},
+            std::array{oxenc::type_to_hex(address), oxen_address, std::to_string(amount)},
             exclude);
 
     const auto sig_str = bls_utils::SignatureToHex(work.aggregate_signature);
