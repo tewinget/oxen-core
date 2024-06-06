@@ -258,19 +258,34 @@ class SNNetwork:
                " for ",
                hardhatAccount)
 
+        # TODO: We send the required balance from the hardhat account to the
+        # contract to guarantee that claiming will succeed. We should hook up
+        # the pool to the rewards contract and fund the contract from there.
+        unsent_tx = self.servicenodecontract.erc20_contract.functions.transfer(self.servicenodecontract.contract_address, rewards["result"]["amount"] + 100).build_transaction({
+            "from": self.servicenodecontract.acc.address,
+            'nonce': self.servicenodecontract.web3.eth.get_transaction_count(self.servicenodecontract.acc.address)})
+        signed_tx = self.servicenodecontract.web3.eth.account.sign_transaction(unsent_tx, private_key=self.servicenodecontract.acc.key)
+        tx_hash = self.servicenodecontract.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        self.servicenodecontract.foundation_pool_contract.functions.payoutReleased().call()
+
+        vprint("Foundation pool balance: {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.foundation_pool_address)))
+        vprint("Rewards contract balance: {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.contract_address)))
+
+        # NOTE: Then update the rewards blaance
         result = self.servicenodecontract.updateRewardsBalance(
                 hardhatAccount,
                 rewards["result"]["amount"],
                 rewards["result"]["signature"],
                 rewards["result"]["non_signers_bls_pubkeys"])
 
-        vprint("Contract rewards update exected, has ['available', 'claimed'] now respectively: ",
+        vprint("Contract rewards update executed, has ['available', 'claimed'] now respectively: ",
                self.servicenodecontract.recipients(hardhatAccount),
                " for ",
                hardhatAccount)
 
         vprint("Balance for '{}' before claim {}".format(hardhatAccount, self.servicenodecontract.erc20balance(hardhatAccount)))
 
+        # NOTE: Now claim the rewards
         self.servicenodecontract.claimRewards()
         vprint("Contract rewards after claim is now ['available', 'claimed'] respectively: ",
                self.servicenodecontract.recipients(hardhatAccount),

@@ -79,6 +79,7 @@ class ServiceNodeRewardContract:
 
     def addBLSPublicKey(self, args):
         # function addBLSPublicKey(uint256 pkX, uint256 pkY, uint256 sigs0, uint256 sigs1, uint256 sigs2, uint256 sigs3, uint256 serviceNodePubkey, uint256 serviceNodeSignature) public {
+        # function addBLSPublicKey(BN256G1.G1Point blsPubkey, BLSSignatureParams blsSignature, ServiceNodeParams serviceNodeParams, Contributor[] contributors)
         bls_param = {
                 'X': int(args["bls_pubkey"][:64], 16),
                 'Y': int(args["bls_pubkey"][64:128], 16),
