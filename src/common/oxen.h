@@ -85,9 +85,6 @@ struct defer_helper {
 #define OXEN_DEFER \
     auto const OXEN_TOKEN_COMBINE(oxen_defer_, __LINE__) = oxen::defer_helper() + [&]()
 
-#define OXEN_CHECK_ERROR(expr, logcat, ...) \
-    ((expr) ? true : (oxen::log::error(logcat, "Check failed '" #expr "'. ", ## __VA_ARGS__), false))
-
 template <typename T, size_t N>
 constexpr size_t array_count(T (&)[N]) {
     return N;

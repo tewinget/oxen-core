@@ -811,9 +811,9 @@ bool get_round_timings(
     times.ideal_timestamp = pulse::time_point(
             times.genesis_timestamp + (cryptonote::TARGET_BLOCK_TIME * delta_height));
 
-#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)  // NOTE: Debug, make next block start relatively soon
     times.r0_timestamp = times.prev_timestamp + service_nodes::PULSE_ROUND_TIME;
-#else  // NOTE: Debug, make next block start relatively soon
+#else
     times.r0_timestamp = std::clamp(
             times.ideal_timestamp,
             times.prev_timestamp + service_nodes::PULSE_MIN_TARGET_BLOCK_TIME,

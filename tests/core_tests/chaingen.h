@@ -857,11 +857,6 @@ public:
     cryptonote::block_verification_context bvc = {};
     std::string bd                    = t_serializable_object_to_blob(block);
     std::vector<cryptonote::block> pblocks;
-
-    if (!entry.can_be_added_to_blockchain) {
-        int x = 5;
-    }
-
     if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {bd, {}, {}}), pblocks))
     {
       m_c.handle_incoming_block(bd, &block, bvc, nullptr);
