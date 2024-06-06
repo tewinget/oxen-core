@@ -2308,7 +2308,6 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 
     struct request_parameters {
         std::string address;
-        std::string oxen_address;
     } request;
 };
 

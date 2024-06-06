@@ -489,7 +489,7 @@ void parse_request(GET_SERVICE_NODE_REGISTRATION_CMD& cmd, rpc_input in) {
 }
 
 void parse_request(BLS_REWARDS_REQUEST& cmd, rpc_input in) {
-    get_values(in, "address", required{cmd.request.address}, "oxen_address", required{cmd.request.oxen_address});
+    get_values(in, "address", required{cmd.request.address});
 }
 
 void parse_request(BLS_EXIT_REQUEST& cmd, rpc_input in) {
