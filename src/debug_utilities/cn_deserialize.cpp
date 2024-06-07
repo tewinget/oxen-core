@@ -30,7 +30,6 @@
 #include <oxenc/hex.h>
 
 #include "common/command_line.h"
-#include "common/hex.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/blockchain.h"
@@ -85,7 +84,7 @@ struct extra_printer {
         return "SN deregistration (pre-HF12)";
     }
     std::string operator()(const tx_extra_tx_secret_key& x) {
-        return "TX secret key: {}" + tools::type_to_hex(x.key);
+        return "TX secret key: {}" + tools::hex_guts(x.key);
     }
     std::string operator()(const tx_extra_tx_key_image_proofs& x) {
         return "TX key image proofs ({})"_format(x.proofs.size());
@@ -132,22 +131,31 @@ struct extra_printer {
     std::string operator()(const tx_extra_ethereum_new_service_node& x) {
         std::string contributors_info;
         for (const auto& contributor : x.contributors) {
-            contributors_info += fmt::format("{{address: {}, amount: {}}}, ", tools::type_to_hex(contributor.address), print_money(contributor.amount));
+            contributors_info += fmt::format(
+                    "{{address: {}, amount: {}}}, ",
+                    contributor.address,
+                    print_money(contributor.amount));
         }
         return "New Ethereum Service Node: version {}, bls key {}, eth address {}, sn pubkey {}, fee {}, contributors [{}] signature {}"_format(
-            x.version, tools::type_to_hex(x.bls_key), tools::type_to_hex(x.eth_address), tools::type_to_hex(x.service_node_pubkey), print_money(x.fee), contributors_info, tools::type_to_hex(x.signature));
+                x.version,
+                x.bls_pubkey,
+                x.eth_address,
+                x.service_node_pubkey,
+                print_money(x.fee),
+                contributors_info,
+                x.signature);
     }
     std::string operator()(const tx_extra_ethereum_service_node_leave_request& x) {
         return "Ethereum Service Node Leave Request: version {}, bls key {}"_format(
-            x.version, tools::type_to_hex(x.bls_key));
+                x.version, x.bls_pubkey);
     }
     std::string operator()(const tx_extra_ethereum_service_node_exit& x) {
         return "Ethereum Service Node Exit: version {}, eth address {}, amount {}, bls key {}"_format(
-            x.version, tools::type_to_hex(x.eth_address), print_money(x.amount), tools::type_to_hex(x.bls_key));
+                x.version, x.eth_address, print_money(x.amount), x.bls_pubkey);
     }
     std::string operator()(const tx_extra_ethereum_service_node_deregister& x) {
         return "Ethereum Service Node Deregister: version {}, bls key {}"_format(
-            x.version, tools::type_to_hex(x.bls_key));
+                x.version, x.bls_pubkey);
     }
 };
 

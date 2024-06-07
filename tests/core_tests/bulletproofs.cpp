@@ -28,6 +28,7 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include "common/guts.h"
 #include "ringct/rctSigs.h"
 #include "ringct/bulletproofs.h"
 #include "chaingen.h"
@@ -428,7 +429,7 @@ bool gen_rct2_tx_clsag_malleability::generate(std::vector<test_event_entry>& eve
     CHECK_TEST_CONDITION(tx.rct_signatures.type == rct::RCTType::CLSAG);
     CHECK_TEST_CONDITION(!tx.rct_signatures.p.CLSAGs.empty());
     rct::key x;
-    CHECK_TEST_CONDITION(tools::hex_to_type("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa", x));
+    CHECK_TEST_CONDITION(tools::try_load_from_hex_guts("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"sv, x));
     tx.rct_signatures.p.CLSAGs[0].D = rct::addKeys(tx.rct_signatures.p.CLSAGs[0].D, x);
     return true;
   });

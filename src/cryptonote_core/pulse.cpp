@@ -1794,8 +1794,7 @@ namespace {
 
                 for (size_t index = 0; index < quorum.size(); index++) {
                     if (auto& random_value = quorum[index]; random_value) {
-                        epee::wipeable_string string =
-                                tools::hex_guts(random_value->data);
+                        epee::wipeable_string string = tools::hex_guts(random_value->data);
 
 #if defined(NDEBUG)
                         // Mask the random value generated incase someone is snooping logs

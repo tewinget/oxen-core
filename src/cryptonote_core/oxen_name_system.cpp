@@ -14,7 +14,6 @@
 #include <variant>
 #include <vector>
 
-#include "common/hex.h"
 #include "common/oxen.h"
 #include "common/string_util.h"
 #include "crypto/hash.h"
@@ -140,7 +139,7 @@ namespace {
         else if (data.is_renewing())
             extra += "renewal";
         else
-            fmt::format_to(append, "signature={}", tools::type_to_hex(data.signature.data));
+            fmt::format_to(append, "signature={}", tools::hex_guts(data.signature.data));
 
         fmt::format_to(append, ", type={}, name_hash={}}}", data.type, data.name_hash);
         return extra;

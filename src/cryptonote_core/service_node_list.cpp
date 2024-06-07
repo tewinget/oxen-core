@@ -45,7 +45,6 @@ extern "C" {
 }
 
 #include "blockchain.h"
-#include "common/hex.h"
 #include "common/i18n.h"
 #include "common/lock.h"
 #include "common/random.h"
@@ -4279,7 +4278,7 @@ crypto::public_key service_node_list::bls_public_key_lookup(
     }
 
     if (!found) {
-        log::error(logcat, "Could not find bls key: {}", tools::type_to_hex(bls_key));
+        log::error(logcat, "Could not find bls pubkey: {}", bls_key);
         throw std::runtime_error("Could not find bls key");
     }
 
@@ -4862,15 +4861,19 @@ bool make_registration_cmd(
 
     cmd.clear();
     if (make_friendly)
-        cmd += "{} ({}):\n\n"_format(
+        fmt::format_to(
+                std::back_inserter(cmd),
+                "{} ({}):\n\n",
                 tr("Run this command in the operator's wallet"),
                 cryptonote::get_account_address_as_str(nettype, false, reg.reserved[0].first));
 
-    cmd += "register_service_node {} {} {} {}"_format(
+    fmt::format_to(
+            std::back_inserter(cmd),
+            "register_service_node {} {} {:x} {:x}",
             tools::join(" ", args),
             reg.hf,
-            tools::type_to_hex(reg.service_node_pubkey),
-            tools::type_to_hex(reg.signature));
+            reg.service_node_pubkey,
+            reg.signature);
 
     return true;
 }

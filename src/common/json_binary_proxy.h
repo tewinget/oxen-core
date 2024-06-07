@@ -1,10 +1,11 @@
 #pragma once
 
+#include <oxenc/common.h>
+
 #include <nlohmann/json.hpp>
 #include <string_view>
 #include <unordered_set>
 
-#include "basic_char.h"
 #include "crypto/crypto.h"
 #include "ringct/rctTypes.h"
 
@@ -93,7 +94,7 @@ class json_binary_proxy {
 
     /// Assigns binary data from a string_view over a 1-byte, non-char type (e.g. unsigned char or
     /// uint8_t).
-    template <basic_char Char>
+    template <oxenc::basic_char Char>
         requires(!std::same_as<Char, char>)
     nlohmann::json& operator=(std::basic_string_view<Char> binary_data) {
         return *this = std::string_view{

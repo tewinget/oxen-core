@@ -307,14 +307,8 @@ void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
 
 // Must be called with the address_str_cache_mutex held!
 std::string BlockchainSQLite::get_address_str(const cryptonote::batch_sn_payment& addr) {
-    if (addr.eth_address.has_value()) {
-        auto eth_address = tools::type_to_hex(addr.eth_address.value());
-        std::transform(
-                eth_address.begin(), eth_address.end(), eth_address.begin(), [](unsigned char c) {
-                    return std::tolower(c);
-                });
-        return "0x" + eth_address;
-    }
+    if (addr.eth_address)
+        return "0x{:x}"_format(addr.eth_address);
     auto& address_str = address_str_cache[addr.address_info.address];
     if (address_str.empty())
         address_str =
@@ -327,7 +321,7 @@ bool BlockchainSQLite::update_sn_rewards_address(
     auto update_address = prepared_st(
             "UPDATE batched_payments_accrued SET address = ? WHERE address = ?"
             " ON CONFLICT (address) DO UPDATE SET amount = amount + excluded.amount");
-    bool result = db::exec_query(update_address, tools::type_to_hex(eth_address), oxen_address) > 0;
+    bool result = db::exec_query(update_address, "0x{:x}"_format(eth_address), oxen_address) > 0;
     return result;
 }
 

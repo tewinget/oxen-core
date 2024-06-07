@@ -326,3 +326,16 @@ template <>
 struct std::hash<crypto::bls_public_key> : crypto::raw_hasher<crypto::bls_public_key> {};
 template <>
 struct std::hash<crypto::eth_address> : crypto::raw_hasher<crypto::eth_address> {};
+
+// For an eth address, override the default format of <...hex...> to be 0x...hex... instead.  (But
+// don't override for non-default formatting).
+template <>
+struct fmt::formatter<crypto::eth_address> : formattable::hex_span_formatter {
+    fmt::format_context::iterator default_format(
+            std::span<const unsigned char> val, fmt::format_context& ctx) const override {
+        auto out = ctx.out();
+        *out++ = '0';
+        *out++ = 'x';
+        return oxenc::to_hex(val.begin(), val.end(), out);
+    }
+};

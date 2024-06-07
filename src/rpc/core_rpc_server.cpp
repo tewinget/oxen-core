@@ -44,7 +44,7 @@
 #include <variant>
 
 #include "common/command_line.h"
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/json_binary_proxy.h"
 #include "common/oxen.h"
 #include "common/random.h"
@@ -413,7 +413,7 @@ GET_ALT_BLOCKS_HASHES_BIN::response core_rpc_server::invoke(
     res.blks_hashes.reserve(blks.size());
 
     for (auto const& blk : blks) {
-        res.blks_hashes.push_back(tools::type_to_hex(get_block_hash(blk)));
+        res.blks_hashes.push_back(tools::hex_guts(get_block_hash(blk)));
     }
 
     log::debug(logcat, "on_get_alt_blocks_hashes: {} blocks ", blks.size());
@@ -560,7 +560,7 @@ namespace {
         std::vector<std::string> hexes;
         hexes.reserve(v.size());
         for (auto& x : v)
-            hexes.push_back(tools::type_to_hex(x));
+            hexes.push_back(tools::hex_guts(x));
         return hexes;
     }
 
@@ -714,7 +714,7 @@ namespace {
                 parent[key] = get_account_address_as_str(
                         nettype, owner.wallet.is_subaddress, owner.wallet.address);
             else if (owner.type == ons::generic_owner_sig_type::ed25519)
-                json_binary_proxy{parent[key], json_binary_proxy::fmt::hex} = owner.ed25519;
+                json_binary_proxy{parent[key], format} = owner.ed25519;
         }
         void operator()(const tx_extra_oxen_name_system& x) {
             json ons{};
@@ -750,29 +750,29 @@ namespace {
             set("signature", tools::view_guts(x.signature));
         }
         void operator()(const tx_extra_ethereum_new_service_node& x) {
-            set("bls_key", tools::type_to_hex(x.bls_key));
-            set("eth_address", tools::type_to_hex(x.eth_address));
-            set("service_node_pubkey", tools::view_guts(x.service_node_pubkey));
-            set("signature", tools::view_guts(x.signature));
-            set("fee", tools::view_guts(x.fee));
+            set("bls_pubkey", x.bls_pubkey);
+            set("eth_address", x.eth_address);
+            set("service_node_pubkey", x.service_node_pubkey);
+            set("signature", x.signature);
+            set("fee", x.fee);
             auto contributors = json::array();
             for (auto& contributor : x.contributors) {
                 auto& c = contributors.emplace_back();
-                c["address"] = tools::type_to_hex(contributor.address);
+                json_binary_proxy{c["address"], format} = contributor.address;
                 c["amount"] = contributor.amount;
             }
             set("contributors", contributors);
         }
         void operator()(const tx_extra_ethereum_service_node_leave_request& x) {
-            set("bls_key", tools::type_to_hex(x.bls_key));
+            set("bls_key", x.bls_key);
         }
         void operator()(const tx_extra_ethereum_service_node_exit& x) {
-            set("eth_address", tools::type_to_hex(x.eth_address));
+            set("eth_address", x.eth_address);
             set("amount", x.amount);
-            set("bls_key", tools::type_to_hex(x.bls_key));
+            set("bls_key", x.bls_key);
         }
         void operator()(const tx_extra_ethereum_service_node_deregister& x) {
-            set("bls_key", tools::type_to_hex(x.bls_key));
+            set("bls_key", x.bls_key);
         }
 
         // Ignore these fields:
@@ -943,7 +943,7 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context context) {
                 auto mki = get.response_hex["mempool_key_images"];
                 for (auto& [ki, txids] : pool_kis) {
                     // The *key* is also binary (hex for json):
-                    std::string key{get.is_bt() ? tools::view_guts(ki) : tools::type_to_hex(ki)};
+                    std::string key{get.is_bt() ? tools::view_guts(ki) : tools::hex_guts(ki)};
                     mki[key] = txids;
                 }
             }
@@ -1465,15 +1465,17 @@ void core_rpc_server::fill_block_header_response(
         block_header_response& response,
         bool fill_pow_hash,
         bool get_tx_hashes) {
+    // FIXME: this isn't setting binary values properly; this whole `block_header_response` thing
+    // should be deleted and this should set json values directly.
     response.major_version = static_cast<uint8_t>(blk.major_version);
     response.minor_version = blk.minor_version;
     response.timestamp = blk.timestamp;
-    response.prev_hash = tools::type_to_hex(blk.prev_id);
+    response.prev_hash = tools::hex_guts(blk.prev_id);
     response.nonce = blk.nonce;
     response.orphan_status = orphan_status;
     response.height = height;
     response.depth = m_core.get_current_blockchain_height() - height - 1;
-    response.hash = tools::type_to_hex(hash);
+    response.hash = tools::hex_guts(hash);
     response.difficulty = m_core.get_blockchain_storage().block_difficulty(height);
     response.cumulative_difficulty =
             m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(height);
@@ -1483,24 +1485,24 @@ void core_rpc_server::fill_block_header_response(
             m_core.get_blockchain_storage().get_db().get_block_weight(height);
     response.num_txes = blk.tx_hashes.size();
     if (fill_pow_hash)
-        response.pow_hash = tools::type_to_hex(get_block_longhash_w_blockchain(
+        response.pow_hash = tools::hex_guts(get_block_longhash_w_blockchain(
                 m_core.get_nettype(), &m_core.get_blockchain_storage(), blk, height, 0));
     response.long_term_weight =
             m_core.get_blockchain_storage().get_db().get_block_long_term_weight(height);
     response.service_node_winner =
-            tools::type_to_hex(blk.service_node_winner_key) == ""
-                    ? tools::type_to_hex(
+            tools::hex_guts(blk.service_node_winner_key) == ""
+                    ? tools::hex_guts(
                               cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra))
-                    : tools::type_to_hex(blk.service_node_winner_key);
+                    : tools::hex_guts(blk.service_node_winner_key);
     response.coinbase_payouts = get_block_reward(blk);
-    response.l2_state = tools::type_to_hex(blk.l2_state);
+    response.l2_state = tools::hex_guts(blk.l2_state);
     response.l2_height = blk.l2_height;
     if (blk.miner_tx.vout.size() > 0)
-        response.miner_tx_hash = tools::type_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
+        response.miner_tx_hash = tools::hex_guts(cryptonote::get_transaction_hash(blk.miner_tx));
     if (get_tx_hashes) {
         response.tx_hashes.reserve(blk.tx_hashes.size());
         for (const auto& tx_hash : blk.tx_hashes)
-            response.tx_hashes.push_back(tools::type_to_hex(tx_hash));
+            response.tx_hashes.push_back(tools::hex_guts(tx_hash));
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -1537,7 +1539,7 @@ void core_rpc_server::invoke(
     auto get = [this, &get_block_header_by_hash, admin = context.admin](
                        const std::string& hash, block_header_response& block_header) {
         crypto::hash block_hash;
-        if (!tools::hex_to_type(hash, block_hash))
+        if (!tools::try_load_from_hex_guts(hash, block_hash))
             throw rpc_error{
                     ERROR_WRONG_PARAM,
                     "Failed to parse hex representation of block hash. Hex = " + hash + '.'};
@@ -1664,7 +1666,7 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
     bool orphan = false;
     crypto::hash block_hash;
     if (!get_block.request.hash.empty()) {
-        if (!tools::hex_to_type(get_block.request.hash, block_hash))
+        if (!tools::try_load_from_hex_guts(get_block.request.hash, block_hash))
             throw rpc_error{
                     ERROR_WRONG_PARAM,
                     "Failed to parse hex representation of block hash. Hex = " +
@@ -1707,15 +1709,8 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
             get_block.request.fill_pow_hash && context.admin,
             false /*tx hashes*/);
     get_block.response["block_header"] = header;
-    std::vector<std::string> tx_hashes;
-    tx_hashes.reserve(blk.tx_hashes.size());
-    std::transform(
-            blk.tx_hashes.begin(),
-            blk.tx_hashes.end(),
-            std::back_inserter(tx_hashes),
-            [](const auto& x) { return tools::type_to_hex(x); });
-    get_block.response["tx_hashes"] = std::move(tx_hashes);
-    get_block.response["blob"] = oxenc::to_hex(t_serializable_object_to_blob(blk));
+    get_block.response_hex["tx_hashes"] = blk.tx_hashes;
+    get_block.response_hex["blob"] = t_serializable_object_to_blob(blk);
     get_block.response["json"] = obj_to_json_str(blk);
     get_block.response["status"] = STATUS_OK;
     return;
@@ -1867,7 +1862,7 @@ void core_rpc_server::invoke(FLUSH_TRANSACTION_POOL& flush_transaction_pool, rpc
     } else {
         for (const auto& txid_hex : flush_transaction_pool.request.txids) {
             std::string txid_data;
-            if (!tools::hex_to_type(txid_hex, txids.emplace_back())) {
+            if (!tools::try_load_from_hex_guts(txid_hex, txids.emplace_back())) {
                 failed = true;
                 txids.pop_back();
             }
@@ -1994,7 +1989,7 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_con
                 alt_chains = m_core.get_blockchain_storage().get_alternative_chains();
         for (const auto& i : alt_chains) {
             chains.push_back(GET_ALTERNATE_CHAINS::chain_info{
-                    tools::type_to_hex(get_block_hash(i.first.bl)),
+                    tools::hex_guts(get_block_hash(i.first.bl)),
                     i.first.height,
                     i.second.size(),
                     i.first.cumulative_difficulty,
@@ -2002,7 +1997,7 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_con
                     std::string()});
             chains.back().block_hashes.reserve(i.second.size());
             for (const crypto::hash& block_id : i.second)
-                chains.back().block_hashes.push_back(tools::type_to_hex(block_id));
+                chains.back().block_hashes.push_back(tools::hex_guts(block_id));
             if (i.first.height < i.second.size()) {
                 get_alternate_chains.response["status"] =
                         "Error finding alternate chain attachment point";
@@ -2019,7 +2014,7 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_con
                 return;
             }
             chains.back().main_chain_parent_block =
-                    tools::type_to_hex(get_block_hash(main_chain_parent_block));
+                    tools::hex_guts(get_block_hash(main_chain_parent_block));
         }
         get_alternate_chains.response["chains"] = chains;
         get_alternate_chains.response["status"] = STATUS_OK;
@@ -2077,7 +2072,7 @@ void core_rpc_server::invoke(RELAY_TX& relay_tx, rpc_context context) {
     std::string status = "";
     for (const auto& txid_hex : relay_tx.request.txids) {
         crypto::hash txid;
-        if (!tools::hex_to_type(txid_hex, txid)) {
+        if (!tools::try_load_from_hex_guts(txid_hex, txid)) {
             if (!status.empty())
                 status += ", ";
             status += "invalid transaction id: " + txid_hex;
@@ -2126,7 +2121,7 @@ void core_rpc_server::invoke(SYNC_INFO& sync, rpc_context context) {
         spans.push_back(
                 json{{"start_block_height", span.start_block_height},
                      {"nblocks", span.nblocks},
-                     {"connection_id", tools::type_to_hex(span.connection_id)},
+                     {"connection_id", tools::hex_guts(span.connection_id)},
                      {"rate", std::lround(span.rate)},
                      {"speed", speed},
                      {"size", span.size}});
@@ -2557,12 +2552,12 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_conte
     const aggregateWithdrawalResponse bls_withdrawal_signature_response =
             m_core.aggregate_withdrawal_request(bls_rewards_request.request.address);
     bls_rewards_request.response["status"] = STATUS_OK;
-    bls_rewards_request.response["address"] = bls_withdrawal_signature_response.address;
+    bls_rewards_request.response_hex["address"] = bls_withdrawal_signature_response.address;
     bls_rewards_request.response["height"] = bls_withdrawal_signature_response.height;
     bls_rewards_request.response["amount"] = bls_withdrawal_signature_response.amount;
     bls_rewards_request.response["signed_message"] =
             bls_withdrawal_signature_response.signed_message;
-    bls_rewards_request.response["signature"] = bls_withdrawal_signature_response.signature;
+    bls_rewards_request.response_hex["signature"] = bls_withdrawal_signature_response.signature;
     bls_rewards_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
     return;
 }
@@ -2614,9 +2609,9 @@ void core_rpc_server::invoke(BLS_REGISTRATION& bls_registration_request, rpc_con
 void core_rpc_server::invoke(GET_SERVICE_KEYS& get_service_keys, rpc_context context) {
     const auto& keys = m_core.get_service_keys();
     if (keys.pub)
-        get_service_keys.response["service_node_pubkey"] = tools::type_to_hex(keys.pub);
-    get_service_keys.response["service_node_ed25519_pubkey"] = tools::type_to_hex(keys.pub_ed25519);
-    get_service_keys.response["service_node_x25519_pubkey"] = tools::type_to_hex(keys.pub_x25519);
+        get_service_keys.response_hex["service_node_pubkey"] = keys.pub;
+    get_service_keys.response_hex["service_node_ed25519_pubkey"] = keys.pub_ed25519;
+    get_service_keys.response_hex["service_node_x25519_pubkey"] = keys.pub_x25519;
     get_service_keys.response["status"] = STATUS_OK;
     return;
 }
@@ -2624,11 +2619,12 @@ void core_rpc_server::invoke(GET_SERVICE_KEYS& get_service_keys, rpc_context con
 void core_rpc_server::invoke(GET_SERVICE_PRIVKEYS& get_service_privkeys, rpc_context context) {
     const auto& keys = m_core.get_service_keys();
     if (keys.key)
-        get_service_privkeys.response["service_node_privkey"] = tools::type_to_hex(keys.key);
-    get_service_privkeys.response["service_node_ed25519_privkey"] =
-            tools::type_to_hex(keys.key_ed25519);
-    get_service_privkeys.response["service_node_x25519_privkey"] =
-            tools::type_to_hex(keys.key_x25519);
+        get_service_privkeys.response_hex["service_node_privkey"] =
+                tools::view_guts<std::byte>(keys.key);
+    get_service_privkeys.response_hex["service_node_ed25519_privkey"] =
+            tools::view_guts<std::byte>(keys.key_ed25519);
+    get_service_privkeys.response_hex["service_node_x25519_privkey"] =
+            tools::view_guts<std::byte>(keys.key_x25519);
     get_service_privkeys.response["status"] = STATUS_OK;
     return;
 }
@@ -2675,6 +2671,8 @@ void core_rpc_server::fill_sn_response_entry(
 
     const auto& info = *sn_info.info;
     set_if_requested(reqed, binary, "service_node_pubkey", sn_info.pubkey);
+    if (info.bls_public_key)
+        set_if_requested(reqed, binary, "bls_key", info.bls_public_key);
     set_if_requested(
             reqed,
             entry,
@@ -2706,19 +2704,20 @@ void core_rpc_server::fill_sn_response_entry(
             info.portions_for_operator,
             "operator_fee",
             microportion(info.portions_for_operator),
-            "operator_address",
-            info.operator_ethereum_address
-                    ? tools::type_to_hex(info.operator_ethereum_address)
-                    : cryptonote::get_account_address_as_str(
-                              m_core.get_nettype(), false /*subaddress*/, info.operator_address),
             "swarm_id",
             info.swarm_id,
             "swarm",
             "{:x}"_format(info.swarm_id),
-            "bls_key",
-            info.bls_public_key ? tools::type_to_hex(info.bls_public_key) : "",
             "registration_hf_version",
             info.registration_hf_version);
+
+    if (requested(reqed, "operator_address")) {
+        if (info.operator_ethereum_address)
+            binary["operator_address"] = info.operator_ethereum_address;
+        else
+            entry["operator_address"] = cryptonote::get_account_address_as_str(
+                    m_core.get_nettype(), false /*subaddress*/, info.operator_address);
+    }
 
     if (requested(reqed, "total_reserved") && info.total_reserved != info.total_contributed)
         entry["total_reserved"] = info.total_reserved;
@@ -2881,14 +2880,12 @@ void core_rpc_server::fill_sn_response_entry(
         bool want_locked_c = requested(reqed, "locked_contributions");
         auto& contributors = (entry["contributors"] = json::array());
         for (const auto& contributor : info.contributors) {
-            auto& c = contributors.emplace_back(json{
-                    {"amount", contributor.amount},
-                    {"address",
-                     contributor.ethereum_address ? tools::type_to_hex(contributor.ethereum_address)
-                                                  : cryptonote::get_account_address_as_str(
-                                                            m_core.get_nettype(),
-                                                            false /*subaddress*/,
-                                                            contributor.address)}});
+            auto& c = contributors.emplace_back(json{{"amount", contributor.amount}});
+            if (contributor.ethereum_address)
+                json_binary_proxy{c["address"], binary_format} = contributor.ethereum_address;
+            else
+                c["address"] = cryptonote::get_account_address_as_str(
+                        m_core.get_nettype(), false /*subaddress*/, contributor.address);
             if (contributor.reserved != contributor.amount)
                 c["reserved"] = contributor.reserved;
             if (want_locked_c) {
@@ -2997,7 +2994,7 @@ namespace {
             std::chrono::seconds lifetime,
             Success success) {
         std::string status{};
-        std::string our_ed25519_pubkey = tools::type_to_hex(core.get_service_keys().pub_ed25519);
+        std::string our_ed25519_pubkey = tools::hex_guts(core.get_service_keys().pub_ed25519);
         if (!error.empty()) {
             status = fmt::format("Error: {}", error);
             log::error(
@@ -3216,7 +3213,7 @@ void core_rpc_server::invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_con
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(REPORT_PEER_STATUS& report_peer_status, rpc_context context) {
     crypto::public_key pubkey;
-    if (!tools::hex_to_type(report_peer_status.request.pubkey, pubkey)) {
+    if (!tools::try_load_from_hex_guts(report_peer_status.request.pubkey, pubkey)) {
         log::error(logcat, "Could not parse public key: {}", report_peer_status.request.pubkey);
         throw rpc_error{ERROR_WRONG_PARAM, "Could not parse public key"};
     }
@@ -3282,6 +3279,9 @@ void core_rpc_server::invoke(ONS_NAMES_TO_OWNERS& ons_names_to_owners, rpc_conte
     }
     ons_names_to_owners.response["type"] = ons_names_to_owners.request.type;
 
+    auto binary_format =
+            ons_names_to_owners.is_bt() ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex;
+
     ons::name_system_db& db = m_core.get_blockchain_storage().name_system_db();
     for (size_t request_index = 0; request_index < ons_names_to_owners.request.name_hash.size();
          request_index++) {
@@ -3304,11 +3304,13 @@ void core_rpc_server::invoke(ONS_NAMES_TO_OWNERS& ons_names_to_owners, rpc_conte
             elem["owner"] = record[type_index].owner.to_string(nettype());
             if (record[type_index].backup_owner)
                 elem["backup_owner"] = record[type_index].backup_owner.to_string(nettype());
-            elem["encrypted_value"] = oxenc::to_hex(record[type_index].encrypted_value.to_view());
+
+            json_binary_proxy elem_hex{elem, binary_format};
+            elem_hex["encrypted_value"] = record[type_index].encrypted_value.to_view();
             if (record[0].expiration_height)
                 elem["expiration_height"] = *(record[type_index].expiration_height);
             elem["update_height"] = record[type_index].update_height;
-            elem["txid"] = tools::type_to_hex(record[type_index].txid);
+            elem_hex["txid"] = record[type_index].txid;
         }
     }
 
@@ -3371,12 +3373,15 @@ void core_rpc_server::invoke(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_conte
             entry.owner = record.owner.to_string(nettype());
         if (record.backup_owner)
             entry.backup_owner = record.backup_owner.to_string(nettype());
+        // FIXME: binary proxy
         entry.encrypted_value = oxenc::to_hex(record.encrypted_value.to_view());
         entry.update_height = record.update_height;
         entry.expiration_height = record.expiration_height;
-        entry.txid = tools::type_to_hex(record.txid);
+        // FIXME: binary proxy
+        entry.txid = tools::hex_guts(record.txid);
     }
 
+    // FIXME: this seems broken; how can this vector of some random struct magically become json?
     ons_owners_to_names.response["entries"] = entries;
     ons_owners_to_names.response["status"] = STATUS_OK;
     return;

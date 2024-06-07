@@ -39,7 +39,6 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/locked_txn.h"
 #include "common/boost_serialization_helper.h"
-#include "common/hex.h"
 #include "common/lock.h"
 #include "common/median.h"
 #include "common/util.h"
@@ -241,10 +240,10 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
         cryptonote::tx_extra_ethereum_new_service_node data = {};
         if (!cryptonote::get_field_from_tx_extra(tx.extra, data)) {
             log::error(
-                logcat,
-                "Could not get ethereum new service node data from tx: {}, tx to add is possibly "
-                "invalid, rejecting",
-                get_transaction_hash(tx));
+                    logcat,
+                    "Could not get ethereum new service node data from tx: {}, tx to add is "
+                    "possibly invalid, rejecting",
+                    get_transaction_hash(tx));
             return true;
         }
     } else if (tx.type == txtype::ethereum_service_node_leave_request) {
@@ -253,8 +252,7 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
             log::error(
                     logcat,
                     "Could not get ethereum service node leave request data from tx: {}, tx to add "
-                    "is possibly "
-                    "invalid, rejecting",
+                    "is possibly invalid, rejecting",
                     get_transaction_hash(tx));
             return true;
         }
@@ -264,8 +262,7 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
             log::error(
                     logcat,
                     "Could not get ethereum service node exit data from tx: {}, tx to add is "
-                    "possibly "
-                    "invalid, rejecting",
+                    "possibly invalid, rejecting",
                     get_transaction_hash(tx));
             return true;
         }
@@ -275,8 +272,7 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
             log::error(
                     logcat,
                     "Could not get ethereum service node leave request data from tx: {}, tx to add "
-                    "is possibly "
-                    "invalid, rejecting",
+                    "is possibly invalid, rejecting",
                     get_transaction_hash(tx));
             return true;
         }

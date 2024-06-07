@@ -32,7 +32,6 @@
 #include <chrono>
 
 #include "checkpoints/checkpoints.h"
-#include "common/hex.h"
 #include "common/string_util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
@@ -279,7 +278,7 @@ bool BlockchainDB::get_pruned_tx(const crypto::hash& h, cryptonote::transaction&
 transaction BlockchainDB::get_tx(const crypto::hash& h) const {
     transaction tx;
     if (!get_tx(h, tx))
-        throw TX_DNE("tx with hash " + tools::type_to_hex(h) + " not found in db");
+        throw TX_DNE("tx with hash {} not found in db"_format(h));
     return tx;
 }
 
@@ -292,7 +291,7 @@ uint64_t BlockchainDB::get_output_unlock_time(
 transaction BlockchainDB::get_pruned_tx(const crypto::hash& h) const {
     transaction tx;
     if (!get_pruned_tx(h, tx))
-        throw TX_DNE("pruned tx with hash " + tools::type_to_hex(h) + " not found in db");
+        throw TX_DNE("pruned tx with hash {} not found in db"_format(h));
     return tx;
 }
 
@@ -371,7 +370,7 @@ bool BlockchainDB::get_immutable_checkpoint(
 uint64_t BlockchainDB::get_tx_block_height(const crypto::hash& h) const {
     auto result = get_tx_block_heights({{h}}).front();
     if (result == std::numeric_limits<uint64_t>::max()) {
-        std::string err = "tx_data_t with hash " + tools::type_to_hex(h) + " not found in db";
+        std::string err = "tx_data_t with hash {} not found in db"_format(h);
         log::info(logcat, "{}", err);
         throw TX_DNE(std::move(err));
     }
@@ -385,7 +384,7 @@ bool BlockchainDB::get_alt_block_header(
         std::string* checkpoint) const {
     std::string blob;
     if (!get_alt_block(blkid, data, &blob, checkpoint)) {
-        throw BLOCK_DNE("Alt-block with hash " + tools::type_to_hex(blkid) + " not found in db");
+        throw BLOCK_DNE("Alt-block with hash {} not found in db"_format(blkid));
         return false;
     }
 

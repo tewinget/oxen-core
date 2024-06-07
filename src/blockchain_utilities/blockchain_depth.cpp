@@ -31,6 +31,7 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
 #include "common/command_line.h"
+#include "common/guts.h"
 #include "common/median.h"
 #include "common/varint.h"
 #include "cryptonote_core/cryptonote_core.h"
@@ -118,7 +119,7 @@ int main(int argc, char* argv[]) {
     }
     crypto::hash opt_txid{};
     if (!opt_txid_string.empty()) {
-        if (!tools::hex_to_type(opt_txid_string, opt_txid)) {
+        if (!tools::try_load_from_hex_guts(opt_txid_string, opt_txid)) {
             std::cerr << "Invalid txid" << std::endl;
             return 1;
         }

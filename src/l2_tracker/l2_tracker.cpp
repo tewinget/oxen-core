@@ -3,6 +3,7 @@
 #include <thread>
 #include <utility>
 
+#include "common/guts.h"
 #include "logging/oxen_logger.h"
 
 static auto logcat = oxen::log::Cat("l2_tracker");
@@ -101,14 +102,13 @@ std::pair<uint64_t, crypto::hash> L2Tracker::latest_state() {
         oxen::log::error(logcat, "L2 tracker doesnt have any state history to query");
         throw std::runtime_error("Internal error getting latest state from l2 tracker");
     }
-    crypto::hash return_hash;
     auto& latest_state = state_history.front();
-    tools::hex_to_type(latest_state.state, return_hash);
+    auto return_hash = tools::make_from_guts(latest_state.state, return_hash);
     return std::make_pair(latest_state.height, return_hash);
 }
 
 bool L2Tracker::check_state_in_history(uint64_t height, const crypto::hash& state_root) {
-    std::string state_str = tools::type_to_hex(state_root);
+    std::string state_str = tools::hex_guts(state_root);
     return check_state_in_history(height, state_str);
 }
 
@@ -233,16 +233,16 @@ bool TransactionReviewSession::processNewServiceNodeTx(
 
     oxen::log::info(
             logcat,
-            "Searching for new_service_node bls_key: {} eth_address {} service_node pubkey {}",
-            tools::type_to_hex(bls_key),
-            tools::type_to_hex(eth_address),
+            "Searching for new_service_node bls_pubkey: {} eth_address {} service_node pubkey {}",
+            bls_pubkey,
+            eth_address,
             service_node_pubkey);
     for (auto it = new_service_nodes.begin(); it != new_service_nodes.end(); ++it) {
         oxen::log::info(
                 logcat,
-                "new_service_node bls_key: {} eth_address {} service_node_pubkey: {}",
-                tools::type_to_hex(it->bls_key),
-                tools::type_to_hex(it->eth_address),
+                "new_service_node bls_pubkey: {} eth_address {} service_node_pubkey: {}",
+                it->bls_key,
+                it->eth_address,
                 it->service_node_pubkey);
         if (it->bls_key == bls_key && it->eth_address == eth_address &&
             it->service_node_pubkey == service_node_pubkey) {
@@ -251,9 +251,11 @@ bool TransactionReviewSession::processNewServiceNodeTx(
         }
     }
 
-    fail_reason = "New Service Node Transaction not found bls_key: " + tools::type_to_hex(bls_key) +
-                  " eth_address: " + tools::type_to_hex(eth_address) +
-                  " service_node_pubkey: " + service_node_pubkey;
+    fail_reason = fmt::format(
+            "New Service Node Transaction not found bls_pubkey: {}, eth_address: {}, sn_pubkey: {}",
+            bls_key,
+            eth_address,
+            service_node_pubkey);
     return false;
 }
 
@@ -304,12 +306,12 @@ bool TransactionReviewSession::processServiceNodeExitTx(
         }
     }
 
-    fail_reason = "Exit Transaction not found bls_key: " + tools::type_to_hex(bls_key);
+    fail_reason = "Exit Transaction not found bls_pubkey: {}"_format(bls_key);
     return false;
 }
 
 bool TransactionReviewSession::processServiceNodeDeregisterTx(
-        const crypto::bls_public_key& bls_key, std::string& fail_reason) {
+        const crypto::bls_public_key& bls_pubkey, std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
@@ -326,7 +328,7 @@ bool TransactionReviewSession::processServiceNodeDeregisterTx(
         }
     }
 
-    fail_reason = "Deregister Transaction not found bls_key: " + tools::type_to_hex(bls_key);
+    fail_reason = "Deregister Transaction not found bls_pubkey: {}"_format(bls_key);
     return false;
 }
 

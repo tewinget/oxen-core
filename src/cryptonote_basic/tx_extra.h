@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include "common/hex.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic.h"
 #include "oxen_economy.h"

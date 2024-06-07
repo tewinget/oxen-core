@@ -43,7 +43,7 @@
 
 #include "blockchain_db/blockchain_db.h"
 #include "common/boost_serialization_helper.h"
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/lock.h"
 #include "common/median.h"
 #include "common/meta.h"
@@ -2388,7 +2388,7 @@ bool Blockchain::handle_alternative_block(
                             log::Cat("verify"),
                             "Block with id: {} (as alternative) refers to unparsable transaction "
                             "hash {}.",
-                            tools::type_to_hex(id),
+                            id,
                             txid);
                     bvc.m_verifivation_failed = true;
                     return false;
@@ -3889,7 +3889,7 @@ bool Blockchain::check_tx_inputs(
                     log::error(
                             log::Cat("verify"),
                             "Key image already spent in blockchain: {}",
-                            tools::type_to_hex(in_to_key.k_image));
+                            in_to_key.k_image);
                     if (key_image_conflicts)
                         key_image_conflicts->insert(in_to_key.k_image);
                     else {
@@ -3937,7 +3937,7 @@ bool Blockchain::check_tx_inputs(
                         log::error(
                                 log::Cat("verify"),
                                 "Key image: {} is blacklisted by the service node network",
-                                tools::type_to_hex(entry.key_image));
+                                entry.key_image);
                         tvc.m_key_image_blacklisted = true;
                         return false;
                     }
@@ -3948,7 +3948,7 @@ bool Blockchain::check_tx_inputs(
                     log::error(
                             log::Cat("verify"),
                             "Key image: {} is locked in a stake until height: {}",
-                            tools::type_to_hex(in_to_key.k_image),
+                            in_to_key.k_image,
                             unlock_height);
                     tvc.m_key_image_locked_by_snode = true;
                     return false;
@@ -4190,7 +4190,7 @@ bool Blockchain::check_tx_inputs(
                 !ethereum_transaction_review_session->processNewServiceNodeTx(
                         entry.bls_key,
                         entry.eth_address,
-                        tools::type_to_hex(entry.service_node_pubkey),
+                        entry.service_node_pubkey,
                         fail_reason)) {
                 log::error(
                         log::Cat("verify"),
@@ -4313,7 +4313,7 @@ bool Blockchain::check_tx_inputs(
                 log::error(
                         log::Cat("verify"),
                         "Requested key image: {} to unlock is not locked",
-                        tools::type_to_hex(unlock.key_image));
+                        unlock.key_image);
                 tvc.m_invalid_input = true;
                 return false;
             }
@@ -6476,11 +6476,9 @@ void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get
             log::info(
                     logcat, "Precomputed blocks hash: {}, expected {}", hash, EXPECTED_SHA256_HASH);
 
-            crypto::hash expected_hash;
-            if (!tools::hex_to_type(EXPECTED_SHA256_HASH, expected_hash)) {
-                log::error(logcat, "Failed to parse expected block hashes hash");
-                return;
-            }
+            assert(EXPECTED_SHA256_HASH.size() == 2 * sizeof(crypto::hash) &&
+                   oxenc::is_hex(EXPECTED_SHA256_HASH));
+            auto expected_hash = tools::make_from_hex_guts<crypto::hash>(EXPECTED_SHA256_HASH);
 
             if (hash != expected_hash) {
                 log::error(logcat, "Block hash data does not match expected hash");

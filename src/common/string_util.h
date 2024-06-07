@@ -1,5 +1,6 @@
 #pragma once
 #include <fmt/format.h>
+#include <oxenc/common.h>
 
 #include <charconv>
 #include <chrono>
@@ -8,8 +9,6 @@
 #include <iterator>
 #include <string_view>
 #include <vector>
-
-#include "basic_char.h"
 
 namespace tools {
 
@@ -127,23 +126,23 @@ bool parse_int(const std::string_view str, T& value, int base = 10) {
 std::string lowercase_ascii_string(std::string_view src);
 
 // Converts between basic_string_view<T> for different 1-byte T values
-template <basic_char To, basic_char From>
+template <oxenc::basic_char To, oxenc::basic_char From>
 std::basic_string_view<To> convert_sv(std::basic_string_view<From> from) {
     return {reinterpret_cast<const To*>(from.data()), from.size()};
 }
 // Same as above, but converting from a string rather than view.
-template <basic_char To, basic_char From>
+template <oxenc::basic_char To, oxenc::basic_char From>
 std::basic_string_view<To> convert_sv(const std::basic_string<From>& from) {
     return {reinterpret_cast<const To*>(from.data()), from.size()};
 }
 
 // Same as above, but makes a copy into a basic_string
-template <basic_char To, basic_char From>
+template <oxenc::basic_char To, oxenc::basic_char From>
 std::basic_string<To> convert_str(std::basic_string_view<From> from) {
     return {reinterpret_cast<const To*>(from.data()), from.size()};
 }
 // Same as above, but converting from a string rather than view.
-template <basic_char To, basic_char From>
+template <oxenc::basic_char To, oxenc::basic_char From>
 std::basic_string<To> convert_str(const std::basic_string<From>& from) {
     return {reinterpret_cast<const To*>(from.data()), from.size()};
 }

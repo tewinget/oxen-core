@@ -26,11 +26,11 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "common/guts.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "wallet/wallet2.h"
 #include "fuzzer.h"
-#include "common/hex.h"
 
 class SignatureFuzzer: public Fuzzer
 {
@@ -47,7 +47,7 @@ private:
 int SignatureFuzzer::init()
 {
   crypto::secret_key spendkey;
-  tools::hex_to_type("0b4f47697ec99c3de6579304e5f25c68b07afbe55b71d99620bf6cbf4e45a80f"sv, spendkey);
+  tools::load_from_hex_guts("0b4f47697ec99c3de6579304e5f25c68b07afbe55b71d99620bf6cbf4e45a80f"sv, spendkey);
 
   try
   {

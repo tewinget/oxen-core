@@ -503,13 +503,13 @@ struct tx_not_constructed : public transfer_error {
             // It's not good, if logs will contain such much data
             // ss << "\n    real_output: " << src.real_output;
             // ss << "\n    real_output_in_tx_index: " << src.real_output_in_tx_index;
-            // ss << "\n    real_out_tx_key: " << tools::type_to_hex(src.real_out_tx_key);
+            // ss << "\n    real_out_tx_key: " << tools::hex_guts(src.real_out_tx_key);
             // ss << "\n    outputs:";
             // for (size_t j = 0; j < src.outputs.size(); ++j)
             //{
             //  const cryptonote::tx_source_entry::output_entry& out = src.outputs[j];
             //  ss << "\n      " << j << ": " << out.first << ", " <<
-            //  tools::type_to_hex(out.second);
+            //  tools::hex_guts(out.second);
             //}
         }
 

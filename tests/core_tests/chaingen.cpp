@@ -39,8 +39,8 @@
 #include <sstream>
 #include <fstream>
 
+#include "common/guts.h"
 #include "common/string_util.h"
-#include "common/hex.h"
 #include "common/varint.h"
 #include "common/median.h"
 #include "cryptonote_core/service_node_list.h"
@@ -168,7 +168,7 @@ std::vector<cryptonote::block> oxen_chain_generator_db::get_blocks_range(const u
   return result;
 }
 
-oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry>& events, const std::vector<cryptonote::hard_fork>& hard_forks, std::string first_miner_seed)
+oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry>& events, const std::vector<cryptonote::hard_fork>& hard_forks, std::string_view first_miner_seed)
 : events_(events)
 , hard_forks_(hard_forks)
 , sqlite_db_(std::make_unique<test::BlockchainSQLiteTest>(cryptonote::network_type::FAKECHAIN, ":memory:"))
@@ -180,7 +180,7 @@ oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry>& events
     first_miner_.generate();
   } else {
     crypto::secret_key seeded_secret_key;
-    tools::hex_to_type<crypto::secret_key>(first_miner_seed, seeded_secret_key);
+    tools::load_from_hex_guts(first_miner_seed, seeded_secret_key);
     first_miner_.generate(seeded_secret_key, true);
   }
 

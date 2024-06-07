@@ -37,7 +37,7 @@
 
 #include "blockchain_db/blockchain_db.h"
 #include "common/file.h"
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/service_node_rules.h"
@@ -87,7 +87,7 @@ crypto::hash get_newest_hardcoded_checkpoint(cryptonote::network_type nettype, u
         uint64_t last_index = oxen::array_count(HARDCODED_MAINNET_CHECKPOINTS) - 1;
         height_to_hash const& entry = HARDCODED_MAINNET_CHECKPOINTS[last_index];
 
-        if (tools::hex_to_type(entry.hash, result))
+        if (tools::try_load_from_hex_guts(entry.hash, result))
             *height = entry.height;
     }
     return result;
@@ -127,7 +127,7 @@ bool checkpoints::get_checkpoint(uint64_t height, checkpoint_t& checkpoint) cons
 //---------------------------------------------------------------------------
 bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str) {
     crypto::hash h{};
-    bool r = tools::hex_to_type(hash_str, h);
+    bool r = tools::try_load_from_hex_guts(hash_str, h);
     CHECK_AND_ASSERT_MES(
             r, false, "Failed to parse checkpoint hash string into binary representation!");
 

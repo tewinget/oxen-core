@@ -48,7 +48,6 @@
 #include <type_traits>
 
 #include "checkpoints/checkpoints.h"
-#include "common/hex.h"
 #include "common/median.h"
 #include "common/password.h"
 #include "common/pruning.h"
@@ -895,7 +894,7 @@ bool rpc_command_executor::print_block_by_hash(const crypto::hash& block_hash, b
     auto maybe_block = try_running(
             [this, &block_hash] {
                 return invoke<GET_BLOCK>(
-                        json{{"hash", tools::type_to_hex(block_hash)}, {"fill_pow_hash", true}});
+                        json{{"hash", tools::hex_guts(block_hash)}, {"fill_pow_hash", true}});
             },
             "Block retrieval failed");
     if (!maybe_block)
@@ -937,7 +936,7 @@ bool rpc_command_executor::print_transaction(
     auto maybe_tx = try_running(
             [this, &transaction_hash] {
                 return invoke<GET_TRANSACTIONS>(
-                        json{{"tx_hashes", json::array({tools::type_to_hex(transaction_hash)})},
+                        json{{"tx_hashes", json::array({tools::hex_guts(transaction_hash)})},
                              {"split", true}});
             },
             "Transaction retrieval failed");
@@ -1013,7 +1012,7 @@ bool rpc_command_executor::is_key_image_spent(const std::vector<crypto::key_imag
             [this, &ki] {
                 auto kis = json::array();
                 for (auto& k : ki)
-                    kis.push_back(tools::type_to_hex(k));
+                    kis.push_back(tools::hex_guts(k));
                 return invoke<IS_KEY_IMAGE_SPENT>(json{{"key_images", std::move(kis)}});
             },
             "Failed to retrieve key image status");

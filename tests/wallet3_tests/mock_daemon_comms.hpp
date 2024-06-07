@@ -1,6 +1,7 @@
 #pragma once
 
 #include <wallet3/default_daemon_comms.hpp>
+#include "common/guts.h"
 
 namespace wallet
 {
@@ -41,8 +42,8 @@ class MockDaemonComms: public DefaultDaemonComms
     {
       predetermined_decoys.push_back(wallet::Decoy{});
       wallet::Decoy& decoy = predetermined_decoys.back();
-      tools::hex_to_type(public_key, decoy.key);
-      tools::hex_to_type(mask, decoy.mask);
+      tools::load_from_hex_guts(public_key, decoy.key);
+      tools::load_from_hex_guts(mask, decoy.mask);
       decoy.global_index = global_index;
     }
 

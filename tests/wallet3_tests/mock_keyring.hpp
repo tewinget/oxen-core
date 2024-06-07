@@ -102,7 +102,7 @@ class MockKeyring : public Keyring
     {
       predetermined_tx_keys.push_back(crypto::secret_key{});
       crypto::secret_key& ephemeral_key = predetermined_tx_keys.back();
-      tools::hex_to_type(key, ephemeral_key);
+      tools::load_from_hex_guts(key, ephemeral_key);
     }
 
 

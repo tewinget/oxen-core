@@ -300,7 +300,7 @@ namespace cryptonote
       cnx.current_download = cntxt.m_current_speed_down;
       cnx.current_upload = cntxt.m_current_speed_up;
 
-      cnx.connection_id = tools::type_to_hex(cntxt.m_connection_id);
+      cnx.connection_id = tools::hex_guts(cntxt.m_connection_id);
 
       cnx.height = cntxt.m_remote_blockchain_height;
       cnx.pruning_seed = cntxt.m_pruning_seed;
@@ -351,7 +351,7 @@ namespace cryptonote
     context.m_pruning_seed = hshd.pruning_seed;
     if constexpr (PRUNING_DEBUG_SPOOF_SEED) {
       context.m_pruning_seed = tools::make_pruning_seed(1 + (context.m_remote_address.as<epee::net_utils::ipv4_network_address>().ip()) % (1 << PRUNING_LOG_STRIPES), PRUNING_LOG_STRIPES);
-      log::info(logcat, "{}New connection posing as pruning seed {}", context, tools::type_to_hex(context.m_pruning_seed));
+      log::info(logcat, "{}New connection posing as pruning seed {:08x}", context, context.m_pruning_seed);
     }
 
     // No chain synchronization over hidden networks (tor, i2p, etc.)
@@ -560,7 +560,8 @@ namespace cryptonote
         // What we asked for != to what we received ..
         if(context.m_requested_objects.size() != arg.b.txs.size())
         {
-          log::error(logcat, "NOTIFY_NEW_FLUFFY_BLOCK -> request/response mismatch, block = {}, requested = {}, received = {}, dropping connection", tools::type_to_hex(get_blob_hash(arg.b.block)), context.m_requested_objects.size(), new_block.tx_hashes.size());
+          log::error(logcat, "NOTIFY_NEW_FLUFFY_BLOCK -> request/response mismatch, block = {}, requested = {}, received = {}, dropping connection",
+                  get_blob_hash(arg.b.block), context.m_requested_objects.size(), new_block.tx_hashes.size());
           drop_connection(context, false, false);
           m_core.resume_mine();
           return 1;
@@ -1194,14 +1195,16 @@ namespace cryptonote
       auto req_it = context.m_requested_objects.find(block_hash);
       if(req_it == context.m_requested_objects.end())
       {
-        log::error(logcat, "sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id={} wasn't requested, dropping connection", tools::type_to_hex(get_blob_hash(block_entry.block)));
+        log::error(logcat, "sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id={} wasn't requested, dropping connection",
+                get_blob_hash(block_entry.block));
         drop_connection(context, false, false);
         ++m_sync_bad_spans_downloaded;
         return 1;
       }
       if(b.tx_hashes.size() != block_entry.txs.size())
       {
-        log::error(logcat, "sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id={}, tx_hashes.size()= {} mismatch with block_complete_entry.m_txs.size()= {}, dropping connection", tools::type_to_hex(get_blob_hash(block_entry.block)), b.tx_hashes.size(), block_entry.txs.size());
+        log::error(logcat, "sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id={}, tx_hashes.size()= {} mismatch with block_complete_entry.m_txs.size()= {}, dropping connection",
+                get_blob_hash(block_entry.block), b.tx_hashes.size(), block_entry.txs.size());
         drop_connection(context, false, false);
         ++m_sync_bad_spans_downloaded;
         return 1;
@@ -1455,7 +1458,8 @@ namespace cryptonote
                   if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id)->bool{
                     cryptonote::transaction tx;
                     parse_and_validate_tx_from_blob(block_entry.txs[i], tx); // must succeed if we got here
-                    log::error(logcat, "transaction verification failed on NOTIFY_RESPONSE_GET_BLOCKS, tx_id = {}, dropping connection", tools::type_to_hex(cryptonote::get_transaction_hash(tx)));
+                    log::error(logcat, "transaction verification failed on NOTIFY_RESPONSE_GET_BLOCKS, tx_id = {}, dropping connection",
+                            cryptonote::get_transaction_hash(tx));
                     drop_connection(context, false, true);
                     return 1;
                   }))

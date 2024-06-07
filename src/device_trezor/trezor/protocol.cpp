@@ -42,7 +42,6 @@
 #include <unordered_map>
 #include <utility>
 
-#include "common/hex.h"
 #include "cryptonote_config.h"
 #include "ringct/rctTypes.h"
 #include "version.h"
@@ -296,13 +295,13 @@ namespace ki {
 
         CHECK_AND_ASSERT_THROW_MES(
                 rct::scalarmultKey(rct::ki2rct(ki), rct::curveOrder()) == rct::identity(),
-                "Key image out of validity domain: key image " << tools::type_to_hex(ki));
+                "Key image out of validity domain: key image " << tools::hex_guts(ki));
 
         CHECK_AND_ASSERT_THROW_MES(
                 ::crypto::check_ring_signature((const ::crypto::hash&)ki, ki, pkeys, &sig),
-                "Signature failed for key image " << tools::type_to_hex(ki)
-                                                  << ", signature " + tools::type_to_hex(sig)
-                                                  << ", pubkey " + tools::type_to_hex(*pkeys[0]));
+                "Signature failed for key image " << tools::hex_guts(ki)
+                                                  << ", signature " + tools::hex_guts(sig)
+                                                  << ", pubkey " + tools::hex_guts(*pkeys[0]));
     }
 }  // namespace ki
 

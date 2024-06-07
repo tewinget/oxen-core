@@ -45,7 +45,6 @@ extern "C" {
 #include "crypto/keccak.h"
 #include "crypto/random.h"
 }
-#include "common/hex.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
 #include "serialization/variant.h"
@@ -753,13 +752,10 @@ inline bool operator!=(const rct::key& k0, const crypto::public_key& k1) {
     return crypto_verify_32(k0.bytes, (const unsigned char*)&k1);
 }
 
-inline std::string to_hex_string(const rct::key& v) {
-    return "<{}>"_format(tools::type_to_hex(v));
-}
 }  // namespace rct
 
 template <>
-inline constexpr bool formattable::via_to_hex_string<rct::key> = true;
+struct fmt::formatter<rct::key> : formattable::hex_span_formatter {};
 
 namespace cryptonote {
 inline bool operator==(const crypto::public_key& k0, const rct::key& k1) {

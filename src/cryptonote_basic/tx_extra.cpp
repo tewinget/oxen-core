@@ -1,5 +1,6 @@
 #include "tx_extra.h"
 
+#include "common/guts.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 
 namespace cryptonote {
@@ -119,7 +120,7 @@ std::string generic_owner::to_string(cryptonote::network_type nettype) const {
         return cryptonote::get_account_address_as_str(
                 nettype, wallet.is_subaddress, wallet.address);
     else
-        return tools::type_to_hex(ed25519);
+        return tools::hex_guts(ed25519);
 }
 
 bool generic_owner::operator==(const generic_owner& other) const {

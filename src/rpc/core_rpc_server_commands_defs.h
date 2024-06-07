@@ -51,7 +51,6 @@
 #include <unordered_set>
 
 #include "checkpoints/checkpoints.h"
-#include "common/hex.h"
 #include "common/meta.h"
 #include "common/oxen.h"
 #include "common/varint.h"

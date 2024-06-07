@@ -7,6 +7,7 @@
 
 #include <sqlitedb/database.hpp>
 
+#include "common/guts.h"
 #include "mock_wallet.hpp"
 #include "mock_daemon_comms.hpp"
 #include "mock_decoy_selector.hpp"
@@ -35,7 +36,7 @@ class MockSigningKeyring : public Keyring
     {
       predetermined_tx_keys.push_back(crypto::secret_key{});
       crypto::secret_key& ephemeral_key = predetermined_tx_keys.back();
-      tools::hex_to_type(key, ephemeral_key);
+      tools::load_from_hex_guts(key, ephemeral_key);
     }
 
 
@@ -66,14 +67,14 @@ TEST_CASE("Transaction Creation", "[wallet,tx]")
   //secret: 84d59173dddd78b840f03550f6e3d58163a7d06f35db9585b381e26de440f303
   //public: 66eb874ad6ee33487c5fe4dab8f17e412d320b8933b1ddf108dd15dd45026d0c
   crypto::secret_key spend_priv;
-  tools::hex_to_type<crypto::secret_key>("018f2288a77909f312baacbeabc192a53119edc53364d7ee64ac226392c6560e", spend_priv);
+  tools::load_from_hex_guts("018f2288a77909f312baacbeabc192a53119edc53364d7ee64ac226392c6560e"sv, spend_priv);
   crypto::public_key spend_pub;
-  tools::hex_to_type<crypto::public_key>("adb121d075407895ba22ff3927b3a8aec60c29176fe97efce7f4d0a7d2c7bc0d", spend_pub);
+  tools::load_from_hex_guts("adb121d075407895ba22ff3927b3a8aec60c29176fe97efce7f4d0a7d2c7bc0d"sv, spend_pub);
 
   crypto::secret_key view_priv;
-  tools::hex_to_type<crypto::secret_key>("84d59173dddd78b840f03550f6e3d58163a7d06f35db9585b381e26de440f303", view_priv);
+  tools::load_from_hex_guts("84d59173dddd78b840f03550f6e3d58163a7d06f35db9585b381e26de440f303"sv, view_priv);
   crypto::public_key view_pub;
-  tools::hex_to_type<crypto::public_key>("66eb874ad6ee33487c5fe4dab8f17e412d320b8933b1ddf108dd15dd45026d0c", view_pub);
+  tools::load_from_hex_guts("66eb874ad6ee33487c5fe4dab8f17e412d320b8933b1ddf108dd15dd45026d0c"sv, view_pub);
 
   auto wallet = wallet::MockWallet(spend_priv, spend_pub, view_priv, view_pub, cryptonote::network_type::TESTNET);
 
@@ -197,14 +198,14 @@ TEST_CASE("Transaction Creation", "[wallet,tx]")
     ////secret: 84d59173dddd78b840f03550f6e3d58163a7d06f35db9585b381e26de440f303
     ////public: 66eb874ad6ee33487c5fe4dab8f17e412d320b8933b1ddf108dd15dd45026d0c
     //crypto::secret_key spend_priv;
-    //tools::hex_to_type<crypto::secret_key>("018f2288a77909f312baacbeabc192a53119edc53364d7ee64ac226392c6560e", spend_priv);
+    //tools::load_from_hex_guts("018f2288a77909f312baacbeabc192a53119edc53364d7ee64ac226392c6560e"sv, spend_priv);
     //crypto::public_key spend_pub;
-    //tools::hex_to_type<crypto::public_key>("adb121d075407895ba22ff3927b3a8aec60c29176fe97efce7f4d0a7d2c7bc0d", spend_pub);
+    //tools::load_from_hex_guts("adb121d075407895ba22ff3927b3a8aec60c29176fe97efce7f4d0a7d2c7bc0d"sv, spend_pub);
 
     //crypto::secret_key view_priv;
-    //tools::hex_to_type<crypto::secret_key>("84d59173dddd78b840f03550f6e3d58163a7d06f35db9585b381e26de440f303", view_priv);
+    //tools::load_from_hex_guts("84d59173dddd78b840f03550f6e3d58163a7d06f35db9585b381e26de440f303"sv, view_priv);
     //crypto::public_key view_pub;
-    //tools::hex_to_type<crypto::public_key>("66eb874ad6ee33487c5fe4dab8f17e412d320b8933b1ddf108dd15dd45026d0c", view_pub);
+    //tools::load_from_hex_guts("66eb874ad6ee33487c5fe4dab8f17e412d320b8933b1ddf108dd15dd45026d0c"sv, view_pub);
 
     //auto wallet_with_valid_inputs = wallet::MockWallet(spend_priv, spend_pub, view_priv, view_pub, cryptonote::network_type::TESTNET);
 
@@ -235,11 +236,11 @@ TEST_CASE("Transaction Creation", "[wallet,tx]")
     //o.amount = 1000000000000;
 
     //crypto::public_key tx_pub_key;
-    //tools::hex_to_type("3bf997b70d9a26e60525f1b14d0383f08c3ec0559aaf7639827d08214d6aa664", tx_pub_key);
+    //tools::load_from_hex_guts("3bf997b70d9a26e60525f1b14d0383f08c3ec0559aaf7639827d08214d6aa664", tx_pub_key);
     //o.derivation = keys->generate_key_derivation(tx_pub_key);
-    //tools::hex_to_type("02c6cf65059a02844ca0e7442687d704a0806f055a1e8e0032cd07e1d08885b2", o.key); // Public Key of Output
-    //tools::hex_to_type("145209bdaf35087c0e61daa14a9b7d3fe3a3c14fc266724d3e7c38cd0b43a201", o.rct_mask);
-    //tools::hex_to_type("1b6e1e63b1b634c6faaad8eb23f273f98b4b7cedb0a449f8d25c7eea2361d458", o.key_image);
+    //tools::load_from_hex_guts("02c6cf65059a02844ca0e7442687d704a0806f055a1e8e0032cd07e1d08885b2", o.key); // Public Key of Output
+    //tools::load_from_hex_guts("145209bdaf35087c0e61daa14a9b7d3fe3a3c14fc266724d3e7c38cd0b43a201", o.rct_mask);
+    //tools::load_from_hex_guts("1b6e1e63b1b634c6faaad8eb23f273f98b4b7cedb0a449f8d25c7eea2361d458", o.key_image);
     //o.subaddress_index = cryptonote::subaddress_index{0,0};
     //o.output_index = 0;
 

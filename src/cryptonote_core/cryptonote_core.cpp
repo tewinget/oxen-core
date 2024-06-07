@@ -35,7 +35,7 @@
 #include <iomanip>
 #include <unordered_set>
 
-#include "epee/string_tools.h"
+#include "common/guts.h"
 
 extern "C" {
 #include <sodium.h>
@@ -57,7 +57,6 @@ extern "C" {
 #include "common/base58.h"
 #include "common/command_line.h"
 #include "common/file.h"
-#include "common/hex.h"
 #include "common/i18n.h"
 #include "common/notify.h"
 #include "common/sha256sum.h"
@@ -68,6 +67,7 @@ extern "C" {
 #include "cryptonote_core.h"
 #include "epee/memwipe.h"
 #include "epee/net/local_ip.h"
+#include "epee/string_tools.h"
 #include "epee/warnings.h"
 #include "ethyl/utils.hpp"
 #include "logging/oxen_logger.h"
@@ -732,7 +732,7 @@ bool core::init(
             m_blockchain_storage.hook_block_post_add(
                     [notify = tools::Notify(command_line::get_arg(vm, arg_block_notify))](
                             const auto& info) {
-                        notify.notify("%s", tools::type_to_hex(get_block_hash(info.block)));
+                        notify.notify("%s", tools::hex_guts(get_block_hash(info.block)));
                     });
     } catch (const std::exception& e) {
         log::error(logcat, "Failed to parse block rate notify spec");
@@ -1028,32 +1028,13 @@ bool core::init_service_keys() {
 
     if (m_service_node) {
         log::info(logcat, fg(fmt::terminal_color::yellow), "Service node public keys:");
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "- primary: {}",
-                tools::type_to_hex(keys.pub));
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "- ed25519: {}",
-                tools::type_to_hex(keys.pub_ed25519));
+        log::info(logcat, fg(fmt::terminal_color::yellow), "- primary: {:x}", keys.pub);
+        log::info(logcat, fg(fmt::terminal_color::yellow), "- ed25519: {:x}", keys.pub_ed25519);
         // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
         log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "- lokinet: {}.snode",
-                oxenc::to_base32z(tools::view_guts(keys.pub_ed25519)));
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "- x25519: {}",
-                tools::type_to_hex(keys.pub_x25519));
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "- bls: {}",
-                m_bls_signer->getPublicKeyHex());
+                logcat, fg(fmt::terminal_color::yellow), "- lokinet: {:a}.snode", keys.pub_ed25519);
+        log::info(logcat, fg(fmt::terminal_color::yellow), "- x25519: {:x}", keys.pub_x25519);
+        log::info(logcat, fg(fmt::terminal_color::yellow), "- bls: {:x}", keys.pub_bls);
 
     } else {
         // Only print the x25519 version because it's the only thing useful for a non-SN (for
@@ -1061,8 +1042,8 @@ bool core::init_service_keys() {
         log::info(
                 logcat,
                 fg(fmt::terminal_color::yellow),
-                "x25519 public key: {}",
-                tools::type_to_hex(keys.pub_x25519));
+                "x25519 public key: {:x}",
+                keys.pub_x25519);
     }
 
     return true;

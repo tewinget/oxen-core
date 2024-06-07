@@ -37,7 +37,7 @@
 #include <utility>
 #include <vector>
 
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/string_util.h"
 #include "epee/warnings.h"
 #include "epee/misc_log_ex.h"
@@ -67,10 +67,7 @@ T extract_single(std::string_view val) {
   } else if constexpr (std::is_same_v<T, std::string_view>) {
     return val;
   } else {
-    T v;
-    if (!tools::hex_to_type(val, v))
-      throw std::runtime_error("Invalid hex [" + std::string{val} + ", size=" + std::to_string(val.size()/2) + "B], could not extract type (T size=" + std::to_string(sizeof(T)) + ") on line " + std::to_string(lineno));
-    return v;
+    return tools::make_from_hex_guts<T>(val);
   }
 }
 
@@ -83,7 +80,7 @@ std::string make_single(const T& val) {
   else if constexpr (std::is_same_v<T, std::string_view>)
     return std::string{val};
   else
-    return tools::type_to_hex(val);
+    return tools::hex_guts(val);
 }
 
 template <typename... T, typename It, size_t... S>
