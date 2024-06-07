@@ -168,11 +168,5 @@ std::string_view find_prefixed_value(It begin, It end, std::string_view prefix) 
 /// Safely create a substring from `src`, slicing the string at [pos, pos + size). If pos is
 /// out-of-bounds, the a slice to the end of the string is returned of 0 size. This function hence
 /// guarantees that a valid string will always be returned irrespective of input.
-static std::string_view string_safe_substr(std::string_view src, size_t pos, size_t size) noexcept {
-    std::string_view result = std::string_view(src.end(), 0);
-    if (pos < src.size()) {
-        result = src.substr(pos, size);
-    }
-    return result;
-}
+std::string_view string_safe_substr(std::string_view src, size_t pos, size_t size) noexcept;
 }  // namespace tools

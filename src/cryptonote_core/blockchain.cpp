@@ -1603,15 +1603,20 @@ bool Blockchain::validate_miner_transaction(
             return false;
         }
     } else {
-        const auto pool_block_reward =
-                m_l2_tracker->get_pool_block_reward(b.timestamp, b.l2_height);
-        if (b.reward != pool_block_reward) {
-            log::error(
-                    logcat,
-                    "block reward to be batched is incorrect. Block reward is {}, should be {}",
-                    print_money(b.reward),
-                    print_money(pool_block_reward));
-            return false;
+        // NOTE: In SENT era, if provider is not configured- we trust the Service Node quorums to
+        // query the smart contract for the reward amount. Non-service nodes can configure the
+        // provider if they wish to synchronise the network with extra security.
+        if (m_l2_tracker->provider_has_clients()) {
+            const auto pool_block_reward =
+                    m_l2_tracker->get_pool_block_reward(b.timestamp, b.l2_height);
+            if (b.reward != pool_block_reward) {
+                log::error(
+                        logcat,
+                        "block reward to be batched is incorrect. Block reward is {}, should be {}",
+                        print_money(b.reward),
+                        print_money(pool_block_reward));
+                return false;
+            }
         }
     }
 

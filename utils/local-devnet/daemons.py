@@ -34,6 +34,11 @@ class TransferFailed(RuntimeError):
         self.message = message
         self.json = json
 
+class RPCFailed(RuntimeError):
+    def __init__(self, json):
+        self.message = "RPC request failed"
+        self.json = json
+        super().__init__(self.message)
 
 class RPCDaemon:
     def __init__(self, name):
@@ -129,7 +134,6 @@ class RPCDaemon:
                 if now >= until:
                     raise
 
-
 class Daemon(RPCDaemon):
     base_args = ('--dev-allow-local-ips', '--fixed-difficulty=1', '--devnet', '--non-interactive')
 
@@ -217,10 +221,15 @@ class Daemon(RPCDaemon):
     def height(self):
         return self.rpc("/get_height").json()["height"]
 
+    def get_staking_requirement(self):
+        rpc_result = self.json_rpc("get_staking_requirement").json()
+        if rpc_result["result"]["status"] != "OK":
+            raise RPCFailed(rpc_result)
+        result = rpc_result["result"]["staking_requirement"]
+        return result
 
     def txpool_hashes(self):
         return [x['id_hash'] for x in self.rpc("/get_transaction_pool").json()['transactions']]
-
 
     def ping(self, *, storage=True, lokinet=True):
         """Sends fake storage server and lokinet pings to the running oxend"""
@@ -253,8 +262,8 @@ class Daemon(RPCDaemon):
     def get_bls_pubkeys(self):
         return self.json_rpc("bls_pubkey_request", {}).json()["result"]["nodes"]
 
-    def get_bls_rewards(self, address):
-        return self.json_rpc("bls_rewards_request", {"address": address}).json()
+    def get_bls_rewards(self, address, oxen_address):
+        return self.json_rpc("bls_rewards_request", {"address": address, "oxen_address": oxen_address}, timeout=1000).json()
 
     def get_exit_request(self, bls_key):
         return self.json_rpc("bls_exit_request", {"bls_key": bls_key}).json()
@@ -379,12 +388,12 @@ class Wallet(RPCDaemon):
         return [find_tx(txid) for txid in txids]
 
 
-    def register_sn(self, sn):
+    def register_sn(self, sn, staking_requirement):
         r = sn.json_rpc("get_service_node_registration_cmd", {
             "contributor_addresses": [self.address()],
-            "contributor_amounts": [100000000000],
+            "contributor_amounts": [staking_requirement],
             "operator_cut": "100",
-            "staking_requirement": 100000000000
+            "staking_requirement": staking_requirement
         }).json()
         if 'error' in r:
             raise RuntimeError("Registration cmd generation failed: {}".format(r['error']['message']))
@@ -393,12 +402,12 @@ class Wallet(RPCDaemon):
         if 'error' in r:
             raise RuntimeError("Failed to submit service node registration tx: {}".format(r['error']['message']))
 
-    def register_sn_for_contributions(self, sn, cut, amount):
+    def register_sn_for_contributions(self, sn, cut, amount, staking_requirement):
         r = sn.json_rpc("get_service_node_registration_cmd", {
             "contributor_addresses": [self.address()],
             "contributor_amounts": [amount],
             "operator_cut": str(cut),
-            "staking_requirement": 100000000000
+            "staking_requirement": staking_requirement
         }).json()
         if 'error' in r:
             raise RuntimeError("Registration cmd generation failed: {}".format(r['error']['message']))

@@ -6,17 +6,26 @@ class ServiceNodeRewardContract:
         self.provider_url = "http://127.0.0.1:8545"
         self.private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" # Hardhat account #0
         self.web3 = Web3(Web3.HTTPProvider(self.provider_url))
+
         self.contract_address = self.getContractDeployedInLatestBlock()
         self.contract = self.web3.eth.contract(address=self.contract_address, abi=contract_abi)
         self.acc = self.web3.eth.account.from_key(self.private_key)
+
+        self.foundation_pool_address = self.contract.functions.foundationPool().call();
+        self.foundation_pool_contract = self.web3.eth.contract(address=self.foundation_pool_address, abi=foundation_pool_abi)
+
+        # NOTE: Start the rewards contract
         unsent_tx = self.contract.functions.start().build_transaction({
             "from": self.acc.address,
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+
         self.erc20_address = self.contract.functions.designatedToken().call()
         self.erc20_contract = self.web3.eth.contract(address=self.erc20_address, abi=erc20_contract_abi)
-        unsent_tx = self.erc20_contract.functions.approve(self.contract_address, 15001000000000000000000).build_transaction({
+
+        # NOTE: Approve an amount to be sent from the hardhat account to the contract
+        unsent_tx = self.erc20_contract.functions.approve(self.contract_address, 1_5001_000_000_000_000_000_000).build_transaction({
             "from": self.acc.address,
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
@@ -46,8 +55,31 @@ class ServiceNodeRewardContract:
     def erc20balance(self, address):
         return self.erc20_contract.functions.balanceOf(Web3.to_checksum_address(address)).call()
 
+    def submitSignedTX(self, tx_label, signed_tx):
+        result     = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_receipt = self.web3.eth.wait_for_transaction_receipt(result)
+        self.web3.eth.wait_for_transaction_receipt(result)
+
+        if tx_receipt["status"] == 0:
+            # build a new transaction to replay:
+            tx_to_replay = self.web3.eth.get_transaction(result)
+            replay_tx = {
+                'to':    tx_to_replay['to'],
+                'from':  tx_to_replay['from'],
+                'value': tx_to_replay['value'],
+                'data':  tx_to_replay['input'],
+            }
+
+            try: # replay the transaction locally:
+                self.web3.eth.call(replay_tx, tx_to_replay.blockNumber - 1)
+            except Exception as e:
+                print(f"{tx_label} TX {result} reverted {e}")
+
+        return result
+
     def addBLSPublicKey(self, args):
         # function addBLSPublicKey(uint256 pkX, uint256 pkY, uint256 sigs0, uint256 sigs1, uint256 sigs2, uint256 sigs3, uint256 serviceNodePubkey, uint256 serviceNodeSignature) public {
+        # function addBLSPublicKey(BN256G1.G1Point blsPubkey, BLSSignatureParams blsSignature, ServiceNodeParams serviceNodeParams, Contributor[] contributors)
         bls_param = {
                 'X': int(args["bls_pubkey"][:64], 16),
                 'Y': int(args["bls_pubkey"][64:128], 16),
@@ -70,8 +102,7 @@ class ServiceNodeRewardContract:
                         'gas': 2000000,
                         'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_hash = self.submitSignedTX("Add BLS public key", signed_tx)
         return tx_hash
 
     def initiateRemoveBLSPublicKey(self, service_node_id):
@@ -83,8 +114,7 @@ class ServiceNodeRewardContract:
                         'gas': 2000000,
                         'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_hash = self.submitSignedTX("Remove BLS public key", signed_tx)
         return tx_hash
 
     def removeBLSPublicKeyWithSignature(self, blsKey, blsSig, ids):
@@ -103,8 +133,7 @@ class ServiceNodeRewardContract:
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
         })
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_hash = self.submitSignedTX("Remove BLS public key w/ signature", signed_tx)
         return tx_hash
 
     def liquidateBLSPublicKeyWithSignature(self, blsKey, blsSig, ids):
@@ -123,8 +152,7 @@ class ServiceNodeRewardContract:
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
         })
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_hash = self.submitSignedTX("Liquidate BLS public key w/ signature", signed_tx)
         return tx_hash
 
     def seedPublicKeyList(self, args):
@@ -142,12 +170,14 @@ class ServiceNodeRewardContract:
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
         })
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_hash = self.submitSignedTX("Seed public key list", signed_tx)
         return tx_hash
 
     def numberServiceNodes(self):
         return self.contract.functions.serviceNodesLength().call()
+
+    def recipients(self, address):
+        return self.contract.functions.recipients(address).call()
 
     def updateRewardsBalance(self, recipientAddress, recipientAmount, blsSig, ids):
         sig_param = {
@@ -167,9 +197,9 @@ class ServiceNodeRewardContract:
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
         })
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_hash = self.submitSignedTX("Update rewards balance", signed_tx)
         return tx_hash
+
 
     def claimRewards(self):
         unsent_tx = self.contract.functions.claimRewards().build_transaction({
@@ -178,8 +208,7 @@ class ServiceNodeRewardContract:
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
         })
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_hash = self.submitSignedTX("Claim rewards", signed_tx)
         return tx_hash
 
     def getServiceNodeID(self, bls_public_key):
@@ -2175,6 +2204,402 @@ erc20_contract_abi = json.loads("""
           "type": "bool"
         }
       ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+]
+""")
+
+foundation_pool_abi = json.loads("""
+[
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        }
+      ],
+      "name": "AddressEmptyCode",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "AddressInsufficientBalance",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "FailedInnerCall",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidInitialization",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotInitializing",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        }
+      ],
+      "name": "SafeERC20FailedOperation",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "newBeneficiary",
+          "type": "address"
+        }
+      ],
+      "name": "BeneficiaryUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "FundsReleased",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "version",
+          "type": "uint64"
+        }
+      ],
+      "name": "Initialized",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferStarted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "ANNUAL_INTEREST_RATE",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "BASIS_POINTS",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "SENT",
+      "outputs": [
+        {
+          "internalType": "contract IERC20",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "acceptOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "beneficiary",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "balance",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "timeElapsed",
+          "type": "uint256"
+        }
+      ],
+      "name": "calculateInterestAmount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "calculateReleasedAmount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "calculateTotalDeposited",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_beneficiary",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_sent",
+          "type": "address"
+        }
+      ],
+      "name": "initialize",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "lastPaidOutTime",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "payoutReleased",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pendingOwner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "rewardRate",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newBeneficiary",
+          "type": "address"
+        }
+      ],
+      "name": "setBeneficiary",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "totalPaidOut",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
     }

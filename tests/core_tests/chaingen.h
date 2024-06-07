@@ -770,19 +770,39 @@ public:
   //
   // NOTE: Loki
   //
+  static bool add_to_blockchain_was_valid(std::string_view type, bool can_be_added_to_blockchain, bool added, std::string_view fail_msg)
+  {
+    if (can_be_added_to_blockchain) {
+        if (!added) {
+            oxen::log::warning(
+                    globallogcat,
+                    "Failed to add {} that was marked as being 'valid to add to the "
+                    "blockchain'. Validation rules have failed to permit a valid constructed "
+                    "item. {}",
+                    type,
+                    fail_msg);
+            return false;
+        }
+    } else {
+        if (added) {
+            oxen::log::warning(
+                    globallogcat,
+                    "The {} was added to blockchain but it was marked as 'not being a valid "
+                    "to add to the blockchain'. Validation rules have failed to reject the "
+                    "invalidly constructed item. {}", type, fail_msg);
+            return false;
+        }
+    }
+    return true;
+  }
+
   bool operator()(const oxen_blockchain_addable<cryptonote::checkpoint_t> &entry) const
   {
     log_event("oxen_blockchain_addable<cryptonote::checkpoint_t>");
     cryptonote::Blockchain &blockchain = m_c.get_blockchain_storage();
     bool added = blockchain.update_checkpoint(entry.data);
-    if (added != entry.can_be_added_to_blockchain)
-    {
-      if (entry.fail_msg.size())
-        oxen::log::warning(globallogcat, "{}", entry.fail_msg);
-      else
-        oxen::log::warning(globallogcat, "Failed to add checkpoint (no reason given)");
-      return false;
-    }
+    if (!add_to_blockchain_was_valid("checkpoint", entry.can_be_added_to_blockchain, added, entry.fail_msg))
+        return false;
     return true;
   }
 
@@ -791,14 +811,8 @@ public:
     log_event("oxen_blockchain_addable<service_nodes::quorum_vote_t>");
     cryptonote::vote_verification_context vvc = {};
     bool added = m_c.add_service_node_vote(entry.data, vvc);
-    if (added != entry.can_be_added_to_blockchain)
-    {
-      if (entry.fail_msg.size())
-        oxen::log::warning(globallogcat,  "{}",entry.fail_msg);
-      else
-        oxen::log::warning(globallogcat, "Failed to add service node vote (no reason given)");
-      return false;
-    }
+    if (!add_to_blockchain_was_valid("service node vote", entry.can_be_added_to_blockchain, added, entry.fail_msg))
+        return false;
     return true;
   }
 
@@ -823,13 +837,15 @@ public:
       bvc.m_verifivation_failed = true;
 
     bool added = !bvc.m_verifivation_failed;
-    if (added != entry.can_be_added_to_blockchain)
-    {
-      if (entry.fail_msg.size())
-        oxen::log::warning(globallogcat, "{}", entry.fail_msg);
-      else
-        oxen::log::warning(globallogcat, "Failed to add block with checkpoint (no reason given)");
-      return false;
+    if (!add_to_blockchain_was_valid(
+                fmt::format(
+                        "block {} hf{} w/ checkpoint",
+                        block.height,
+                        static_cast<size_t>(block.major_version)),
+                entry.can_be_added_to_blockchain,
+                added,
+                entry.fail_msg)) {
+        return false;
     }
     return true;
   }
@@ -850,13 +866,13 @@ public:
       bvc.m_verifivation_failed = true;
 
     bool added = !bvc.m_verifivation_failed;
-    if (added != entry.can_be_added_to_blockchain)
-    {
-      if (entry.fail_msg.size())
-        oxen::log::warning(globallogcat, "{}", entry.fail_msg);
-      else
-        oxen::log::warning(globallogcat, "Failed to add block (no reason given)");
-      return false;
+    if (!add_to_blockchain_was_valid(
+                fmt::format(
+                        "block {} hf{}", block.height, static_cast<size_t>(block.major_version)),
+                entry.can_be_added_to_blockchain,
+                added,
+                entry.fail_msg)) {
+        return false;
     }
     return true;
   }
@@ -876,13 +892,9 @@ public:
       bvc.m_verifivation_failed = true;
 
     bool added = !bvc.m_verifivation_failed;
-    if (added != entry.can_be_added_to_blockchain)
-    {
-      if (entry.fail_msg.size())
-        oxen::log::warning(globallogcat, "{}", entry.fail_msg);
-      else
-        oxen::log::warning(globallogcat, "Failed to add block (no reason given)");
-      return false;
+    if (!add_to_blockchain_was_valid(
+                "serialized block", entry.can_be_added_to_blockchain, added, entry.fail_msg)) {
+        return false;
     }
     return true;
   }
@@ -897,17 +909,13 @@ public:
     m_c.handle_incoming_tx(t_serializable_object_to_blob(entry.data.tx), tvc, opts);
 
     bool added = (pool_size + 1) == m_c.get_pool().get_transactions_count();
-    if (added != entry.can_be_added_to_blockchain)
-    {
-      if (entry.fail_msg.size())
-        oxen::log::warning(globallogcat, "{}", entry.fail_msg);
-      else if (entry.can_be_added_to_blockchain)
-        oxen::log::warning(globallogcat, "Failed to add transaction that should have been accepted");
-      else
-        oxen::log::warning(globallogcat, "TX adding should have failed, but didn't");
-      return false;
+    if (!add_to_blockchain_was_valid(
+                fmt::format("tx {}", entry.data.tx.hash),
+                entry.can_be_added_to_blockchain,
+                added,
+                entry.fail_msg)) {
+        return false;
     }
-
     return true;
   }
 
@@ -1522,7 +1530,7 @@ struct oxen_chain_generator
   cryptonote::transaction                              create_tx(const cryptonote::account_base &src, const cryptonote::account_public_address &dest, uint64_t amount, uint64_t fee) const;
   cryptonote::transaction                              create_registration_tx(const cryptonote::account_base& src,
                                                                               const cryptonote::keypair& service_node_keys = cryptonote::keypair{hw::get_device("default")},
-                                                                              uint64_t operator_stake = oxen::OXEN_STAKING_REQUIREMENT_TESTNET,
+                                                                              uint64_t operator_stake = static_cast<uint64_t>(-1),
                                                                               uint64_t fee = cryptonote::STAKING_FEE_BASIS,
                                                                               const std::vector<service_nodes::contribution>& contributors = {}) const;
   cryptonote::transaction                              create_staking_tx     (const crypto::public_key& pub_key, const cryptonote::account_base &src, uint64_t amount) const;

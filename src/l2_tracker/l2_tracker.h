@@ -91,6 +91,8 @@ class L2Tracker {
     std::vector<uint64_t> get_non_signers(const std::vector<std::string>& bls_public_keys);
     std::vector<std::string> get_all_bls_public_keys(uint64_t blockNumber);
 
+    bool provider_has_clients() const { return provider.clients.size(); }
+
     ethyl::Provider provider;
 
   private:

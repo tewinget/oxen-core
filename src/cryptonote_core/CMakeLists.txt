@@ -64,7 +64,7 @@ target_link_libraries(cryptonote_core
     logging
     extra)
 
-if(PER_BLOCK_CHECKPOINT)
+if (PER_BLOCK_CHECKPOINT)
   target_compile_definitions(cryptonote_core PUBLIC PER_BLOCK_CHECKPOINT)
   target_link_libraries(cryptonote_core PUBLIC blocks)
 endif()

@@ -13,10 +13,10 @@ RewardRateResponse PoolContract::RewardRate(uint64_t timestamp, uint64_t ethereu
     ethyl::ReadCallData callData;
     callData.contractAddress = contractAddress;
     std::string timestampStr =
-            utils::padTo32Bytes(utils::decimalToHex(timestamp), utils::PaddingDirection::LEFT);
+            ethyl::utils::padTo32Bytes(ethyl::utils::decimalToHex(timestamp), ethyl::utils::PaddingDirection::LEFT);
     // keccak256("rewardRate(uint256)")
     std::string functionABI = "0xcea01962";
     callData.data = functionABI + timestampStr;
     std::string result = provider.callReadFunction(callData, ethereum_block_height);
-    return RewardRateResponse{timestamp, utils::fromHexStringToUint64(result)};
+    return RewardRateResponse{timestamp, ethyl::utils::hexStringToU64(result)};
 }

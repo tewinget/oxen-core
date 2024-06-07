@@ -80,9 +80,9 @@ using TransactionStateChangeVariant = std::variant<
         ServiceNodeDeregisterTx,
         ServiceNodeExitTx>;
 
-class RewardsLogEntry : public LogEntry {
+class RewardsLogEntry : public ethyl::LogEntry {
   public:
-    RewardsLogEntry(const LogEntry& log) : LogEntry(log) {}
+    RewardsLogEntry(const ethyl::LogEntry& log) : ethyl::LogEntry(log) {}
     TransactionType getLogType() const;
     std::optional<TransactionStateChangeVariant> getLogTransaction() const;
 };
@@ -99,7 +99,7 @@ struct ContractServiceNode {
     crypto::eth_address operatorAddr;
     std::string pubkey;
     uint64_t leaveRequestTimestamp;
-    uint64_t deposit;
+    std::string deposit;
     std::array<Contributor, 10> contributors;
     size_t contributorsSize;
 };

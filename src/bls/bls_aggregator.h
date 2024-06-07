@@ -2,6 +2,7 @@
 
 #include <oxenmq/oxenmq.h>
 
+#include <span>
 #include <string>
 #include <vector>
 
@@ -15,7 +16,7 @@ struct aggregateExitResponse {
     std::string signature;
 };
 
-struct aggregateWithdrawalResponse {
+struct BLSRewardsResponse {
     std::string address;
     uint64_t amount;
     uint64_t height;
@@ -50,7 +51,21 @@ class BLSAggregator {
             std::shared_ptr<BLSSigner> _bls_signer);
 
     std::vector<std::pair<std::string, std::string>> getPubkeys();
-    aggregateWithdrawalResponse aggregateRewards(const std::string& address);
+
+    /// Request the service node network to sign the requested amount of
+    /// 'rewards' for the given Ethereum 'address' if by consensus they agree
+    /// that the amount is valid. This node (the aggregator) will aggregate the
+    /// signatures into the response.
+    ///
+    /// This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
+    /// amount is `0` or height is greater than the current blockchain height.
+    BLSRewardsResponse rewards_request(
+            const crypto::eth_address& address,
+            const std::string& oxen_address,
+            uint64_t rewards,
+            uint64_t height,
+            std::span<const crypto::x25519_public_key> exclude);
+
     aggregateExitResponse aggregateExit(const std::string& bls_key);
     aggregateExitResponse aggregateLiquidation(const std::string& bls_key);
     blsRegistrationResponse registration(
@@ -64,5 +79,6 @@ class BLSAggregator {
             std::function<void(
                     const BLSRequestResult& request_result, const std::vector<std::string>& data)>
                     callback,
-            const std::optional<std::string>& message = std::nullopt);
+            std::span<const std::string> message = {},
+            std::span<const crypto::x25519_public_key> exclude = {});
 };

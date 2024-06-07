@@ -32,6 +32,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <string_view>
+#include <span>
 
 #include "common/util.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -579,7 +580,7 @@ class service_node_list {
     /// Copies `service_node_addresses` of all currently active SNs into the given output
     /// iterator
     template <typename OutputIt>
-    void copy_active_service_node_addresses(OutputIt out) const {
+    void copy_active_service_node_addresses(OutputIt out, std::span<const crypto::x25519_public_key> exclude) const {
         std::lock_guard lock{m_sn_mutex};
         for (const auto& pk_info : m_state.service_nodes_infos) {
             if (!pk_info.second->is_active())
@@ -588,6 +589,10 @@ class service_node_list {
             if (it == proofs.end())
                 continue;
             if (const auto& x2_pk = it->second.pubkey_x25519) {
+                for (const crypto::x25519_public_key& exclude_key : exclude) {
+                    if (x2_pk == exclude_key)
+                        continue;
+                }
                 service_node_address address = {};
                 address.x_pkey = x2_pk;
                 address.ip = it->second.proof ? it->second.proof->public_ip : 0;

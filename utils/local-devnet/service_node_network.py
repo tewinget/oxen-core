@@ -56,7 +56,6 @@ class SNNetwork:
         self.binpath = binpath
         self.servicenodecontract = ServiceNodeRewardContract()
 
-
         vprint("Using '{}' for data files and logs".format(datadir))
 
         nodeopts = dict(oxend=str(self.binpath / 'oxend'), datadir=datadir)
@@ -138,8 +137,7 @@ class SNNetwork:
         with open(configfile, 'w') as filetowrite:
             filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
-        # TODO sean remove this
-        # input("Press Enter to continue...")
+        self.sns[0].get_staking_requirement()
 
         # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
         # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
@@ -155,7 +153,7 @@ class SNNetwork:
         # time.sleep(40)
         self.mike.refresh()
         for sn in self.sns[0:5]:
-            self.mike.register_sn(sn)
+            self.mike.register_sn(sn, self.sns[0].get_staking_requirement())
             vprint(".", end="", flush=True, timestamp=False)
         vprint(timestamp=False)
         if len(self.sns) > 5:
@@ -164,11 +162,11 @@ class SNNetwork:
             self.mine(6*len(self.sns))
 
             self.print_wallet_balances()
-            self.mike.transfer(self.alice, 150000000000)
-            self.mike.transfer(self.bob, 150000000000)
+            self.mike.transfer(self.alice, coins(150))
+            self.mike.transfer(self.bob, coins(150))
             vprint("Submitting more service node registrations: ", end="", flush=True)
             for sn in self.sns[5:-1]:
-                self.mike.register_sn(sn)
+                self.mike.register_sn(sn, self.sns[0].get_staking_requirement())
                 vprint(".", end="", flush=True, timestamp=False)
             vprint(timestamp=False)
             vprint("Done.")
@@ -178,7 +176,7 @@ class SNNetwork:
         vprint("Mining 40 blocks (registrations + blink quorum lag) and waiting for nodes to sync")
         self.sync_nodes(self.mine(39), timeout=120)
         for wallet in self.extrawallets:
-            self.mike.transfer(wallet, 11000000000)
+            self.mike.transfer(wallet, coins(11))
         self.sync_nodes(self.mine(1), timeout=120)
 
 
@@ -207,11 +205,11 @@ class SNNetwork:
 
         # This commented out code will register the last SN through Bobs wallet (Has not done any others)
         # and also get 9 other wallets to contribute the rest of the node with a 10% operator fee
-        self.bob.register_sn_for_contributions(self.sns[-1], 10, 28000000000)
+        self.bob.register_sn_for_contributions(sn=self.sns[-1], cut=10, amount=coins(28), staking_requirement=self.sns[0].get_staking_requirement())
         self.sync_nodes(self.mine(10), timeout=120)
         self.print_wallet_balances()
         for wallet in self.extrawallets:
-            wallet.contribute_to_sn(self.sns[-1], 8000000000)
+            wallet.contribute_to_sn(self.sns[-1], coins(8))
         self.sync_nodes(self.mine(1), timeout=120)
         time.sleep(10)
         for sn in self.sns:
@@ -244,19 +242,58 @@ class SNNetwork:
         # vprint("Submitted transaction to liquidate service node : {}".format(ethereum_add_bls_args["bls_pubkey"]))
         # vprint("liquidated node: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
 
+        # Sleep and let pulse quorum do work
+        sleep_time = 30
+        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
+        time.sleep(sleep_time)
+        vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
+
         # Claim rewards for Address
-        time.sleep(10)
-        rewards = self.ethsns[0].get_bls_rewards(self.servicenodecontract.hardhatAccountAddress())
+        hardhatAccount = self.servicenodecontract.hardhatAccountAddress()
+        rewards        = self.ethsns[0].get_bls_rewards(hardhatAccount, self.mike.address())
+        rewardsAccount = rewards["result"]["address"]
+        assert rewardsAccount.lower() == hardhatAccount.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhatAccount.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
         vprint(rewards)
-        vprint("Balance before claim {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.hardhatAccountAddress())))
+
+        vprint("Contract rewards before updating has ['available', 'claimed'] respectively: ",
+               self.servicenodecontract.recipients(hardhatAccount),
+               " for ",
+               hardhatAccount)
+
+        # TODO: We send the required balance from the hardhat account to the
+        # contract to guarantee that claiming will succeed. We should hook up
+        # the pool to the rewards contract and fund the contract from there.
+        unsent_tx = self.servicenodecontract.erc20_contract.functions.transfer(self.servicenodecontract.contract_address, rewards["result"]["amount"] + 100).build_transaction({
+            "from": self.servicenodecontract.acc.address,
+            'nonce': self.servicenodecontract.web3.eth.get_transaction_count(self.servicenodecontract.acc.address)})
+        signed_tx = self.servicenodecontract.web3.eth.account.sign_transaction(unsent_tx, private_key=self.servicenodecontract.acc.key)
+        tx_hash = self.servicenodecontract.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        self.servicenodecontract.foundation_pool_contract.functions.payoutReleased().call()
+
+        vprint("Foundation pool balance: {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.foundation_pool_address)))
+        vprint("Rewards contract balance: {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.contract_address)))
+
+        # NOTE: Then update the rewards blaance
         result = self.servicenodecontract.updateRewardsBalance(
-                rewards["result"]["address"],
+                hardhatAccount,
                 rewards["result"]["amount"],
                 rewards["result"]["signature"],
                 rewards["result"]["non_signers_bls_pubkeys"])
-                # self.servicenodecontract.getNonSigners(rewards["result"]["signers_bls_pubkeys"]))
-        result = self.servicenodecontract.claimRewards()
-        vprint("Balance after claim {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.hardhatAccountAddress())))
+
+        vprint("Contract rewards update executed, has ['available', 'claimed'] now respectively: ",
+               self.servicenodecontract.recipients(hardhatAccount),
+               " for ",
+               hardhatAccount)
+
+        vprint("Balance for '{}' before claim {}".format(hardhatAccount, self.servicenodecontract.erc20balance(hardhatAccount)))
+
+        # NOTE: Now claim the rewards
+        self.servicenodecontract.claimRewards()
+        vprint("Contract rewards after claim is now ['available', 'claimed'] respectively: ",
+               self.servicenodecontract.recipients(hardhatAccount),
+               " for ",
+               hardhatAccount)
+        vprint("Balance for '{}' after claim {}".format(hardhatAccount, self.servicenodecontract.erc20balance(hardhatAccount)))
 
         # Initiate Removeal of BLS Key
         # result = self.servicenodecontract.initiateRemoveBLSPublicKey(self.servicenodecontract.getServiceNodeID(ethereum_add_bls_args["bls_pubkey"]))

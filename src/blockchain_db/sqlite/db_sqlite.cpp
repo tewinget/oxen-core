@@ -433,7 +433,7 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint
 }
 
 std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const std::string& address) {
-    log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
+    log::trace(logcat, "BlockchainDB_SQLITE::{} for {}", __func__, address);
     // auto earnings = prepared_maybe_get<int64_t>(R"(
     // WITH RelevantOxenAddress AS (
     // SELECT oxen_address
@@ -456,7 +456,8 @@ std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const std::
         WHERE address = ?
     )",
             address);
-    return std::make_pair(height, static_cast<uint64_t>(earnings.value_or(0) / 1000));
+    auto result = std::make_pair(height, static_cast<uint64_t>(earnings.value_or(0) / 1000));
+    return result;
 }
 
 std::pair<std::vector<std::string>, std::vector<uint64_t>>

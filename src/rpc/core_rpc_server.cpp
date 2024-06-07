@@ -2554,12 +2554,12 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_context context) {
-    const aggregateWithdrawalResponse bls_withdrawal_signature_response =
-            m_core.aggregate_withdrawal_request(bls_rewards_request.request.address);
+    const BLSRewardsResponse bls_withdrawal_signature_response =
+            m_core.bls_rewards_request(bls_rewards_request.request.address, bls_rewards_request.request.oxen_address);
     bls_rewards_request.response["status"] = STATUS_OK;
     bls_rewards_request.response["address"] = bls_withdrawal_signature_response.address;
-    bls_rewards_request.response["height"] = bls_withdrawal_signature_response.height;
     bls_rewards_request.response["amount"] = bls_withdrawal_signature_response.amount;
+    bls_rewards_request.response["height"] = bls_withdrawal_signature_response.height;
     bls_rewards_request.response["signed_message"] =
             bls_withdrawal_signature_response.signed_message;
     bls_rewards_request.response["signature"] = bls_withdrawal_signature_response.signature;
@@ -3427,7 +3427,8 @@ void core_rpc_server::invoke(
         for (const auto& address : req.addresses) {
             uint64_t amount = 0;
             if (cryptonote::is_valid_address(address, nettype())) {
-                const auto [_, amount] = blockchain.sqlite_db()->get_accrued_earnings(address);
+                const auto [batch_db_height, amount] = blockchain.sqlite_db()->get_accrued_earnings(address);
+                (void)batch_db_height;
                 at_least_one_succeeded = true;
             }
             balances[address] = amount;

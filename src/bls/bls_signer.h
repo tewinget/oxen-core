@@ -18,6 +18,8 @@
 #include "crypto/base.h"
 #include "cryptonote_config.h"
 
+#include <span>
+
 class BLSSigner {
   private:
     bls::SecretKey secretKey;
@@ -39,8 +41,8 @@ class BLSSigner {
             std::string_view baseTag, uint32_t chainID, std::string_view contractAddress);
     std::string buildTag(std::string_view baseTag);
 
-    static crypto::bytes<32> hash(std::string_view in);
-    static crypto::bytes<32> hashModulus(std::string_view message);
+    static crypto::bytes<32> hashHex(std::string_view hex);
+    static crypto::bytes<32> hashBytes(std::span<const unsigned char> bytes);
 
     static constexpr inline std::string_view proofOfPossessionTag = "BLS_SIG_TRYANDINCREMENT_POP";
     static constexpr inline std::string_view rewardTag = "BLS_SIG_TRYANDINCREMENT_REWARD";

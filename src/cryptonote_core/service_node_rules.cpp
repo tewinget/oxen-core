@@ -25,21 +25,28 @@ static auto logcat = log::Cat("service_nodes");
 
 uint64_t get_staking_requirement(cryptonote::network_type nettype, hf hardfork) {
     assert(hardfork >= hf::hf16_pulse);
-    if (nettype == network_type::MAINNET)
-        return hardfork >= hf::hf20 ? SENT_STAKING_REQUIREMENT : OXEN_STAKING_REQUIREMENT;
-    return hardfork >= hf::hf20 ? SENT_STAKING_REQUIREMENT_TESTNET
-                                : OXEN_STAKING_REQUIREMENT_TESTNET;
+    if (hardfork >= hf::hf20) {
+        return nettype == network_type::MAINNET ? SENT_STAKING_REQUIREMENT
+                                                : SENT_STAKING_REQUIREMENT_TESTNET;
+    }
+
+    return nettype == network_type::MAINNET ? OXEN_STAKING_REQUIREMENT
+                                            : OXEN_STAKING_REQUIREMENT_TESTNET;
 }
 
 // TODO(oxen): Move to oxen_economy, this will also need access to oxen::exp2
 uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height) {
-    if (is_hard_fork_at_least(nettype, hf::hf20, height))
-        return nettype == network_type::MAINNET ? SENT_STAKING_REQUIREMENT
-                                                : SENT_STAKING_REQUIREMENT_TESTNET;
-    else if (nettype != cryptonote::network_type::MAINNET)
+    if (is_hard_fork_at_least(nettype, hf::hf20, height)) {
+        return get_staking_requirement(nettype, hf::hf20);
+    }
+
+    if (is_hard_fork_at_least(nettype, hf::hf16_pulse, height)) {
+        return get_staking_requirement(nettype, hf::hf16_pulse);
+    }
+
+    if (nettype != cryptonote::network_type::MAINNET) {
         return OXEN_STAKING_REQUIREMENT_TESTNET;
-    else if (is_hard_fork_at_least(nettype, hf::hf16_pulse, height))
-        return OXEN_STAKING_REQUIREMENT;
+    }
 
     if (is_hard_fork_at_least(nettype, hf::hf13_enforce_checkpoints, height)) {
         constexpr int64_t heights[] = {
