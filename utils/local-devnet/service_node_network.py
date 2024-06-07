@@ -137,6 +137,8 @@ class SNNetwork:
         with open(configfile, 'w') as filetowrite:
             filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
+        self.sns[0].get_staking_requirement()
+
         # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
         # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
         # SN (at height 40, which is the earliest we can submit them without getting an occasional
@@ -151,7 +153,7 @@ class SNNetwork:
         # time.sleep(40)
         self.mike.refresh()
         for sn in self.sns[0:5]:
-            self.mike.register_sn(sn)
+            self.mike.register_sn(sn, self.sns[0].get_staking_requirement())
             vprint(".", end="", flush=True, timestamp=False)
         vprint(timestamp=False)
         if len(self.sns) > 5:
@@ -160,11 +162,11 @@ class SNNetwork:
             self.mine(6*len(self.sns))
 
             self.print_wallet_balances()
-            self.mike.transfer(self.alice, 150000000000)
-            self.mike.transfer(self.bob, 150000000000)
+            self.mike.transfer(self.alice, coins(150))
+            self.mike.transfer(self.bob, coins(150))
             vprint("Submitting more service node registrations: ", end="", flush=True)
             for sn in self.sns[5:-1]:
-                self.mike.register_sn(sn)
+                self.mike.register_sn(sn, self.sns[0].get_staking_requirement())
                 vprint(".", end="", flush=True, timestamp=False)
             vprint(timestamp=False)
             vprint("Done.")
@@ -174,7 +176,7 @@ class SNNetwork:
         vprint("Mining 40 blocks (registrations + blink quorum lag) and waiting for nodes to sync")
         self.sync_nodes(self.mine(39), timeout=120)
         for wallet in self.extrawallets:
-            self.mike.transfer(wallet, 11000000000)
+            self.mike.transfer(wallet, coins(11))
         self.sync_nodes(self.mine(1), timeout=120)
 
 
@@ -203,11 +205,11 @@ class SNNetwork:
 
         # This commented out code will register the last SN through Bobs wallet (Has not done any others)
         # and also get 9 other wallets to contribute the rest of the node with a 10% operator fee
-        self.bob.register_sn_for_contributions(self.sns[-1], 10, 28000000000)
+        self.bob.register_sn_for_contributions(sn=self.sns[-1], cut=10, amount=coins(28), staking_requirement=self.sns[0].get_staking_requirement())
         self.sync_nodes(self.mine(10), timeout=120)
         self.print_wallet_balances()
         for wallet in self.extrawallets:
-            wallet.contribute_to_sn(self.sns[-1], 8000000000)
+            wallet.contribute_to_sn(self.sns[-1], coins(8))
         self.sync_nodes(self.mine(1), timeout=120)
         time.sleep(10)
         for sn in self.sns:
