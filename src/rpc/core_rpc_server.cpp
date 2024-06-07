@@ -1204,7 +1204,6 @@ void core_rpc_server::invoke(SUBMIT_TRANSACTION& tx, [[maybe_unused]] rpc_contex
     m_core.get_protocol()->relay_transactions(r, fake_context);
 
     tx.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(START_MINING& start_mining, [[maybe_unused]] rpc_context context) {
@@ -1527,7 +1526,6 @@ void core_rpc_server::invoke(GET_LAST_BLOCK_HEADER& get_last_block_header, rpc_c
     nlohmann::json header_as_json = header;
     get_last_block_header.response["block_header"] = header_as_json;
     get_last_block_header.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 
@@ -1575,7 +1573,6 @@ void core_rpc_server::invoke(
 
     get_block_header_by_hash.response["block_headers"] = block_headers;
     get_block_header_by_hash.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -1615,7 +1612,6 @@ void core_rpc_server::invoke(
     }
     get_block_headers_range.response["headers"] = headers;
     get_block_headers_range.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -1654,7 +1650,6 @@ void core_rpc_server::invoke(
 
     get_block_header_by_height.response["status"] = STATUS_OK;
     get_block_header_by_height.response["block_headers"] = headers;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
@@ -1717,7 +1712,6 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
     get_block.response["blob"] = oxenc::to_hex(t_serializable_object_to_blob(blk));
     get_block.response["json"] = obj_to_json_str(blk);
     get_block.response["status"] = STATUS_OK;
-    return;
 }
 
 static json json_connection_info(const connection_info& ci) {
@@ -1806,7 +1800,6 @@ void core_rpc_server::invoke(GET_BANS& get_bans, [[maybe_unused]] rpc_context co
     }
 
     get_bans.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BANNED& banned, [[maybe_unused]] rpc_context context) {
@@ -1851,7 +1844,6 @@ void core_rpc_server::invoke(SET_BANS& set_bans, [[maybe_unused]] rpc_context co
         m_p2p.unblock_host(na);
 
     set_bans.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(FLUSH_TRANSACTION_POOL& flush_transaction_pool, [[maybe_unused]] rpc_context context) {
@@ -1916,7 +1908,6 @@ void core_rpc_server::invoke(GET_OUTPUT_HISTOGRAM& get_output_histogram, rpc_con
 
     get_output_histogram.response["histogram"] = response_histogram;
     get_output_histogram.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_VERSION& version, [[maybe_unused]] rpc_context context) {
@@ -2025,7 +2016,6 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, [[maybe
     } catch (...) {
         get_alternate_chains.response["status"] = "Error retrieving alternate chains";
     }
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_LIMIT& limit, [[maybe_unused]] rpc_context context) {
@@ -2101,7 +2091,6 @@ void core_rpc_server::invoke(RELAY_TX& relay_tx, [[maybe_unused]] rpc_context co
         status = STATUS_OK;
 
     relay_tx.response["status"] = status;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(SYNC_INFO& sync, [[maybe_unused]] rpc_context context) {
@@ -2449,7 +2438,6 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
 
     get_quorum_state.response["quorums"] = quorums;
     get_quorum_state.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(FLUSH_CACHE& flush_cache, rpc_context context) {
@@ -2483,7 +2471,6 @@ void core_rpc_server::invoke(
 
     get_service_node_registration_cmd_raw.response["registration_cmd"] = registration_cmd;
     get_service_node_registration_cmd_raw.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -2539,7 +2526,6 @@ void core_rpc_server::invoke(
 
     get_service_node_registration_cmd.response["registration_cmd"] = registration_cmd;
     get_service_node_registration_cmd.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -2549,7 +2535,6 @@ void core_rpc_server::invoke(
 
     get_service_node_blacklisted_key_images.response["status"] = STATUS_OK;
     get_service_node_blacklisted_key_images.response["blacklist"] = blacklist;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, [[maybe_unused]] rpc_context context) {
@@ -2563,7 +2548,6 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, [[maybe_u
             bls_withdrawal_signature_response.signed_message;
     bls_rewards_request.response["signature"] = bls_withdrawal_signature_response.signature;
     bls_rewards_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_REQUEST& bls_withdrawal_request, [[maybe_unused]] rpc_context context) {
@@ -2575,7 +2559,6 @@ void core_rpc_server::invoke(BLS_EXIT_REQUEST& bls_withdrawal_request, [[maybe_u
             bls_withdrawal_signature_response.signed_message;
     bls_withdrawal_request.response["signature"] = bls_withdrawal_signature_response.signature;
     bls_withdrawal_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& bls_withdrawal_request, [[maybe_unused]] rpc_context context) {
@@ -2587,14 +2570,12 @@ void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& bls_withdrawal_request, [[
             bls_withdrawal_signature_response.signed_message;
     bls_withdrawal_request.response["signature"] = bls_withdrawal_signature_response.signature;
     bls_withdrawal_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_PUBKEYS& bls_pubkey_request, [[maybe_unused]] rpc_context context) {
     const std::vector<std::pair<std::string, uint64_t>> nodes = m_core.get_bls_pubkeys();
     bls_pubkey_request.response["status"] = STATUS_OK;
     bls_pubkey_request.response["nodes"] = nodes;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REGISTRATION& bls_registration_request, [[maybe_unused]] rpc_context context) {
@@ -2607,7 +2588,6 @@ void core_rpc_server::invoke(BLS_REGISTRATION& bls_registration_request, [[maybe
     bls_registration_request.response["service_node_pubkey"] = bls_registration.service_node_pubkey;
     bls_registration_request.response["service_node_signature"] =
             bls_registration.service_node_signature;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_SERVICE_KEYS& get_service_keys, [[maybe_unused]] rpc_context context) {
@@ -2617,7 +2597,6 @@ void core_rpc_server::invoke(GET_SERVICE_KEYS& get_service_keys, [[maybe_unused]
     get_service_keys.response["service_node_ed25519_pubkey"] = tools::type_to_hex(keys.pub_ed25519);
     get_service_keys.response["service_node_x25519_pubkey"] = tools::type_to_hex(keys.pub_x25519);
     get_service_keys.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_SERVICE_PRIVKEYS& get_service_privkeys, [[maybe_unused]] rpc_context context) {
@@ -2629,7 +2608,6 @@ void core_rpc_server::invoke(GET_SERVICE_PRIVKEYS& get_service_privkeys, [[maybe
     get_service_privkeys.response["service_node_x25519_privkey"] =
             tools::type_to_hex(keys.key_x25519);
     get_service_privkeys.response["status"] = STATUS_OK;
-    return;
 }
 
 static time_t reachable_to_time_t(
@@ -3128,8 +3106,6 @@ void core_rpc_server::invoke(GET_CHECKPOINTS& get_checkpoints, rpc_context conte
                             : db.get_checkpoints_range(*start, *end, GET_CHECKPOINTS::MAX_COUNT);
 
     get_checkpoints.response["checkpoints"] = std::move(checkpoints);
-
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, [[maybe_unused]] rpc_context context) {
@@ -3380,7 +3356,6 @@ void core_rpc_server::invoke(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_conte
 
     ons_owners_to_names.response["entries"] = entries;
     ons_owners_to_names.response["status"] = STATUS_OK;
-    return;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
