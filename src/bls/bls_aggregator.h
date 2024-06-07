@@ -61,7 +61,6 @@ class BLSAggregator {
     /// amount is `0` or height is greater than the current blockchain height.
     BLSRewardsResponse rewards_request(
             const crypto::eth_address& address,
-            const std::string& oxen_address,
             uint64_t rewards,
             uint64_t height,
             std::span<const crypto::x25519_public_key> exclude);

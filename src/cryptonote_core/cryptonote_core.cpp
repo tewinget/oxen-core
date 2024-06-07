@@ -2855,7 +2855,7 @@ core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
-BLSRewardsResponse core::bls_rewards_request(const std::string& eth_address, const std::string& oxen_address) {
+BLSRewardsResponse core::bls_rewards_request(const std::string& eth_address) {
     std::string_view eth_address_trimmed = oxenc::trim_prefix(eth_address, "0x");
     eth_address_trimmed                  = oxenc::trim_prefix(eth_address_trimmed, "0x");
 
@@ -2878,8 +2878,8 @@ BLSRewardsResponse core::bls_rewards_request(const std::string& eth_address, con
 
     auto exclude = std::span(&m_service_keys.pub_x25519, &m_service_keys.pub_x25519 + 1);
     auto [batch_db_height, amount] =
-            get_blockchain_storage().sqlite_db()->get_accrued_earnings(oxen_address);
-    const auto result = m_bls_aggregator->rewards_request(eth_address_bytes, oxen_address, amount, batch_db_height, exclude);
+            get_blockchain_storage().sqlite_db()->get_accrued_earnings(eth_address);
+    const auto result = m_bls_aggregator->rewards_request(eth_address_bytes, amount, batch_db_height, exclude);
     return result;
 }
 //-----------------------------------------------------------------------------------------------

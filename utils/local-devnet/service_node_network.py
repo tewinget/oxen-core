@@ -250,7 +250,7 @@ class SNNetwork:
 
         # Claim rewards for Address
         hardhatAccount = self.servicenodecontract.hardhatAccountAddress()
-        rewards        = self.ethsns[0].get_bls_rewards(hardhatAccount, self.mike.address())
+        rewards        = self.ethsns[0].get_bls_rewards(hardhatAccount)
         rewardsAccount = rewards["result"]["address"]
         assert rewardsAccount.lower() == hardhatAccount.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhatAccount.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
         vprint(rewards)
