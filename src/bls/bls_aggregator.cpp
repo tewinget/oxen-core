@@ -161,21 +161,24 @@ BLSRewardsResponse BLSAggregator::rewards_request(
         std::mutex mutex;                   /// `processNodes` dispatches to a threadpool hence we require synchronisation
         std::vector<std::string> signers;   /// List of BLS public keys that signed the signature
         bls::Signature aggregate_signature; /// The signature we aggregate BLS responses to
+        bls::PublicKey aggregate_pubkey;    /// Calculate the aggregate pubkey (for debugging purposes)
         std::string message_to_hash;        /// The message that each node must hash
         crypto::bytes<32> hash_to_sign;     /// The hash of the message that will be signed
     };
 
     WorkPayload work = {};
     work.aggregate_signature.clear();
+    work.aggregate_pubkey.clear();
 
     // NOTE: Add our own signature to the aggregate signature
     {
         oxen::bls::GetRewardBalanceSignatureParts signature_parts = oxen::bls::get_reward_balance_request_message(signer, address, amount);
-        work.message_to_hash = std::move(signature_parts.message_to_sign);
+        work.message_to_hash = std::move(signature_parts.message_to_hash);
         work.hash_to_sign    = signature_parts.hash_to_sign;
 
         bls::Signature my_signature = signer->signHash(work.hash_to_sign);
         work.aggregate_signature.add(my_signature);
+        work.aggregate_pubkey.add(signer->getPublicKey());
         work.signers.push_back(signer->getPublicKeyHex());
     }
 
@@ -257,11 +260,13 @@ BLSRewardsResponse BLSAggregator::rewards_request(
 
                 std::lock_guard<std::mutex> lock(work.mutex);
                 work.aggregate_signature.add(response.message_hash_signature);
+                work.aggregate_pubkey.add(response.bls_pkey);
                 work.signers.push_back(bls_utils::PublicKeyToHex(response.bls_pkey));
             },
             std::array{oxenc::type_to_hex(address), std::to_string(amount)},
             exclude);
 
+    oxen::log::trace(logcat, "BLS aggregate pubkey for request calculated: {} ({} aggregations)", bls_utils::PublicKeyToHex(work.aggregate_pubkey), work.signers.size());
     const auto sig_str = bls_utils::SignatureToHex(work.aggregate_signature);
     BLSRewardsResponse result = {
             .address = "0x" + oxenc::type_to_hex(address),

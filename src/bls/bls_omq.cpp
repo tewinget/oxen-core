@@ -17,15 +17,14 @@ GetRewardBalanceSignatureParts get_reward_balance_request_message(BLSSigner* sig
     // NOTE: Reconstruct the C++ equivalent of Solidity's `abi.encodePacked(rewardTag, address, amount)`
     GetRewardBalanceSignatureParts result = {};
     if (signer) {
-        result.message_to_sign = fmt::format(
+        result.message_to_hash = fmt::format(
                 "0x{}{}{}",
                 signer->buildTag(signer->rewardTag),
-                ethyl::utils::padToNBytes(
-                        oxenc::type_to_hex(eth_address), 20, ethyl::utils::PaddingDirection::LEFT),
+                oxenc::type_to_hex(eth_address),
                 ethyl::utils::padTo32Bytes(
                         ethyl::utils::decimalToHex(amount), ethyl::utils::PaddingDirection::LEFT));
 
-        result.hash_to_sign = BLSSigner::hashHex(result.message_to_sign);
+        result.hash_to_sign = BLSSigner::hashHex(result.message_to_hash);
     }
     return result;
 }
@@ -176,12 +175,27 @@ GetRewardBalanceResponse create_reward_balance_request(
         switch (field_value) {
             case GetRewardBalanceRequestField::Address: {
                 size_t required_hex_size = sizeof(crypto::eth_address) * 2;
-                VerifyDataResult to_result = payload_is_hex("BLS public key", payload, required_hex_size);
+                VerifyDataResult to_result = payload_is_hex("Ethereum address", payload, required_hex_size);
                 if (!to_result.good) {
                     result.error = std::move(to_result.error);
                     return result;
                 }
-                oxenc::from_hex(payload.begin(), payload.end(), reinterpret_cast<char*>(&request.address));
+
+                switch (auto convert_result = oxenc::hex_to_type(payload, request.address)) {
+                    case oxenc::hex_to_type_result::ok: break;
+
+                    case oxenc::hex_to_type_result::non_hex_chars: {
+                        result.error = fmt::format("Bad ethereum address '{}', address had non-hex characters", payload);
+                    } break;
+
+                    case oxenc::hex_to_type_result::invalid_size: {
+                        result.error = fmt::format(
+                                "Bad ethereum address '{}', address had wrong size {}, expected {}",
+                                payload,
+                                request.address.size(),
+                                sizeof(crypto::eth_address) * 2);
+                    } break;
+                }
             } break;
 
             case GetRewardBalanceRequestField::Amount: {
@@ -199,8 +213,7 @@ GetRewardBalanceResponse create_reward_balance_request(
     }
 
     // NOTE: Get the rewards amount from the DB
-    std::string address_str = fmt::format("0x{}", request.address);
-    auto [batchdb_height, amount] = sql_db->get_accrued_earnings(address_str);
+    auto [batchdb_height, amount] = sql_db->get_accrued_earnings_eth(request.address);
     if (amount == 0) {
         result.error = fmt::format(
                 "OMQ command '{}' requested an address '{}' that has a zero balance in the "
@@ -286,7 +299,22 @@ GetRewardBalanceResponse parse_get_reward_balance_response(std::span<const std::
                     result.error = std::move(to_result.error);
                     return result;
                 }
-                oxenc::from_hex(payload.begin(), payload.end(), reinterpret_cast<char*>(&result.address));
+
+                switch (auto convert_result = oxenc::hex_to_type(payload, result.address)) {
+                    case oxenc::hex_to_type_result::ok: break;
+
+                    case oxenc::hex_to_type_result::non_hex_chars: {
+                        result.error = fmt::format("Bad ethereum address '{}', address had non-hex characters", payload);
+                    } break;
+
+                    case oxenc::hex_to_type_result::invalid_size: {
+                        result.error = fmt::format(
+                                "Bad ethereum address '{}', address had wrong size {}, expected {}",
+                                payload,
+                                result.address.size(),
+                                sizeof(crypto::eth_address) * 2);
+                    } break;
+                }
             } break;
 
             case oxen::bls::GetRewardBalanceResponseField::Amount: {

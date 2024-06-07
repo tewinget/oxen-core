@@ -2878,7 +2878,7 @@ BLSRewardsResponse core::bls_rewards_request(const std::string& eth_address) {
 
     auto exclude = std::span(&m_service_keys.pub_x25519, &m_service_keys.pub_x25519 + 1);
     auto [batch_db_height, amount] =
-            get_blockchain_storage().sqlite_db()->get_accrued_earnings(eth_address);
+            get_blockchain_storage().sqlite_db()->get_accrued_earnings_eth(eth_address_bytes);
     const auto result = m_bls_aggregator->rewards_request(eth_address_bytes, amount, batch_db_height, exclude);
     return result;
 }

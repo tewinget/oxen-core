@@ -589,10 +589,15 @@ class service_node_list {
             if (it == proofs.end())
                 continue;
             if (const auto& x2_pk = it->second.pubkey_x25519) {
+                bool excluded = false;
                 for (const crypto::x25519_public_key& exclude_key : exclude) {
-                    if (x2_pk == exclude_key)
-                        continue;
+                    if (x2_pk == exclude_key) {
+                        excluded = true;
+                        break;
+                    }
                 }
+                if (excluded)
+                    continue;
                 service_node_address address = {};
                 address.x_pkey = x2_pk;
                 address.ip = it->second.proof ? it->second.proof->public_ip : 0;

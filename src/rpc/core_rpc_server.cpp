@@ -3397,8 +3397,10 @@ void core_rpc_server::invoke(
     if (req.addresses.size() > 0) {
         for (const auto& address : req.addresses) {
             uint64_t amount = 0;
-            if (cryptonote::is_valid_address(address, nettype())) {
-                const auto [batch_db_height, amount] = blockchain.sqlite_db()->get_accrued_earnings(address);
+
+            address_parse_info parse_info = {};
+            if (get_account_address_from_str(parse_info, m_core.get_nettype(), address)) {
+                const auto [batch_db_height, amount] = blockchain.sqlite_db()->get_accrued_earnings_oxen(parse_info.address);
                 (void)batch_db_height;
                 at_least_one_succeeded = true;
             }

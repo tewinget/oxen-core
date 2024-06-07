@@ -43,7 +43,7 @@ struct GetRewardBalanceResponse {
 
 struct GetRewardBalanceSignatureParts
 {
-    std::string message_to_sign;    // Message in hex that must be signed via BLSSigner::hasHex
+    std::string message_to_hash;    // Message in hex that must be hashed via BLSSigner::hashHex
     crypto::bytes<32> hash_to_sign; // Hash that must be signed via BLSSigner::signHash
 };
 
