@@ -85,8 +85,7 @@ void keccak(const uint8_t* in, size_t inlen, uint8_t* md, size_t mdlen) {
     size_t i, rsiz, rsizw;
 
     static_assert(HASH_DATA_AREA <= sizeof(temp), "Bad keccak preconditions");
-    if (mdlen == 0 || (mdlen > 100 && sizeof(st) != mdlen) ||
-        mdlen % sizeof(uint64_t) != 0) {
+    if (mdlen == 0 || (mdlen > 100 && sizeof(st) != mdlen) || mdlen % sizeof(uint64_t) != 0) {
         local_abort("Bad keccak use");
     }
 
