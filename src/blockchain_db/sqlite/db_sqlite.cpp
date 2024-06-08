@@ -318,6 +318,7 @@ std::string BlockchainSQLite::get_address_str(const cryptonote::batch_sn_payment
 
 bool BlockchainSQLite::update_sn_rewards_address(
         const std::string& oxen_address, const crypto::eth_address& eth_address) {
+    assert(eth_address);
     auto update_address = prepared_st(
             "UPDATE batched_payments_accrued SET address = ? WHERE address = ?"
             " ON CONFLICT (address) DO UPDATE SET amount = amount + excluded.amount");
@@ -512,7 +513,7 @@ bool BlockchainSQLite::reward_handler(
 
     uint64_t block_reward = block.reward * BATCH_REWARD_FACTOR;
     uint64_t service_node_reward =
-            block.major_version >= hf::hf20
+            block.major_version >= feature::ETH_BLS
                     ? block_reward
                     : cryptonote::service_node_reward_formula(0, block.major_version) *
                               BATCH_REWARD_FACTOR;
@@ -564,7 +565,8 @@ bool BlockchainSQLite::reward_handler(
     }
 
     // Step 3: Add Governance reward to the list
-    if (m_nettype != cryptonote::network_type::FAKECHAIN && block.major_version < hf::hf20) {
+    if (m_nettype != cryptonote::network_type::FAKECHAIN &&
+        block.major_version < feature::ETH_BLS) {
         if (parsed_governance_addr.first != block.major_version) {
             cryptonote::get_account_address_from_str(
                     parsed_governance_addr.second,

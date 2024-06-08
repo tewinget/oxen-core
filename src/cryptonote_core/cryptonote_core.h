@@ -42,6 +42,7 @@
 #include "blockchain.h"
 #include "bls/bls_aggregator.h"
 #include "common/command_line.h"
+#include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_basic/hardfork.h"
@@ -168,7 +169,7 @@ class core : public i_miner_handler {
      *
      * @return true if we haven't seen it before and thus need to relay.
      */
-    bool handle_btencoded_uptime_proof(
+    bool handle_uptime_proof(
             const NOTIFY_BTENCODED_UPTIME_PROOF::request& proof,
             bool& my_uptime_proof_confirmation);
 
@@ -770,6 +771,14 @@ class core : public i_miner_handler {
     /// be used for any omq communication until after start_oxenmq() has been called.
     oxenmq::OxenMQ& get_omq() { return *m_omq; }
 
+    /// Returns a reference to the BLSSigner, if this is a service node.  Throws if not a service
+    /// node.
+    BLSSigner& get_bls_signer() {
+        if (!m_bls_signer)
+            throw std::logic_error{"Not a service node: no BLS Signer available"};
+        return *m_bls_signer;
+    }
+
     /**
      * @copydoc miner::on_synchronized
      *
@@ -967,16 +976,16 @@ class core : public i_miner_handler {
      */
     std::vector<service_nodes::service_node_pubkey_info> get_service_node_list_state(
             const std::vector<crypto::public_key>& service_node_pubkeys = {}) const;
-    bool is_node_removable(std::string_view node_bls_pubkey);
-    bool is_node_liquidatable(std::string_view node_bls_pubkey);
+    bool is_node_removable(const crypto::bls_public_key& node_bls_pubkey);
+    bool is_node_liquidatable(const crypto::bls_public_key& node_bls_pubkey);
 
     /**
-     * @brief get a snapshot of the service node list state and compares to the smart contract state, returns any in the 
-     *        smart contract that are not in the service node list
+     * @brief get a snapshot of the service node list state and compares to the smart contract
+     * state, returns any in the smart contract that are not in the service node list
      *
      * @return all the service nodes bls keys that should be removed from the smart contract
      */
-    std::vector<std::string> get_removable_nodes();
+    std::vector<crypto::bls_public_key> get_removable_nodes();
 
     /**
      * @brief get whether `pubkey` is known as a service node.

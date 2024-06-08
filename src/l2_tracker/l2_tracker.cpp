@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "common/guts.h"
+#include "crypto/crypto.h"
 #include "logging/oxen_logger.h"
 
 static auto logcat = oxen::log::Cat("l2_tracker");
@@ -12,9 +13,7 @@ L2Tracker::L2Tracker(cryptonote::network_type nettype) :
         rewards_contract(std::make_shared<RewardsContract>(
                 std::string(get_rewards_contract_address(nettype)), provider)),
         pool_contract(std::make_shared<PoolContract>(
-                std::string(get_pool_contract_address(nettype)), provider))
-{
-}
+                std::string(get_pool_contract_address(nettype)), provider)) {}
 
 L2Tracker::~L2Tracker() {
     stop_thread.store(true);
@@ -58,11 +57,11 @@ void L2Tracker::insert_in_order(State&& new_state) {
 }
 
 void L2Tracker::process_logs_for_state(State& state) {
-    std::vector<RewardsLogEntry> logs = rewards_contract->Logs(state.height);
+    std::vector<LogEntry> logs = rewards_contract->Logs(state.height);
     for (const auto& log : logs) {
-        auto transaction = log.getLogTransaction();
-        if (transaction) {
-            state.state_changes.emplace_back(*transaction);
+        auto transaction = getLogTransaction(log);
+        if (transaction.index() > 0) {
+            state.state_changes.emplace_back(std::move(transaction));
         }
     }
 }
@@ -103,23 +102,17 @@ std::pair<uint64_t, crypto::hash> L2Tracker::latest_state() {
         throw std::runtime_error("Internal error getting latest state from l2 tracker");
     }
     auto& latest_state = state_history.front();
-    auto return_hash = tools::make_from_guts(latest_state.state, return_hash);
-    return std::make_pair(latest_state.height, return_hash);
+    return std::make_pair(latest_state.height, latest_state.block_hash);
 }
 
 bool L2Tracker::check_state_in_history(uint64_t height, const crypto::hash& state_root) {
-    std::string state_str = tools::hex_guts(state_root);
-    return check_state_in_history(height, state_str);
-}
-
-bool L2Tracker::check_state_in_history(uint64_t height, const std::string& state_root) {
     if (provider.clients.empty()) {
         return false;
     }
     std::lock_guard lock{mutex};
     auto it = std::find_if(
             state_history.begin(), state_history.end(), [height, &state_root](const State& state) {
-                return state.height == height && state.state == state_root;
+                return state.height == height && state.block_hash == state_root;
             });
     return it != state_history.end();
 }
@@ -218,9 +211,9 @@ void L2Tracker::record_block_height_mapping(
 }
 
 bool TransactionReviewSession::processNewServiceNodeTx(
-        const crypto::bls_public_key& bls_key,
+        const crypto::bls_public_key& bls_pubkey,
         const crypto::eth_address& eth_address,
-        const std::string& service_node_pubkey,
+        const crypto::public_key& service_node_pubkey,
         std::string& fail_reason) {
     if (!service_node)
         return true;
@@ -241,11 +234,11 @@ bool TransactionReviewSession::processNewServiceNodeTx(
         oxen::log::info(
                 logcat,
                 "new_service_node bls_pubkey: {} eth_address {} service_node_pubkey: {}",
-                it->bls_key,
+                it->bls_pubkey,
                 it->eth_address,
-                it->service_node_pubkey);
-        if (it->bls_key == bls_key && it->eth_address == eth_address &&
-            it->service_node_pubkey == service_node_pubkey) {
+                it->sn_pubkey);
+        if (it->bls_pubkey == bls_pubkey && it->eth_address == eth_address &&
+            it->sn_pubkey == service_node_pubkey) {
             new_service_nodes.erase(it);
             return true;
         }
@@ -253,14 +246,14 @@ bool TransactionReviewSession::processNewServiceNodeTx(
 
     fail_reason = fmt::format(
             "New Service Node Transaction not found bls_pubkey: {}, eth_address: {}, sn_pubkey: {}",
-            bls_key,
+            bls_pubkey,
             eth_address,
             service_node_pubkey);
     return false;
 }
 
 bool TransactionReviewSession::processServiceNodeLeaveRequestTx(
-        const crypto::bls_public_key& bls_key, std::string& fail_reason) {
+        const crypto::bls_public_key& bls_pubkey, std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
@@ -273,20 +266,20 @@ bool TransactionReviewSession::processServiceNodeLeaveRequestTx(
     }
 
     for (auto it = leave_requests.begin(); it != leave_requests.end(); ++it) {
-        if (it->bls_key == bls_key) {
+        if (it->bls_pubkey == bls_pubkey) {
             leave_requests.erase(it);
             return true;
         }
     }
 
-    fail_reason = "Leave Request Transaction not found bls_key: " + tools::type_to_hex(bls_key);
+    fail_reason = "Leave Request Transaction not found bls_pubkey: {}"_format(bls_pubkey);
     return false;
 }
 
 bool TransactionReviewSession::processServiceNodeExitTx(
         const crypto::eth_address& eth_address,
         const uint64_t amount,
-        const crypto::bls_public_key& bls_key,
+        const crypto::bls_public_key& bls_pubkey,
         std::string& fail_reason) {
     if (!service_node)
         return true;
@@ -300,13 +293,14 @@ bool TransactionReviewSession::processServiceNodeExitTx(
     }
 
     for (auto it = exits.begin(); it != exits.end(); ++it) {
-        if (it->bls_key == bls_key && it->eth_address == eth_address && it->amount == amount) {
+        if (it->bls_pubkey == bls_pubkey && it->eth_address == eth_address &&
+            it->amount == amount) {
             exits.erase(it);
             return true;
         }
     }
 
-    fail_reason = "Exit Transaction not found bls_pubkey: {}"_format(bls_key);
+    fail_reason = "Exit Transaction not found bls_pubkey: {}"_format(bls_pubkey);
     return false;
 }
 
@@ -322,13 +316,13 @@ bool TransactionReviewSession::processServiceNodeDeregisterTx(
     }
 
     for (auto it = deregs.begin(); it != deregs.end(); ++it) {
-        if (it->bls_key == bls_key) {
+        if (it->bls_pubkey == bls_pubkey) {
             deregs.erase(it);
             return true;
         }
     }
 
-    fail_reason = "Deregister Transaction not found bls_pubkey: {}"_format(bls_key);
+    fail_reason = "Deregister Transaction not found bls_pubkey: {}"_format(bls_pubkey);
     return false;
 }
 
@@ -349,10 +343,11 @@ uint64_t L2Tracker::get_pool_block_reward(uint64_t timestamp, uint64_t ethereum_
     return response.reward;
 }
 
-std::vector<uint64_t> L2Tracker::get_non_signers(const std::vector<std::string>& bls_public_keys) {
+std::vector<uint64_t> L2Tracker::get_non_signers(
+        const std::unordered_set<crypto::bls_public_key>& bls_public_keys) {
     return rewards_contract->getNonSigners(bls_public_keys);
 }
 
-std::vector<std::string> L2Tracker::get_all_bls_public_keys(uint64_t blockNumber) {
+std::vector<crypto::bls_public_key> L2Tracker::get_all_bls_public_keys(uint64_t blockNumber) {
     return rewards_contract->getAllBLSPubkeys(blockNumber);
 }

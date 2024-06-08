@@ -26,14 +26,14 @@ static auto logcat = log::Cat("service_nodes");
 uint64_t get_staking_requirement(cryptonote::network_type nettype, hf hardfork) {
     assert(hardfork >= hf::hf16_pulse);
     if (nettype == network_type::MAINNET)
-        return hardfork >= hf::hf20 ? SENT_STAKING_REQUIREMENT : OXEN_STAKING_REQUIREMENT;
-    return hardfork >= hf::hf20 ? SENT_STAKING_REQUIREMENT_TESTNET
-                                : OXEN_STAKING_REQUIREMENT_TESTNET;
+        return hardfork >= feature::ETH_BLS ? SENT_STAKING_REQUIREMENT : OXEN_STAKING_REQUIREMENT;
+    return hardfork >= feature::ETH_BLS ? SENT_STAKING_REQUIREMENT_TESTNET
+                                        : OXEN_STAKING_REQUIREMENT_TESTNET;
 }
 
 // TODO(oxen): Move to oxen_economy, this will also need access to oxen::exp2
 uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height) {
-    if (is_hard_fork_at_least(nettype, hf::hf20, height))
+    if (is_hard_fork_at_least(nettype, feature::ETH_BLS, height))
         return nettype == network_type::MAINNET ? SENT_STAKING_REQUIREMENT
                                                 : SENT_STAKING_REQUIREMENT_TESTNET;
     else if (nettype != cryptonote::network_type::MAINNET)

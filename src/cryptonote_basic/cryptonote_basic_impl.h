@@ -76,7 +76,7 @@ struct address_parse_info {
 
 struct batch_sn_payment {
     cryptonote::address_parse_info address_info;
-    std::optional<crypto::eth_address> eth_address;
+    crypto::eth_address eth_address;
     uint64_t amount;
     batch_sn_payment() = default;
     batch_sn_payment(const cryptonote::address_parse_info& addr_info, uint64_t amt) :

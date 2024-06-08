@@ -2021,20 +2021,16 @@ void Blockchain::add_ethereum_transactions_to_tx_pool() {
                     using T = std::decay_t<decltype(arg)>;
                     if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
                         tx.type = txtype::ethereum_new_service_node;
-                        crypto::public_key service_node_pubkey = {};
-                        tools::hex_to_type(arg.service_node_pubkey, service_node_pubkey);
-                        crypto::signature signature = {};
-                        tools::hex_to_type(arg.signature, signature);
                         std::vector<tx_extra_ethereum_contributor> contributors;
                         for (const auto& contributor : arg.contributors)
                             contributors.emplace_back(contributor.addr, contributor.amount);
 
                         tx_extra_ethereum_new_service_node new_service_node = {
                                 0,
-                                arg.bls_key,
+                                arg.bls_pubkey,
                                 arg.eth_address,
-                                service_node_pubkey,
-                                signature,
+                                arg.sn_pubkey,
+                                arg.sn_signature,
                                 arg.fee,
                                 contributors};
                         cryptonote::add_new_service_node_to_tx_extra(tx.extra, new_service_node);
@@ -2042,17 +2038,17 @@ void Blockchain::add_ethereum_transactions_to_tx_pool() {
                     } else if constexpr (std::is_same_v<T, ServiceNodeLeaveRequestTx>) {
                         tx.type = txtype::ethereum_service_node_leave_request;
                         tx_extra_ethereum_service_node_leave_request leave_request = {
-                                0, arg.bls_key};
+                                0, arg.bls_pubkey};
                         cryptonote::add_service_node_leave_request_to_tx_extra(
                                 tx.extra, leave_request);
                     } else if constexpr (std::is_same_v<T, ServiceNodeExitTx>) {
                         tx.type = txtype::ethereum_service_node_exit;
                         tx_extra_ethereum_service_node_exit exit_data = {
-                                0, arg.eth_address, arg.amount, arg.bls_key};
+                                0, arg.eth_address, arg.amount, arg.bls_pubkey};
                         cryptonote::add_service_node_exit_to_tx_extra(tx.extra, exit_data);
                     } else if constexpr (std::is_same_v<T, ServiceNodeDeregisterTx>) {
                         tx.type = txtype::ethereum_service_node_deregister;
-                        tx_extra_ethereum_service_node_deregister deregister = {0, arg.bls_key};
+                        tx_extra_ethereum_service_node_deregister deregister = {0, arg.bls_pubkey};
                         cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
                     }
                 },
@@ -4188,7 +4184,7 @@ bool Blockchain::check_tx_inputs(
             if (!ethereum::validate_ethereum_new_service_node_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processNewServiceNodeTx(
-                        entry.bls_key,
+                        entry.bls_pubkey,
                         entry.eth_address,
                         entry.service_node_pubkey,
                         fail_reason)) {
@@ -4205,7 +4201,7 @@ bool Blockchain::check_tx_inputs(
             if (!ethereum::validate_ethereum_service_node_leave_request_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processServiceNodeLeaveRequestTx(
-                        entry.bls_key, fail_reason)) {
+                        entry.bls_pubkey, fail_reason)) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum Service Node Leave Request TX reason: {}",
@@ -4219,7 +4215,7 @@ bool Blockchain::check_tx_inputs(
             if (!ethereum::validate_ethereum_service_node_exit_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processServiceNodeExitTx(
-                        entry.eth_address, entry.amount, entry.bls_key, fail_reason)) {
+                        entry.eth_address, entry.amount, entry.bls_pubkey, fail_reason)) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum Service Node Exit TX reason: {}",
@@ -4233,7 +4229,7 @@ bool Blockchain::check_tx_inputs(
             if (!ethereum::validate_ethereum_service_node_deregister_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processServiceNodeDeregisterTx(
-                        entry.bls_key, fail_reason)) {
+                        entry.bls_pubkey, fail_reason)) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum Service Node Deregister TX reason: {}",

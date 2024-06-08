@@ -113,6 +113,11 @@ struct bls_public_key : bytes<64, true> {
     explicit operator bool() const { return data_ != null<bls_public_key>.data_; }
 };
 
+struct bls_signature : bytes<128, true> {
+    // Returns true if non-null, i.e. not 0.
+    explicit operator bool() const { return data_ != null<bls_signature>.data_; }
+};
+
 struct bls_secret_key_ : bytes<32> {};
 using bls_secret_key = epee::mlocked<tools::scrubbed<bls_secret_key_>>;
 

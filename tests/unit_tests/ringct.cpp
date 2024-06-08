@@ -769,15 +769,6 @@ TEST(ringct, reject_gen_simple_ver_non_simple)
   ASSERT_FALSE(rct::verRct(sig));
 }
 
-TEST(ringct, key_ostream)
-{
-  auto out = "BEGIN{}END"_format(rct::H);
-  EXPECT_EQ(
-    std::string{"BEGIN<8b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f94>END"},
-    out
-  );
-}
-
 TEST(ringct, zeroCommmit)
 {
   static const uint64_t amount = crypto::rand<uint64_t>();

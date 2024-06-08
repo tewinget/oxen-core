@@ -655,16 +655,16 @@ struct tx_extra_ethereum_contributor {
 
 struct tx_extra_ethereum_new_service_node {
     uint8_t version = 0;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
     crypto::eth_address eth_address;
     crypto::public_key service_node_pubkey;
-    crypto::signature signature;
+    crypto::ed25519_signature signature;
     uint64_t fee;
     std::vector<tx_extra_ethereum_contributor> contributors;
 
     BEGIN_SERIALIZE()
     FIELD(version)
-    FIELD(bls_key)
+    FIELD(bls_pubkey)
     FIELD(eth_address)
     FIELD(service_node_pubkey)
     FIELD(signature)
@@ -675,11 +675,11 @@ struct tx_extra_ethereum_new_service_node {
 
 struct tx_extra_ethereum_service_node_leave_request {
     uint8_t version = 0;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
 
     BEGIN_SERIALIZE()
     FIELD(version)
-    FIELD(bls_key)
+    FIELD(bls_pubkey)
     END_SERIALIZE()
 };
 
@@ -687,23 +687,23 @@ struct tx_extra_ethereum_service_node_exit {
     uint8_t version = 0;
     crypto::eth_address eth_address;
     uint64_t amount;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
 
     BEGIN_SERIALIZE()
     FIELD(version)
     FIELD(eth_address)
     FIELD(amount)
-    FIELD(bls_key)
+    FIELD(bls_pubkey)
     END_SERIALIZE()
 };
 
 struct tx_extra_ethereum_service_node_deregister {
     uint8_t version = 0;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
 
     BEGIN_SERIALIZE()
     FIELD(version)
-    FIELD(bls_key)
+    FIELD(bls_pubkey)
     END_SERIALIZE()
 };
 

@@ -2260,8 +2260,11 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
         return false;
     auto& snode_keys = *maybe_keys;
 
-    // TODO sean use the feature flag instead
-    if (hf_version > hf::hf20) {
+    if (hf_version >= cryptonote::feature::ETH_BLS) {
+        // TODO FIXME XXX
+        tools::fail_msg_writer("FIXME: REPLACE THIS FOR feature::ETH_BLS");
+        assert(false);
+
         tools::success_msg_writer(
                 "Service Node Pubkey: {}\n"
                 "Service Node Signature: {}\n",

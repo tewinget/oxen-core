@@ -250,7 +250,7 @@ struct NOTIFY_BTENCODED_UPTIME_PROOF {
 
         // BT-Encoded string of the Uptime Proof
         std::string proof;
-        std::string sig;
+        std::optional<std::string> sig;  // Not sent in HF21+
         std::string ed_sig;
 
         KV_MAP_SERIALIZABLE

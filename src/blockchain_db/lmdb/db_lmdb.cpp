@@ -6569,6 +6569,8 @@ struct service_node_proof_serialized : service_node_proof_serialized_old {
         service_node_proof_serialized_old::update(info);
         info.proof->storage_server_version = little_to_host_container(storage_server_version);
         info.proof->lokinet_version = little_to_host_container(lokinet_version);
+        // BLS pubkey & pop are only temporary during the HF20 transition period, so we don't store
+        // or retrieve them, which means they don't persist across a restart.
     }
 
     operator service_nodes::proof_info() const {

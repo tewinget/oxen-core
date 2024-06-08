@@ -29,30 +29,29 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include <fmt/color.h>
+#include <fmt/std.h>
 #include <oxenc/base32z.h>
+#include <oxenmq/fmt.h>
+#include <sodium.h>
+#include <sqlite3.h>
 
 #include <boost/algorithm/string.hpp>
+#include <csignal>
 #include <iomanip>
 #include <unordered_set>
 
 #include "common/guts.h"
 
 extern "C" {
-#include <sodium.h>
 #ifdef ENABLE_SYSTEMD
 #include <systemd/sd-daemon.h>
 #endif
 }
 
-#include <fmt/color.h>
-#include <fmt/std.h>
-#include <oxenmq/fmt.h>
-#include <sqlite3.h>
-
-#include <csignal>
-
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
+#include "bls/bls_utils.h"
 #include "checkpoints/checkpoints.h"
 #include "common/base58.h"
 #include "common/command_line.h"
@@ -782,7 +781,7 @@ bool core::init(
         return false;
 
     init_oxenmq(vm);
-    m_bls_aggregator = std::make_unique<BLSAggregator>(m_service_node_list, m_omq, m_bls_signer);
+    m_bls_aggregator = std::make_unique<BLSAggregator>(*this);
 
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
     const auto ethereum_provider = command_line::get_arg(vm, arg_ethereum_provider);
@@ -853,17 +852,22 @@ bool core::init(
 ///              returns true for success/false for failure
 /// generate_pair - a void function taking (privkey &, pubkey &) that sets them to the generated
 /// values; can throw on error.
+///
+/// Any extra arguments (passed in `extra...`) are appended to the get_pubkey or generate_pair
+/// function calls.
 template <
         typename Privkey,
         typename Pubkey,
-        std::invocable<const Privkey&, Pubkey&> GetPubkey,
-        std::invocable<Privkey&, Pubkey&> GeneratePair>
+        typename... Extra,
+        std::invocable<const Privkey&, Pubkey&, Extra&...> GetPubkey,
+        std::invocable<Privkey&, Pubkey&, Extra&...> GeneratePair>
 bool init_key(
         const fs::path& keypath,
         Privkey& privkey,
         Pubkey& pubkey,
         GetPubkey get_pubkey,
-        GeneratePair generate_pair) {
+        GeneratePair generate_pair,
+        Extra&... extra) {
     std::error_code ec;
     if (fs::exists(keypath, ec)) {
         std::string keystr;
@@ -892,11 +896,11 @@ bool init_key(
             }
         }
 
-        r = get_pubkey(privkey, pubkey);
+        r = get_pubkey(privkey, pubkey, extra...);
         CHECK_AND_ASSERT_MES(r, false, "failed to generate pubkey from secret key");
     } else {
         try {
-            generate_pair(privkey, pubkey);
+            generate_pair(privkey, pubkey, extra...);
         } catch (const std::exception& e) {
             log::error(logcat, "failed to generate keypair {}", e.what());
             return false;
@@ -960,27 +964,30 @@ bool core::init_service_keys() {
     crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data(), keys.key_ed25519.data());
 
     // BLS pubkey, used by service nodes when interacting with the Ethereum smart contract
-    if (!init_key(
+    if (m_service_node &&
+        !init_key(
                 m_config_folder / "key_bls",
                 keys.key_bls,
                 keys.pub_bls,
-                [this](const crypto::bls_secret_key& sk, crypto::bls_public_key& pk) {
+                [this](const auto& sk, auto& pk, auto& bls_signer) {
                     // Load from existing
+
                     try {
-                        m_bls_signer = std::make_shared<BLSSigner>(m_nettype, &sk);
+                        bls_signer = std::make_shared<BLSSigner>(m_nettype, &sk);
                     } catch (const std::exception& e) {
                         log::critical(logcat, "Invalid BLS key: {}", e.what());
                         return false;
                     }
-                    pk = m_bls_signer->getCryptoPubkey();
+                    pk = bls_signer->getCryptoPubkey();
                     return true;
                 },
-                [this](crypto::bls_secret_key& sk, crypto::bls_public_key& pk) {
+                [this](crypto::bls_secret_key& sk, crypto::bls_public_key& pk, auto& bls_signer) {
                     // Generate new one
-                    m_bls_signer = std::make_shared<BLSSigner>(m_nettype);
-                    sk = m_bls_signer->getCryptoSeckey();
-                    pk = m_bls_signer->getCryptoPubkey();
-                }))
+                    bls_signer = std::make_shared<BLSSigner>(m_nettype);
+                    sk = bls_signer->getCryptoSeckey();
+                    pk = bls_signer->getCryptoPubkey();
+                },
+                keys.bls_signer))
         return false;
 
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
@@ -1265,43 +1272,55 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     quorumnet_init(*this, m_quorumnet_state);
 }
 
-std::vector<std::string> core::get_removable_nodes()
-{
-    std::vector<std::string> bls_pubkeys_in_snl;
-    auto sns = m_service_node_list.get_service_node_list_state();
-    bls_pubkeys_in_snl.reserve(sns.size());
-    for (const auto& sni : sns)
-        bls_pubkeys_in_snl.push_back(tools::type_to_hex(sni.info->bls_public_key));
+std::vector<crypto::bls_public_key> core::get_removable_nodes() {
+    // FIXME: this feels out of place here; move to blockchain.h/cpp!
+    std::vector<crypto::bls_public_key> bls_pubkeys_in_snl;
+    uint64_t l2_height;
 
+    {
+        std::lock_guard lock{m_blockchain_storage};
 
-    uint64_t oxen_height = m_blockchain_storage.get_current_blockchain_height();
-    std::vector<cryptonote::block> blocks;
-    if (!get_blocks(oxen_height, 1, blocks)) {
-        log::error(logcat, "Could not get latest block");
-        throw std::runtime_error("Could not get latest block");
+        auto sns = m_service_node_list.get_service_node_list_state();
+        auto oxen_height = m_blockchain_storage.get_current_blockchain_height();
+
+        bls_pubkeys_in_snl.reserve(sns.size());
+        for (const auto& sni : sns)
+            bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
+
+        std::vector<cryptonote::block> blocks;
+        if (!get_blocks(oxen_height, 1, blocks)) {
+            log::error(logcat, "Could not get latest block");
+            throw std::runtime_error("Could not get latest block");
+        }
+        l2_height = blocks[0].l2_height;
     }
-    std::vector<std::string> bls_pubkeys_in_smart_contract = m_blockchain_storage.m_l2_tracker->get_all_bls_public_keys(blocks[0].l2_height);
 
-    std::vector<std::string> removable_nodes;
+    auto bls_pubkeys_in_smart_contract =
+            m_blockchain_storage.m_l2_tracker->get_all_bls_public_keys(l2_height);
+
+    std::vector<crypto::bls_public_key> removable_nodes;
 
     // Find BLS keys that are in the smart contract but not in the service node list
     std::sort(bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end());
     std::sort(bls_pubkeys_in_smart_contract.begin(), bls_pubkeys_in_smart_contract.end());
     std::set_difference(
-        bls_pubkeys_in_smart_contract.begin(), bls_pubkeys_in_smart_contract.end(),
-        bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end(),
-        std::back_inserter(removable_nodes)
-    );
+            bls_pubkeys_in_smart_contract.begin(),
+            bls_pubkeys_in_smart_contract.end(),
+            bls_pubkeys_in_snl.begin(),
+            bls_pubkeys_in_snl.end(),
+            std::back_inserter(removable_nodes));
     return removable_nodes;
 }
 
-bool core::is_node_removable(std::string_view node_bls_pubkey) {
-    std::vector<std::string> removable_nodes = get_removable_nodes();
-    return std::find(removable_nodes.begin(), removable_nodes.end(), node_bls_pubkey) != removable_nodes.end();
+bool core::is_node_removable(const crypto::bls_public_key& node_bls_pubkey) {
+    auto removable_nodes = get_removable_nodes();
+    return std::find(removable_nodes.begin(), removable_nodes.end(), node_bls_pubkey) !=
+           removable_nodes.end();
 }
 
-bool core::is_node_liquidatable(std::string_view node_bls_pubkey) {
-    return is_node_removable(node_bls_pubkey) and not m_service_node_list.is_recently_expired(node_bls_pubkey);
+bool core::is_node_liquidatable(const crypto::bls_public_key& node_bls_pubkey) {
+    return is_node_removable(node_bls_pubkey) &&
+           !m_service_node_list.is_recently_expired(node_bls_pubkey);
 }
 
 void core::start_oxenmq() {
@@ -2197,16 +2216,18 @@ bool core::submit_uptime_proof() {
     cryptonote_connection_context fake_context{};
     bool relayed;
     auto height = get_current_blockchain_height();
+    auto hf_version = get_network_version(m_nettype, height);
 
     auto proof = m_service_node_list.generate_uptime_proof(
+            hf_version,
             m_sn_public_ip,
             storage_https_port(),
             storage_omq_port(),
             ss_version,
             m_quorumnet_port,
             lokinet_version);
-    NOTIFY_BTENCODED_UPTIME_PROOF::request req = proof.generate_request();
-    relayed = get_protocol()->relay_btencoded_uptime_proof(req, fake_context);
+    auto req = proof.generate_request(hf_version);
+    relayed = get_protocol()->relay_uptime_proof(req, fake_context);
 
     // TODO: remove after HF19
     if (relayed &&
@@ -2239,18 +2260,23 @@ bool core::handle_uptime_proof(
     return result;
 }
 //-----------------------------------------------------------------------------------------------
-bool core::handle_btencoded_uptime_proof(
+bool core::handle_uptime_proof(
         const NOTIFY_BTENCODED_UPTIME_PROOF::request& req, bool& my_uptime_proof_confirmation) {
-    crypto::x25519_public_key pkey = {};
-    auto proof = std::make_unique<uptime_proof::Proof>(req.proof);
-    proof->sig = tools::make_from_guts<crypto::signature>(req.sig);
+    auto proof = std::make_unique<uptime_proof::Proof>(
+            get_network_version(m_nettype, get_current_blockchain_height()), req.proof);
+
+    if (req.sig)
+        proof->sig = tools::make_from_guts<crypto::signature>(*req.sig);
+    else
+        proof->sig = crypto::null<crypto::signature>;
     proof->sig_ed25519 = tools::make_from_guts<crypto::ed25519_signature>(req.ed_sig);
     auto pubkey = proof->pubkey;
-    bool result = m_service_node_list.handle_btencoded_uptime_proof(
-            std::move(proof), my_uptime_proof_confirmation, pkey);
-    if (result && m_service_node_list.is_service_node(pubkey, true /*require_active*/) && pkey) {
+    crypto::x25519_public_key x_pkey{};
+    bool result = m_service_node_list.handle_uptime_proof(
+            std::move(proof), my_uptime_proof_confirmation, x_pkey);
+    if (result && m_service_node_list.is_service_node(pubkey, true /*require_active*/) && x_pkey) {
         oxenmq::pubkey_set added;
-        added.insert(tools::copy_guts(pkey));
+        added.insert(tools::copy_guts(x_pkey));
         m_omq->update_active_sns(added, {} /*removed*/);
     }
     return result;
@@ -2907,19 +2933,19 @@ core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
-aggregateWithdrawalResponse core::aggregate_withdrawal_request(
-        const std::string& ethereum_address) {
-    const auto resp = m_bls_aggregator->aggregateRewards(ethereum_address);
+AggregateWithdrawalResponse core::aggregate_withdrawal_request(const crypto::eth_address& address) {
+    const auto resp = m_bls_aggregator->aggregateRewards(address);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------
-aggregateExitResponse core::aggregate_exit_request(const std::string& bls_key) {
-    const auto resp = m_bls_aggregator->aggregateExit(bls_key);
+AggregateExitResponse core::aggregate_exit_request(const crypto::bls_public_key& bls_pubkey) {
+    const auto resp = m_bls_aggregator->aggregateExit(bls_pubkey);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------
-aggregateExitResponse core::aggregate_liquidation_request(const std::string& bls_key) {
-    const auto resp = m_bls_aggregator->aggregateLiquidation(bls_key);
+AggregateExitResponse core::aggregate_liquidation_request(
+        const crypto::bls_public_key& bls_pubkey) {
+    const auto resp = m_bls_aggregator->aggregateLiquidation(bls_pubkey);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------
@@ -2936,21 +2962,33 @@ std::vector<std::pair<std::string, uint64_t>> core::get_bls_pubkeys() const {
     return bls_pubkeys_and_amounts;
 }
 //-----------------------------------------------------------------------------------------------
-blsRegistrationResponse core::bls_registration(
-        const std::string& ethereum_address, const uint64_t fee) const {
+BLSRegistrationResponse core::bls_registration(
+        const crypto::eth_address& address, const uint64_t fee) const {
     const auto& keys = get_service_keys();
-    auto resp = m_bls_aggregator->registration(ethereum_address, tools::type_to_hex(keys.pub));
+    auto resp = m_bls_aggregator->registration(address, keys.pub);
 
     auto height = get_current_blockchain_height();
     auto hf_version = get_network_version(m_nettype, height);
+
+    assert(hf_version >= hf::hf21_eth);
+
     service_nodes::registration_details reg{};
     reg.service_node_pubkey = keys.pub;
+
+    // If we're constructing a BLS registration then dual keys should have been unified in our own
+    // keys:
+    assert(tools::view_guts(keys.pub) == tools::view_guts(keys.pub_ed25519));
+
     reg.hf = static_cast<uint64_t>(hf_version);
     reg.uses_portions = false;
     reg.fee = fee;
-    auto hash = get_registration_hash(reg);
-    resp.service_node_signature =
-            tools::type_to_hex(crypto::generate_signature(hash, keys.pub, keys.key));
+    auto reg_msg = get_registration_message_for_signing(reg);
+    crypto_sign_ed25519_detached(
+            resp.ed_signature.data(),
+            nullptr,
+            reg_msg.data(),
+            reg_msg.size(),
+            keys.key_ed25519.data());
 
     return resp;
 }

@@ -29,11 +29,14 @@
 #pragma once
 
 #include <chrono>
+#include <iterator>
 #include <mutex>
 #include <shared_mutex>
 #include <string_view>
 
+#include "bls/bls_signer.h"
 #include "common/util.h"
+#include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/hardfork.h"
@@ -51,7 +54,7 @@ struct checkpoint_t;
 };  // namespace cryptonote
 
 namespace service_nodes {
-constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
+inline constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
 
 struct checkpoint_participation_entry {
     uint64_t height = INVALID_HEIGHT;
@@ -464,6 +467,7 @@ struct service_node_keys {
     /// staking contract.
     crypto::bls_secret_key key_bls;
     crypto::bls_public_key pub_bls;
+    std::shared_ptr<BLSSigner> bls_signer;
 };
 
 class service_node_list {
@@ -623,6 +627,7 @@ class service_node_list {
             uint16_t quorumnet_port) const;
 
     uptime_proof::Proof generate_uptime_proof(
+            cryptonote::hf hardfork,
             uint32_t public_ip,
             uint16_t storage_port,
             uint16_t storage_omq_port,
@@ -641,7 +646,7 @@ class service_node_list {
             bool& my_uptime_proof_confirmation,
             crypto::x25519_public_key& x25519_pkey);
 
-    crypto::public_key bls_public_key_lookup(const crypto::bls_public_key& bls_key) const;
+    crypto::public_key bls_public_key_lookup(const crypto::bls_public_key& bls_pubkey) const;
 
     void record_checkpoint_participation(
             crypto::public_key const& pubkey, uint64_t height, bool participated);
@@ -884,7 +889,7 @@ class service_node_list {
         return m_state.is_premature_unlock(nettype, hf_version, block_height, tx);
     }
 
-    bool is_recently_expired(std::string_view node_bls_pubkey) const;
+    bool is_recently_expired(const crypto::bls_public_key& node_bls_pubkey) const;
 
   private:
     // Note(maxim): private methods don't have to be protected the mutex
@@ -941,7 +946,10 @@ class service_node_list {
 
     state_t m_state;  // NOTE: Not in m_transient due to the non-trivial constructor. We can't
                       // blanket initialise using = {}; needs to be reset in ::reset(...) manually
-    std::unordered_map<std::string, uint64_t> recently_expired_nodes;
+
+    // nodes that can't yet be liquidated; the .second value is the expiry block height at which we
+    // remove them (and thus allow liquidation):
+    std::unordered_map<crypto::bls_public_key, uint64_t> recently_expired_nodes;
 };
 
 struct staking_components {
@@ -971,9 +979,15 @@ struct registration_details {
     uint64_t fee;
     uint64_t hf;         // expiration timestamp before HF19
     bool uses_portions;  // if true then `hf` is a timestamp
-    crypto::signature signature;
+    union {
+        // Up to HF20 we use a Monero-type signature (which is the same crypto, but incompatible
+        // with standard Ed25519 signatures); starting at HF21 all registration signatures must be
+        // proper Ed25519.
+        crypto::signature signature;
+        crypto::ed25519_signature ed_signature;
+    };
     std::vector<eth_contribution> eth_contributions;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
 };
 
 bool is_registration_tx(
@@ -1017,6 +1031,9 @@ void validate_registration(
         const registration_details& registration);
 void validate_registration_signature(const registration_details& registration);
 crypto::hash get_registration_hash(const registration_details& registration);
+
+std::basic_string<unsigned char> get_registration_message_for_signing(
+        const registration_details& registration);
 
 bool make_registration_cmd(
         cryptonote::network_type nettype,

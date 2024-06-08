@@ -764,15 +764,15 @@ namespace {
             set("contributors", contributors);
         }
         void operator()(const tx_extra_ethereum_service_node_leave_request& x) {
-            set("bls_key", x.bls_key);
+            set("bls_pubkey", x.bls_pubkey);
         }
         void operator()(const tx_extra_ethereum_service_node_exit& x) {
             set("eth_address", x.eth_address);
             set("amount", x.amount);
-            set("bls_key", x.bls_key);
+            set("bls_pubkey", x.bls_pubkey);
         }
         void operator()(const tx_extra_ethereum_service_node_deregister& x) {
-            set("bls_key", x.bls_key);
+            set("bls_pubkey", x.bls_pubkey);
         }
 
         // Ignore these fields:
@@ -2549,60 +2549,55 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_context context) {
-    const aggregateWithdrawalResponse bls_withdrawal_signature_response =
+    const auto bls_withdrawal_signature_response =
             m_core.aggregate_withdrawal_request(bls_rewards_request.request.address);
     bls_rewards_request.response["status"] = STATUS_OK;
     bls_rewards_request.response_hex["address"] = bls_withdrawal_signature_response.address;
     bls_rewards_request.response["height"] = bls_withdrawal_signature_response.height;
     bls_rewards_request.response["amount"] = bls_withdrawal_signature_response.amount;
-    bls_rewards_request.response["signed_message"] =
-            bls_withdrawal_signature_response.signed_message;
+    bls_rewards_request.response_hex["signed_hash"] = bls_withdrawal_signature_response.signed_hash;
     bls_rewards_request.response_hex["signature"] = bls_withdrawal_signature_response.signature;
-    bls_rewards_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
+    bls_rewards_request.response["non_signer_indices"] =
+            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+                    bls_withdrawal_signature_response.signers_bls_pubkeys.begin(),
+                    bls_withdrawal_signature_response.signers_bls_pubkeys.end());
     return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_EXIT_REQUEST& bls_withdrawal_request, rpc_context context) {
-    const aggregateExitResponse bls_withdrawal_signature_response =
-            m_core.aggregate_exit_request(bls_withdrawal_request.request.bls_key);
-    bls_withdrawal_request.response["status"] = STATUS_OK;
-    bls_withdrawal_request.response["bls_key"] = bls_withdrawal_signature_response.bls_key;
-    bls_withdrawal_request.response["signed_message"] =
-            bls_withdrawal_signature_response.signed_message;
-    bls_withdrawal_request.response["signature"] = bls_withdrawal_signature_response.signature;
-    bls_withdrawal_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
+void core_rpc_server::invoke(BLS_EXIT_REQUEST& exit, rpc_context context) {
+    const auto exit_sig = m_core.aggregate_exit_request(exit.request.bls_pubkey);
+    exit.response["status"] = STATUS_OK;
+    exit.response_hex["bls_pubkey"] = exit_sig.exit_pubkey;
+    exit.response_hex["signed_hash"] = exit_sig.signed_hash;
+    exit.response_hex["signature"] = exit_sig.signature;
+    exit.response["non_signer_indices"] =
+            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+                    exit_sig.signers_bls_pubkeys.begin(), exit_sig.signers_bls_pubkeys.end());
     return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& bls_withdrawal_request, rpc_context context) {
-    const aggregateExitResponse bls_withdrawal_signature_response =
-            m_core.aggregate_liquidation_request(bls_withdrawal_request.request.bls_key);
-    bls_withdrawal_request.response["status"] = STATUS_OK;
-    bls_withdrawal_request.response["bls_key"] = bls_withdrawal_signature_response.bls_key;
-    bls_withdrawal_request.response["signed_message"] =
-            bls_withdrawal_signature_response.signed_message;
-    bls_withdrawal_request.response["signature"] = bls_withdrawal_signature_response.signature;
-    bls_withdrawal_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
-    return;
-}
-//------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_PUBKEYS& bls_pubkey_request, rpc_context context) {
-    const std::vector<std::pair<std::string, uint64_t>> nodes = m_core.get_bls_pubkeys();
-    bls_pubkey_request.response["status"] = STATUS_OK;
-    bls_pubkey_request.response["nodes"] = nodes;
+void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& liquidate, rpc_context context) {
+    const auto liquidate_sig = m_core.aggregate_liquidation_request(liquidate.request.bls_pubkey);
+    liquidate.response["status"] = STATUS_OK;
+    liquidate.response_hex["bls_pubkey"] = liquidate_sig.exit_pubkey;
+    liquidate.response_hex["signed_hash"] = liquidate_sig.signed_hash;
+    liquidate.response_hex["signature"] = liquidate_sig.signature;
+    liquidate.response["non_signer_indices"] =
+            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+                    liquidate_sig.signers_bls_pubkeys.begin(),
+                    liquidate_sig.signers_bls_pubkeys.end());
     return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REGISTRATION& bls_registration_request, rpc_context context) {
-    const blsRegistrationResponse bls_registration =
-            m_core.bls_registration(bls_registration_request.request.address);
+    const auto bls_registration = m_core.bls_registration(bls_registration_request.request.address);
     bls_registration_request.response["status"] = STATUS_OK;
-    bls_registration_request.response["address"] = bls_registration.address;
-    bls_registration_request.response["bls_pubkey"] = bls_registration.bls_pubkey;
-    bls_registration_request.response["proof_of_possession"] = bls_registration.proof_of_possession;
-    bls_registration_request.response["service_node_pubkey"] = bls_registration.service_node_pubkey;
-    bls_registration_request.response["service_node_signature"] =
-            bls_registration.service_node_signature;
+    bls_registration_request.response_hex["address"] = bls_registration.address;
+    bls_registration_request.response_hex["bls_pubkey"] = bls_registration.bls_pubkey;
+    bls_registration_request.response_hex["proof_of_possession"] =
+            bls_registration.proof_of_possession;
+    bls_registration_request.response_hex["service_node_pubkey"] = bls_registration.sn_pubkey;
+    bls_registration_request.response_hex["service_node_signature"] = bls_registration.ed_signature;
     return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2672,7 +2667,7 @@ void core_rpc_server::fill_sn_response_entry(
     const auto& info = *sn_info.info;
     set_if_requested(reqed, binary, "service_node_pubkey", sn_info.pubkey);
     if (info.bls_public_key)
-        set_if_requested(reqed, binary, "bls_key", info.bls_public_key);
+        set_if_requested(reqed, binary, "pubkey_bls", info.bls_public_key);
     set_if_requested(
             reqed,
             entry,
@@ -2778,6 +2773,8 @@ void core_rpc_server::fill_sn_response_entry(
                     m_core.get_service_keys().pub_ed25519,
                     "pubkey_x25519",
                     m_core.get_service_keys().pub_x25519);
+            if (!info.bls_public_key)
+                set_if_requested(reqed, binary, "pubkey_bls", m_core.get_service_keys().pub_bls);
         } else {
             if (proof.proof->public_ip != 0)
                 set_if_requested(
@@ -2805,6 +2802,9 @@ void core_rpc_server::fill_sn_response_entry(
                         proof.proof->pubkey_ed25519,
                         "pubkey_x25519",
                         proof.pubkey_x25519);
+            // During HF20 the BLS pubkey isn't in info, but is in the proof:
+            if (!info.bls_public_key && proof.proof->pubkey_bls)
+                set_if_requested(reqed, binary, "pubkey_bls", proof.proof->pubkey_bls);
         }
 
         auto system_now = std::chrono::system_clock::now();

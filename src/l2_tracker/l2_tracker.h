@@ -1,8 +1,11 @@
 #pragma once
 
 #include <atomic>
+#include <iterator>
 #include <thread>
+#include <unordered_set>
 
+#include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "pool_contract.h"
@@ -10,16 +13,15 @@
 
 struct State {
     uint64_t height;
-    std::string state;
+    crypto::hash block_hash;
     std::vector<TransactionStateChangeVariant>
             state_changes;  // List of transactions that changed the state this block
 
-    State(uint64_t _height,
-          const std::string& _state,
-          const std::vector<TransactionStateChangeVariant>& _state_changes) :
-            height(_height), state(_state), state_changes(_state_changes) {}
-    State(const StateResponse& _state_response) :
-            height(_state_response.height), state(_state_response.state) {}
+    State(const crypto::hash& block_hash,
+          std::vector<TransactionStateChangeVariant> state_changes) :
+            block_hash{block_hash}, state_changes{std::move(state_changes)} {}
+    State(const StateResponse& state_response) :
+            height{state_response.height}, block_hash{state_response.block_hash} {}
 };
 
 struct TransactionReviewSession {
@@ -35,19 +37,19 @@ struct TransactionReviewSession {
             review_block_height_min(min_height), review_block_height_max(max_height) {}
 
     bool processNewServiceNodeTx(
-            const crypto::bls_public_key& bls_key,
+            const crypto::bls_public_key& bls_pubkey,
             const crypto::eth_address& eth_address,
-            const std::string& service_node_pubkey,
+            const crypto::public_key& service_node_pubkey,
             std::string& fail_reason);
     bool processServiceNodeLeaveRequestTx(
-            const crypto::bls_public_key& bls_key, std::string& fail_reason);
+            const crypto::bls_public_key& bls_pubkey, std::string& fail_reason);
     bool processServiceNodeExitTx(
             const crypto::eth_address& eth_address,
             const uint64_t amount,
-            const crypto::bls_public_key& bls_key,
+            const crypto::bls_public_key& bls_pubkey,
             std::string& fail_reason);
     bool processServiceNodeDeregisterTx(
-            const crypto::bls_public_key& bls_key, std::string& fail_reason);
+            const crypto::bls_public_key& bls_pubkey, std::string& fail_reason);
 
     bool finalize_review();
 };
@@ -70,7 +72,6 @@ class L2Tracker {
     bool start();
     void update_state();
     bool check_state_in_history(uint64_t height, const crypto::hash& state_root);
-    bool check_state_in_history(uint64_t height, const std::string& state_root);
 
     // These functions check whether transactions on the oxen chain should be there.
     // Call initialize before we loop, then for each transaction call processTransactionType
@@ -88,8 +89,13 @@ class L2Tracker {
     uint64_t get_last_l2_height();
 
     uint64_t get_pool_block_reward(uint64_t timestamp, uint64_t ethereum_block_height);
-    std::vector<uint64_t> get_non_signers(const std::vector<std::string>& bls_public_keys);
-    std::vector<std::string> get_all_bls_public_keys(uint64_t blockNumber);
+    std::vector<uint64_t> get_non_signers(
+            const std::unordered_set<crypto::bls_public_key>& bls_public_keys);
+    template <std::input_iterator It, std::sentinel_for<It> End>
+    std::vector<uint64_t> get_non_signers(It begin, End end) {
+        return get_non_signers(std::unordered_set<crypto::bls_public_key>{begin, end});
+    }
+    std::vector<crypto::bls_public_key> get_all_bls_public_keys(uint64_t blockNumber);
 
     ethyl::Provider provider;
 
