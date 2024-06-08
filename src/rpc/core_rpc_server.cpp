@@ -3423,11 +3423,13 @@ void core_rpc_server::invoke(
     auto& balances = get_accrued_batched_earnings.response["balances"];
     balances = json::object();
     auto& req = get_accrued_batched_earnings.request;
+    auto net = nettype();
     if (req.addresses.size() > 0) {
         for (const auto& address : req.addresses) {
             uint64_t amount = 0;
-            if (cryptonote::is_valid_address(address, nettype())) {
-                const auto [_, amount] = blockchain.sqlite_db()->get_accrued_earnings(address);
+            if (cryptonote::is_valid_address(address, net)) {
+                std::tie(std::ignore, amount) =
+                        blockchain.sqlite_db()->get_accrued_earnings(address);
                 at_least_one_succeeded = true;
             }
             balances[address] = amount;
