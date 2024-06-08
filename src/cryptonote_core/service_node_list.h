@@ -192,12 +192,6 @@ struct pulse_sort_key {
     END_SERIALIZE()
 };
 
-struct service_node_address {
-    crypto::x25519_public_key x_pkey;
-    uint32_t ip;
-    uint16_t port;
-};
-
 struct service_node_info  // registration information
 {
     enum class version_t : uint8_t {
@@ -364,6 +358,14 @@ struct service_node_info  // registration information
         FIELD(operator_ethereum_address)
     }
     END_SERIALIZE()
+};
+
+struct service_node_address {
+    crypto::public_key sn_pubkey;
+    crypto::bls_public_key bls_pubkey;
+    crypto::x25519_public_key x_pubkey;
+    uint32_t ip;
+    uint16_t port;
 };
 
 using pubkey_and_sninfo = std::pair<crypto::public_key, std::shared_ptr<const service_node_info>>;
@@ -541,12 +543,15 @@ class service_node_list {
     std::string remote_lookup(std::string_view x25519_pk);
 
     /// Does something read-only for each registered service node in the range of pubkeys.  The SN
-    /// lock is held while iterating, so the "something" should be quick.  Func should take
-    /// arguments:
-    ///     (const crypto::public_key&, const service_node_info&, const proof_info&)
+    /// lock is held while iterating, so the "something" should be quick.
+    ///
     /// Unknown public keys are skipped.
-    template <typename It, typename Func>
-    void for_each_service_node_info_and_proof(It begin, It end, Func f) const {
+    template <
+            std::input_iterator It,
+            std::sentinel_for<It> End,
+            std::invocable<const crypto::public_key&, const service_node_info&, const proof_info&>
+                    Func>
+    void for_each_service_node_info_and_proof(It begin, End end, Func f) const {
         static const proof_info empty_proof{};
         std::lock_guard lock{m_sn_mutex};
         for (auto sni_end = m_state.service_nodes_infos.end(); begin != end; ++begin) {
@@ -560,7 +565,7 @@ class service_node_list {
 
     /// Copies x25519 pubkeys (as strings) of all currently active SNs into the given output
     /// iterator
-    template <typename OutputIt>
+    template <std::output_iterator<std::string> OutputIt>
     void copy_active_x25519_pubkeys(OutputIt out) const {
         std::lock_guard lock{m_sn_mutex};
         for (const auto& pk_info : m_state.service_nodes_infos) {
@@ -574,10 +579,12 @@ class service_node_list {
         }
     }
 
-    /// Copies `service_node_addresses` of all currently active SNs into the given output
-    /// iterator
-    template <typename OutputIt>
-    void copy_active_service_node_addresses(OutputIt out) const {
+    /// Copies `service_node_address`es (pubkeys, ip, port) of all currently active SNs with
+    /// potentially reachable, known addresses (via a recently received valid proof) into the given
+    /// output iterator.  Service nodes that are active but for which we have not yet
+    /// received/accepted a proof containing IP info are not included.
+    template <std::output_iterator<service_node_address> OutputIt>
+    void copy_reachable_active_service_node_addresses(OutputIt out) const {
         std::lock_guard lock{m_sn_mutex};
         for (const auto& pk_info : m_state.service_nodes_infos) {
             if (!pk_info.second->is_active())
@@ -585,13 +592,17 @@ class service_node_list {
             auto it = proofs.find(pk_info.first);
             if (it == proofs.end())
                 continue;
-            if (const auto& x2_pk = it->second.pubkey_x25519) {
-                service_node_address address = {};
-                address.x_pkey = x2_pk;
-                address.ip = it->second.proof ? it->second.proof->public_ip : 0;
-                address.port = it->second.proof ? it->second.proof->qnet_port : 0;
-                *out++ = address;
-            }
+            // If we don't have a proof then we won't know the IP/port, and so this node isn't
+            // considered reachable and shouldn't be returned.
+            if (!it->second.proof)
+                continue;
+            auto& proof = *it->second.proof;
+            *out++ = service_node_address{
+                    pk_info.first,
+                    proof.pubkey_bls,
+                    it->second.pubkey_x25519,
+                    proof.public_ip,
+                    proof.qnet_port};
         }
     }
 

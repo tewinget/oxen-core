@@ -950,12 +950,11 @@ class core : public i_miner_handler {
     const std::vector<service_nodes::key_image_blacklist_entry>&
     get_service_node_blacklisted_key_images() const;
 
-    aggregateWithdrawalResponse aggregate_withdrawal_request(const std::string& ethereum_address);
-    aggregateExitResponse aggregate_exit_request(const std::string& bls_key);
-    aggregateExitResponse aggregate_liquidation_request(const std::string& bls_key);
-    std::vector<std::pair<std::string, uint64_t>> get_bls_pubkeys() const;
-    blsRegistrationResponse bls_registration(
-            const std::string& ethereum_address, const uint64_t fee = 0) const;
+    AggregateWithdrawalResponse aggregate_withdrawal_request(const crypto::eth_address& address);
+    AggregateExitResponse aggregate_exit_request(const crypto::bls_public_key& bls_pubkey);
+    AggregateExitResponse aggregate_liquidation_request(const crypto::bls_public_key& bls_pubkey);
+    BLSRegistrationResponse bls_registration(
+            const crypto::eth_address& ethereum_address, const uint64_t fee = 0) const;
 
     /**
      * @brief get a snapshot of the service node list state at the time of the call.
