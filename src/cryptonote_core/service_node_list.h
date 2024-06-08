@@ -484,7 +484,6 @@ class service_node_list {
     bool state_history_exists(uint64_t height);
     bool process_batching_rewards(const cryptonote::block& block);
     bool pop_batching_rewards_block(const cryptonote::block& block);
-    bool process_ethereum_address_notification_transactions(const cryptonote::network_type nettype, const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
     void blockchain_detached(uint64_t height);
     void init();
     void validate_miner_tx(const cryptonote::miner_tx_info& info) const;

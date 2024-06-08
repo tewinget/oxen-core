@@ -4150,19 +4150,6 @@ bool Blockchain::check_tx_inputs(
             }
         }
 
-        if (tx.type == txtype::ethereum_address_notification) {
-            cryptonote::tx_extra_ethereum_address_notification entry = {};
-            std::string fail_reason;
-            if (!ethereum::validate_ethereum_address_notification_tx(
-                        hf_version, get_current_blockchain_height(), tx, entry, &fail_reason)) {
-                log::error(
-                        log::Cat("verify"),
-                        "Failed to validate Ethereum Address Notification TX reason: {}",
-                        fail_reason);
-                tvc.m_verbose_error = std::move(fail_reason);
-                return false;
-            }
-        }
     } else {
         CHECK_AND_ASSERT_MES(
                 tx.vin.size() == 0,
@@ -5359,11 +5346,6 @@ bool Blockchain::handle_block_to_main_chain(
         // paid to the service nodes into the batching database
         if (!m_service_node_list.process_batching_rewards(bl)) {
             log::error(logcat, "Failed to add block to batch rewards DB.");
-            bvc.m_verifivation_failed = true;
-            return false;
-        }
-        if (!m_service_node_list.process_ethereum_address_notification_transactions(m_nettype, bl, only_txs)) {
-            log::info(logcat, fg(fmt::terminal_color::red), "Failed to add ethereum transactions");
             bvc.m_verifivation_failed = true;
             return false;
         }

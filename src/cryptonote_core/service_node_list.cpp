@@ -2335,49 +2335,6 @@ bool service_node_list::pop_batching_rewards_block(const cryptonote::block& bloc
     return m_blockchain.sqlite_db()->pop_block(block, m_state);
 }
 
-bool service_node_list::process_ethereum_address_notification_transactions(const cryptonote::network_type nettype, const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
-    if (block.major_version < cryptonote::feature::ETH_BLS)
-        return true;
-    uint64_t block_height = cryptonote::get_block_height(block);
-    for (const cryptonote::transaction& tx : txs) {
-        if (tx.type != cryptonote::txtype::ethereum_address_notification)
-            continue;
-
-        cryptonote::tx_extra_ethereum_address_notification entry = {};
-        std::string fail_reason;
-        if (!ethereum::validate_ethereum_address_notification_tx(
-                    block.major_version, block_height, tx, entry, &fail_reason)) {
-            log::error(
-                    logcat,
-                    "ETH TX: Failed to validate for tx={}. This should have failed validation "
-                    "earlier reason={}",
-                    get_transaction_hash(tx),
-                    fail_reason);
-            assert("Failed to validate ethereum transaction. Should already have failed "
-                   "validation prior" == nullptr);
-            return false;
-        }
-        cryptonote::address_parse_info addr_info;
-        if (!cryptonote::get_account_address_from_str(addr_info, nettype, entry.oxen_address))
-            throw std::invalid_argument{tr("Failed to parse address: ") + entry.oxen_address};
-        const auto active_service_nodes = m_state.active_service_nodes_infos();
-        for (const auto& [node_pubkey, node_info] : active_service_nodes) {
-            const auto active_service_node = m_state.service_nodes_infos.find(node_pubkey);
-            if (active_service_node == m_state.service_nodes_infos.end())
-                continue;
-            service_node_info& new_info = duplicate_info(active_service_node->second);
-            for (service_node_info::contributor_t& contributor : new_info.contributors) {
-                if (contributor.address == addr_info.address)
-                    contributor.ethereum_address = entry.eth_address;
-            }
-        }
-
-        return m_blockchain.sqlite_db()->update_sn_rewards_address(
-                entry.oxen_address, entry.eth_address);
-    }
-    return true;
-}
-
 static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {
     std::mt19937_64 result;
     if (hf_version >= hf::hf16_pulse) {

@@ -745,10 +745,6 @@ namespace {
             _load_owner(ons, "owner", x.owner);
             _load_owner(ons, "backup_owner", x.backup_owner);
         }
-        void operator()(const tx_extra_ethereum_address_notification& x) {
-            set("eth_address", tools::type_to_hex(x.eth_address));
-            set("signature", tools::view_guts(x.signature));
-        }
         void operator()(const tx_extra_ethereum_new_service_node& x) {
             set("bls_pubkey", x.bls_pubkey);
             set("eth_address", x.eth_address);

@@ -18,60 +18,6 @@ static bool check_condition(
     return condition;
 }
 
-bool validate_ethereum_address_notification_tx(
-        hf hf_version,
-        uint64_t blockchain_height,
-        cryptonote::transaction const& tx,
-        cryptonote::tx_extra_ethereum_address_notification& eth_extra,
-        std::string* reason) {
-
-    // Extract Ethereum Extra from TX
-    {
-        if (check_condition(
-                    tx.type != cryptonote::txtype::ethereum_address_notification,
-                    reason,
-                    "{} uses wrong tx type, expected={}",
-                    tx,
-                    cryptonote::txtype::ethereum_address_notification))
-            return false;
-
-        if (check_condition(
-                    !cryptonote::get_field_from_tx_extra(tx.extra, eth_extra),
-                    reason,
-                    "{} didn't have ethereum data in the tx_extra",
-                    tx))
-            return false;
-    }
-
-    // Validate Ethereum Address
-    {
-        const size_t ETH_ADDRESS_SIZE = 20;  // 20 bytes, 40 hex characters
-        if (check_condition(
-                    eth_extra.eth_address.size() !=
-                            ETH_ADDRESS_SIZE *
-                                    2,  // Multiplied by 2 because it's hex representation
-                    reason,
-                    "{} invalid ethereum address size",
-                    tx))
-            return false;
-
-        // TODO sean potentially add more rigorous eth address checking here
-    }
-
-    // Validate Ethereum Signature
-    {
-        // TODO sean this verify signature stuff
-        // bool signature_valid = verify_ethereum_signature(eth_extra.eth_address,
-        // eth_extra.signature, eth_extra.pub_key);
-        bool signature_valid = true;
-        if (check_condition(
-                    !signature_valid, reason, "{} invalid signature over new ethereum address", tx))
-            return false;
-    }
-
-    return true;
-}
-
 bool validate_ethereum_new_service_node_tx(
         hf hf_version,
         uint64_t blockchain_height,

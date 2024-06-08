@@ -124,10 +124,6 @@ struct extra_printer {
         return "SN state change: {} for block height {}, SN index {}"_format(
                 type, x.block_height, x.service_node_index);
     }
-    std::string operator()(const tx_extra_ethereum_address_notification& x) {
-        return "Ethereum Address Notification: version {}, eth address {}, oxen address {}, signature {}"_format(
-            x.version, tools::type_to_hex(x.eth_address), x.oxen_address, tools::type_to_hex(x.signature));
-    }
     std::string operator()(const tx_extra_ethereum_new_service_node& x) {
         std::string contributors_info;
         for (const auto& contributor : x.contributors) {
