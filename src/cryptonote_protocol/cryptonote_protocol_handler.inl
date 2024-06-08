@@ -790,39 +790,7 @@ namespace cryptonote
   }  
   //------------------------------------------------------------------------------------------------------------------------  
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_uptime_proof(int command, NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& context)
-  {
-    log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_UPTIME_PROOF");
-    // NOTE: Don't relay your own uptime proof, otherwise we have the following situation
-
-    // Node1 sends uptime ->
-    // Node2 receives uptime and relays it back to Node1 for acknowledgement ->
-    // Node1 receives it, handle_uptime_proof returns true to acknowledge, Node1 tries to resend to the same peers again
-
-    // Instead, if we receive our own uptime proof, then acknowledge but don't
-    // send on. If the we are missing an uptime proof it will have been
-    // submitted automatically by the daemon itself instead of
-    // using my own proof relayed by other nodes.
-
-    (void)context;
-    bool my_uptime_proof_confirmation = false;
-    if (m_core.handle_uptime_proof(arg, my_uptime_proof_confirmation))
-    {
-      if (!my_uptime_proof_confirmation)
-      {
-        // NOTE: The default exclude context contains the peer who sent us this
-        // uptime proof, we want to ensure we relay it back so they know that the
-        // peer they relayed to received their uptime and confirm it, so send in an
-        // empty context so we don't omit the source peer from the relay back.
-        cryptonote_connection_context empty_context = {};
-        relay_uptime_proof(arg, empty_context);
-      }
-    }
-    return 1;
-  }
-  //------------------------------------------------------------------------------------------------------------------------  
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_btencoded_uptime_proof(int command, NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_uptime_proof(int command, NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_BTENCODED_UPTIME_PROOF");
     // NOTE: Don't relay your own uptime proof, otherwise we have the following situation
@@ -839,7 +807,7 @@ namespace cryptonote
     (void)context;
     bool my_uptime_proof_confirmation = false;
 
-    if (m_core.handle_btencoded_uptime_proof(arg, my_uptime_proof_confirmation))
+    if (m_core.handle_uptime_proof(arg, my_uptime_proof_confirmation))
     {
       if (!my_uptime_proof_confirmation)
       {
@@ -848,7 +816,7 @@ namespace cryptonote
         // peer they relayed to received their uptime and confirm it, so send in an
         // empty context so we don't omit the source peer from the relay back.
         cryptonote_connection_context empty_context = {};
-        relay_btencoded_uptime_proof(arg, empty_context);
+        relay_uptime_proof(arg, empty_context);
       }
     }
     return 1;
@@ -2455,14 +2423,7 @@ Use the "help" command to see the list of available commands.
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_uptime_proof(NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context)
-  {
-    bool result = relay_to_synchronized_peers<NOTIFY_UPTIME_PROOF>(arg, exclude_context);
-    return result;
-  }
-  //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_btencoded_uptime_proof(NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context)
+  bool t_cryptonote_protocol_handler<t_core>::relay_uptime_proof(NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context)
   {
     bool result = relay_to_synchronized_peers<NOTIFY_BTENCODED_UPTIME_PROOF>(arg, exclude_context);
     return result;

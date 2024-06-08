@@ -3585,49 +3585,6 @@ bool service_node_list::store() {
     return true;
 }
 
-// TODO: remove after HF18, snode revision 1
-crypto::hash service_node_list::hash_uptime_proof(
-        const cryptonote::NOTIFY_UPTIME_PROOF::request& proof) const {
-    size_t buf_size;
-    crypto::hash result;
-
-    auto buf = tools::memcpy_le(
-            proof.pubkey,
-            proof.timestamp,
-            proof.public_ip,
-            proof.storage_https_port,
-            proof.pubkey_ed25519,
-            proof.qnet_port,
-            proof.storage_omq_port);
-    buf_size = buf.size();
-    crypto::cn_fast_hash(buf.data(), buf_size, result);
-    return result;
-}
-
-cryptonote::NOTIFY_UPTIME_PROOF::request service_node_list::generate_uptime_proof(
-        uint32_t public_ip,
-        uint16_t storage_https_port,
-        uint16_t storage_omq_port,
-        uint16_t quorumnet_port) const {
-    assert(m_service_node_keys);
-    const auto& keys = *m_service_node_keys;
-    cryptonote::NOTIFY_UPTIME_PROOF::request result = {};
-    result.snode_version = OXEN_VERSION;
-    result.timestamp = time(nullptr);
-    result.pubkey = keys.pub;
-    result.public_ip = public_ip;
-    result.storage_https_port = storage_https_port;
-    result.storage_omq_port = storage_omq_port;
-    result.qnet_port = quorumnet_port;
-    result.pubkey_ed25519 = keys.pub_ed25519;
-
-    crypto::hash hash = hash_uptime_proof(result);
-    crypto::generate_signature(hash, keys.pub, keys.key, result.sig);
-    crypto_sign_detached(
-            result.sig_ed25519.data(), NULL, hash.data(), hash.size(), keys.key_ed25519.data());
-    return result;
-}
-
 uptime_proof::Proof service_node_list::generate_uptime_proof(
         hf hardfork,
         uint32_t public_ip,
@@ -3697,49 +3654,7 @@ bool proof_info::update(
         public_ips[0] = {proof->public_ip, now};
 
     return update_db;
-};
-
-// TODO remove after HF18, snode revision 1
-bool proof_info::update(
-        uint64_t ts,
-        uint32_t ip,
-        uint16_t s_https_port,
-        uint16_t s_omq_port,
-        uint16_t q_port,
-        std::array<uint16_t, 3> ver,
-        const crypto::ed25519_public_key& pk_ed,
-        const crypto::x25519_public_key& pk_x2) {
-    bool update_db = false;
-    if (!proof)
-        proof = std::unique_ptr<uptime_proof::Proof>(new uptime_proof::Proof());
-    update_db |= update_val(timestamp, ts);
-    update_db |= update_val(proof->public_ip, ip);
-    update_db |= update_val(proof->storage_https_port, s_https_port);
-    update_db |= update_val(proof->storage_omq_port, s_omq_port);
-    update_db |= update_val(proof->qnet_port, q_port);
-    update_db |= update_val(proof->version, ver);
-    update_db |= update_val(proof->pubkey_ed25519, pk_ed);
-    effective_timestamp = timestamp;
-    pubkey_x25519 = pk_x2;
-
-    // Track an IP change (so that the obligations quorum can penalize for IP changes)
-    // We only keep the two most recent because all we really care about is whether it had more than
-    // one
-    //
-    // If we already know about the IP, update its timestamp:
-    auto now = std::time(nullptr);
-    if (public_ips[0].first && public_ips[0].first == proof->public_ip)
-        public_ips[0].second = now;
-    else if (public_ips[1].first && public_ips[1].first == proof->public_ip)
-        public_ips[1].second = now;
-    // Otherwise replace whichever IP has the older timestamp
-    else if (public_ips[0].second > public_ips[1].second)
-        public_ips[1] = {proof->public_ip, now};
-    else
-        public_ips[0] = {proof->public_ip, now};
-
-    return update_db;
-};
+}
 
 void proof_info::update_pubkey(const crypto::ed25519_public_key& pk) {
     if (pk == proof->pubkey_ed25519)
@@ -3756,7 +3671,7 @@ void proof_info::update_pubkey(const crypto::ed25519_public_key& pk) {
     }
 }
 
-bool service_node_list::handle_btencoded_uptime_proof(
+bool service_node_list::handle_uptime_proof(
         std::unique_ptr<uptime_proof::Proof> proof,
         bool& my_uptime_proof_confirmation,
         crypto::x25519_public_key& x25519_pkey) {

@@ -2229,35 +2229,11 @@ bool core::submit_uptime_proof() {
     auto req = proof.generate_request(hf_version);
     relayed = get_protocol()->relay_uptime_proof(req, fake_context);
 
-    // TODO: remove after HF19
-    if (relayed &&
-        tools::view_guts(m_service_keys.pub) != tools::view_guts(m_service_keys.pub_ed25519)) {
-        // Temp workaround: nodes with both pub and ed25519 are failing bt-encoded proofs, so send
-        // an old-style proof out as well as a workaround.
-        NOTIFY_UPTIME_PROOF::request req = m_service_node_list.generate_uptime_proof(
-                m_sn_public_ip, storage_https_port(), storage_omq_port(), m_quorumnet_port);
-        get_protocol()->relay_uptime_proof(req, fake_context);
-    }
-
     if (relayed)
         log::info(
                 logcat, "Submitted uptime-proof for Service Node (yours): {}", m_service_keys.pub);
 
     return true;
-}
-//-----------------------------------------------------------------------------------------------
-bool core::handle_uptime_proof(
-        const NOTIFY_UPTIME_PROOF::request& proof, bool& my_uptime_proof_confirmation) {
-    crypto::x25519_public_key pkey = {};
-    bool result =
-            m_service_node_list.handle_uptime_proof(proof, my_uptime_proof_confirmation, pkey);
-    if (result && m_service_node_list.is_service_node(proof.pubkey, true /*require_active*/) &&
-        pkey) {
-        oxenmq::pubkey_set added;
-        added.insert(tools::copy_guts(pkey));
-        m_omq->update_active_sns(added, {} /*removed*/);
-    }
-    return result;
 }
 //-----------------------------------------------------------------------------------------------
 bool core::handle_uptime_proof(
