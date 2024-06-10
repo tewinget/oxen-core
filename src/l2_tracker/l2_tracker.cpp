@@ -57,7 +57,7 @@ void L2Tracker::insert_in_order(State&& new_state) {
 }
 
 void L2Tracker::process_logs_for_state(State& state) {
-    std::vector<LogEntry> logs = rewards_contract->Logs(state.height);
+    std::vector<ethyl::LogEntry> logs = rewards_contract->Logs(state.height);
     for (const auto& log : logs) {
         auto transaction = getLogTransaction(log);
         if (transaction.index() > 0) {
@@ -91,7 +91,7 @@ void L2Tracker::update_state() {
 
 static constexpr inline std::string_view NO_PROVIDER_CLIENTS_ERROR = "L2 tracker does not have any RPC servers configured for the Ethereum provider. Ensure that `--ethereum_provider` is set to an Ethereum RPC endpoint.";
 std::pair<uint64_t, crypto::hash> L2Tracker::latest_state() {
-    if (!provider.clients.empty()) {
+    if (provider.clients.empty()) {
         oxen::log::error(logcat, NO_PROVIDER_CLIENTS_ERROR);
         throw std::runtime_error(std::string(NO_PROVIDER_CLIENTS_ERROR));
     }
@@ -107,7 +107,7 @@ std::pair<uint64_t, crypto::hash> L2Tracker::latest_state() {
 
 bool L2Tracker::check_state_in_history(uint64_t height, const crypto::hash& state_root) {
     if (provider.clients.empty()) {
-        return false;
+        return true;
     }
     std::lock_guard lock{mutex};
     auto it = std::find_if(
@@ -200,7 +200,11 @@ std::vector<TransactionStateChangeVariant> L2Tracker::get_block_transactions() {
 }
 
 uint64_t L2Tracker::get_last_l2_height() {
-    return oxen_to_ethereum_block_heights[latest_oxen_block];
+    uint64_t last_height = 0;
+    if (oxen_to_ethereum_block_heights.find(latest_oxen_block) != oxen_to_ethereum_block_heights.end()) {
+        last_height = oxen_to_ethereum_block_heights[latest_oxen_block];
+    }
+    return last_height;
 }
 
 void L2Tracker::record_block_height_mapping(

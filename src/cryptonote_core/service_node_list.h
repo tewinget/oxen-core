@@ -33,6 +33,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <string_view>
+#include <span>
 
 #include "bls/bls_signer.h"
 #include "common/util.h"
@@ -597,6 +598,8 @@ class service_node_list {
             if (!it->second.proof)
                 continue;
             auto& proof = *it->second.proof;
+            const auto& x_pk = it->second.pubkey_x25519;
+            assert(x_pk); // Should always be set to non-null if we have a proof
             *out++ = service_node_address{
                     pk_info.first,
                     proof.pubkey_bls,

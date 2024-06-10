@@ -39,6 +39,7 @@ target_link_libraries(oxen_bls
     cryptonote_basic
     cryptonote_core
   PRIVATE
+    SQLiteCpp
     common
     logging
     ethyl

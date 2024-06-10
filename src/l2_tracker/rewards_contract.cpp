@@ -1,8 +1,11 @@
 #include "rewards_contract.h"
 
 #include <ethyl/utils.hpp>
+#include <common/oxen.h>
+#include <common/string_util.h>
 
 #include "crypto/crypto.h"
+#include "cryptonote_config.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wuseless-cast"
@@ -15,7 +18,7 @@
 
 static auto logcat = oxen::log::Cat("l2_tracker");
 
-TransactionType getLogType(const LogEntry& log) {
+TransactionType getLogType(const ethyl::LogEntry& log) {
     if (log.topics.empty()) {
         throw std::runtime_error("No topics in log entry");
     }
@@ -38,7 +41,7 @@ using u256 = std::array<std::byte, 32>;
 using tools::skip;
 using tools::skip_t;
 
-TransactionStateChangeVariant getLogTransaction(const LogEntry& log) {
+TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
     TransactionStateChangeVariant result;
     TransactionType type = getLogType(log);
     switch (type) {
@@ -54,13 +57,9 @@ TransactionStateChangeVariant getLogTransaction(const LogEntry& log) {
             //      },
             //      Contributors[] contributors);
             //
-            // Service node id is a topic so only address, pubkeys, signature, fee and contributors
-            // are in data Address is 32 bytes, the first 12 of which are padding pubkey is 64 bytes
-            // serviceNodePubkey is 64 bytes
-            // contributors starts with a u256 of the contributor data length (=64), u256 of the
-            // array length, followed by the contributor info:
-            //     - address (with 12 byte prefix padding)
-            //     - amount (u256)
+            // Note:
+            // - address is 32 bytes, the first 12 of which are padding
+            // - fee is between 0 and 10000, despite being packed into a gigantic 256-bit int.
 
             auto& [bls_pk, eth_addr, sn_pubkey, sn_sig, fee, contributors] =
                     result.emplace<NewServiceNodeTx>();
@@ -80,11 +79,14 @@ TransactionStateChangeVariant getLogTransaction(const LogEntry& log) {
                             std::string_view>(log.data);
 
             fee = tools::decode_integer_be(fee256);
+            if (fee > cryptonote::STAKING_FEE_BASIS)
+                throw std::invalid_argument{
+                    "Invalid NewServiceNode data: fee must be in [0, {}]"_format(cryptonote::STAKING_FEE_BASIS)};
             auto num_contributors = tools::decode_integer_be(c_len);
             if (tools::decode_integer_be(c_size) != 64 ||
                 contrib_hex.size() != 2 * num_contributors * (32 + 32))
                 throw std::invalid_argument{
-                        "Invalid NewServiceNode data: invaliad contributor data"};
+                        "Invalid NewServiceNode data: invalid contributor data"};
 
             contributors.resize(num_contributors);
             for (auto& [addr, amt] : contributors) {
@@ -133,8 +135,7 @@ TransactionStateChangeVariant getLogTransaction(const LogEntry& log) {
             // pubkey is 64 bytes
             auto& [eth_addr, amount, bls_pk] = result.emplace<ServiceNodeExitTx>();
             u256 amt256;
-            std::tie(eth_addr, amt256, bls_pk) = tools::
-                    split_hex_into<skip<12>, crypto::eth_address, u256, crypto::bls_public_key>(
+            std::tie(eth_addr, amt256, bls_pk) = tools::split_hex_into<skip<12>, crypto::eth_address, u256, crypto::bls_public_key>(
                             log.data);
             amount = tools::decode_integer_be(amt256);
             break;
@@ -159,7 +160,7 @@ StateResponse RewardsContract::State(uint64_t height) {
     return {height, tools::make_from_hex_guts<crypto::hash>(bh)};
 }
 
-std::vector<LogEntry> RewardsContract::Logs(uint64_t height) {
+std::vector<ethyl::LogEntry> RewardsContract::Logs(uint64_t height) {
     return provider.getLogs(height, contractAddress);
 }
 
@@ -181,13 +182,36 @@ std::vector<crypto::bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t b
     return blsPublicKeys;
 }
 
+static std::string service_node_blob_debug(
+    const ContractServiceNode& result, std::string_view full_hex) {
+    return "Service node blob components were:\n"
+                "\n"
+                "  - next:                   {}\n"
+                "  - prev:                   {}\n"
+                "  - operator:               {}\n"
+                "  - pubkey:                 {}\n"
+                "  - leaveRequestTimestamp:  {}\n"
+                "  - deposit:                {}\n"
+                "  - num contributors:       {}\n"
+                "\n"
+                "The raw blob was:\n\n{}"_format(
+                result.next,
+                result.prev,
+                result.operatorAddr,
+                result.pubkey,
+                result.leaveRequestTimestamp,
+                result.deposit,
+                result.contributorsSize,
+                full_hex);
+}
+
 ContractServiceNode RewardsContract::serviceNodes(
         uint64_t index, std::optional<uint64_t> blockNumber) {
     ethyl::ReadCallData callData = {};
     std::string indexABI =
-            utils::padTo32Bytes(utils::decimalToHex(index), utils::PaddingDirection::LEFT);
+            ethyl::utils::padTo32Bytes(ethyl::utils::decimalToHex(index), ethyl::utils::PaddingDirection::LEFT);
     callData.contractAddress = contractAddress;
-    callData.data = utils::getFunctionSignature("serviceNodes(uint64)") + indexABI;
+    callData.data = ethyl::utils::toEthFunctionSignature("serviceNodes(uint64)") + indexABI;
     // FIXME(OXEN11): we *cannot* make a blocking request here like this because we are blocking
     // some other thread from doing work; we either need to get this from a local cache of the info,
     // or make it asynchronous (i.e. with a completion/timeout callback), or both (i.e. try cache,
@@ -198,24 +222,74 @@ ContractServiceNode RewardsContract::serviceNodes(
     nlohmann::json callResult = provider.callReadFunctionJSON(callData, blockNumArg);
     auto callResultHex = callResult.get<std::string_view>();
 
-    auto [next, prev, recipient, pubkey, leaveRequestTimestamp, deposit] = tools::split_hex_into<
-            skip<32>,
+    // NOTE: The ServiceNode struct is a dynamic type (because its child `Contributor` field is
+    // dynamic) hence the offset struct is encoded in the first 32 byte element.
+    auto [sn_data_offset] = tools::split_hex_into<u256, tools::ignore>(callResultHex);
+    auto sn_data = callResultHex.substr(tools::decode_integer_be(sn_data_offset));
+    auto [next, prev, op_addr, pubkey, leaveRequestTimestamp, deposit, contr_offset] = tools::split_hex_into<
             u256,
             u256,
             skip<12>,
             crypto::eth_address,
             crypto::bls_public_key,
             u256,
-            u256>(callResultHex);
+            u256,
+            u256,
+            tools::ignore>(sn_data);
 
     ContractServiceNode result{};
-
+    result.good = false; // until proven otherwise
     result.next = tools::decode_integer_be(next);
     result.prev = tools::decode_integer_be(prev);
-    result.recipient = recipient;
+    result.operatorAddr = op_addr;
     result.pubkey = pubkey;
     result.leaveRequestTimestamp = tools::decode_integer_be(leaveRequestTimestamp);
     result.deposit = tools::decode_integer_be(deposit);
+
+    auto contrib_data = sn_data.substr(tools::decode_integer_be(contr_offset));
+    auto [contrib_len] = tools::split_hex_into<u256, tools::ignore>(contrib_data);
+
+    // NOTE: Start parsing the contributors blobs
+    if (auto contributorSize = tools::decode_integer_be(contrib_len);contributorSize <= result.contributors.max_size())
+        result.contributorsSize = contributorSize;
+    else {
+        oxen::log::error(
+                logcat,
+                "The number of contributors ({}) in the service node blob exceeded the available "
+                "storage ({}) for service node {} with BLS public key {} at height {}",
+                contributorSize,
+                result.contributors.max_size(),
+                index,
+                result.pubkey,
+                blockNumber ? "{}"_format(*blockNumber) : "(latest)");
+        oxen::log::debug(
+                logcat,
+                "{}", service_node_blob_debug(result, callResultHex));
+        return result;
+    }
+
+    for (size_t i = 0; i < result.contributorsSize; i++) {
+        try {
+            auto& [addr, amount] = result.contributors[i];
+            u256 amt;
+            std::tie(addr, amt, contrib_data) = tools::split_hex_into<skip<12>, crypto::eth_address, u256, std::string_view>(contrib_data);
+            amount = tools::decode_integer_be(amt);
+        } catch (const std::exception& e) {
+            oxen::log::error(
+                    logcat,
+                    "Failed to parse contributor/contribution [{}] for service node {} with BLS pubkey {} at height {}: {}",
+                    i, index, result.pubkey,
+                    blockNumber ? "{}"_format(*blockNumber) : "(latest)", e.what());
+            oxen::log::debug(logcat, "{}", service_node_blob_debug(result, callResultHex));
+            return result;
+        }
+    }
+
+    oxen::log::trace(
+                logcat,
+                "Successfully parsed new SN. {}", service_node_blob_debug(result, callResultHex));
+
+    result.good = true;
     return result;
 }
 

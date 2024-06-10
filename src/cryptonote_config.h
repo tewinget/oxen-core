@@ -68,7 +68,11 @@ inline constexpr uint64_t LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE = 100000;
 inline constexpr uint64_t SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR = 50;
 inline constexpr uint64_t COINBASE_BLOB_RESERVED_SIZE = 600;
 
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+inline constexpr auto TARGET_BLOCK_TIME = 14s;
+#else
 inline constexpr auto TARGET_BLOCK_TIME = 2min;
+#endif
 inline constexpr uint64_t BLOCKS_PER_HOUR = 1h / TARGET_BLOCK_TIME;
 inline constexpr uint64_t BLOCKS_PER_DAY = 24h / TARGET_BLOCK_TIME;
 
@@ -176,7 +180,7 @@ inline const std::filesystem::path DATA_DIRNAME{
 #ifdef _WIN32
         u8"oxen"  // Buried in some windows filesystem maze location
 #else
-        u8".oxen"      // ~/.oxen
+        u8".oxen"  // ~/.oxen
 #endif
 };
 inline const std::filesystem::path CONF_FILENAME{u8"oxen.conf"};
@@ -419,11 +423,12 @@ namespace config {
     inline constexpr uint64_t ETH_EXIT_BUFFER = 7 * cryptonote::BLOCKS_PER_DAY;
 
     // Details of the ethereum smart contract managing rewards and chain its kept on
-    inline constexpr uint32_t ETHEREUM_CHAIN_ID = 421614;
+    // TODO: To be set for mainnet during TGE
+    inline constexpr uint32_t ETHEREUM_CHAIN_ID = -1;
     inline constexpr std::string_view ETHEREUM_REWARDS_CONTRACT =
-            "0xC75A34c31C2b8780a20AfCD75473Ac0Ad82352B6";
+            "0x0000000000000000000000000000000000000000";
     inline constexpr std::string_view ETHEREUM_POOL_CONTRACT =
-            "0x821340A591C10492d7F494285BABFcc2645396a3";
+            "0x0000000000000000000000000000000000000000";
 
     namespace testnet {
         inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 339767;
@@ -474,6 +479,13 @@ namespace config {
         inline constexpr uint64_t SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 4;
         // Much shorter than mainnet so that you can test this more easily.
         inline constexpr uint64_t ETH_EXIT_BUFFER = 1 * cryptonote::BLOCKS_PER_HOUR;
+
+        // FIXME!
+        inline constexpr uint32_t ETHEREUM_CHAIN_ID = -1;
+        inline constexpr auto ETHEREUM_REWARDS_CONTRACT =
+                "0x0000000000000000000000000000000000000000"sv;
+        inline constexpr auto ETHEREUM_POOL_CONTRACT =
+                "0x0000000000000000000000000000000000000000"sv;
     }  // namespace testnet
 
     namespace devnet {
@@ -522,6 +534,36 @@ namespace config {
         // Much shorter than mainnet so that you can test this more easily.
         inline constexpr uint64_t ETH_EXIT_BUFFER = 1 * cryptonote::BLOCKS_PER_HOUR;
 
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+        // NOTE: A local-devnet involves launching typically a local Ethereum
+        // blockchain via Hardhat, Ganache or Foundry's Anvil for example.
+        // These use local-developer wallets which deploy our rewards contract
+        // to a deterministic address different from those deployed on a
+        // live-devnet (because the wallets may be live-wallets that produce
+        // different contract addresses).
+        //
+        // These addresses below are the current up-to-date contract addresses
+        // that would be used if deployed on a local-devnet and can be enabled
+        // by defining the macro accordingly.
+        //
+        // A local-devnet can be deployed by running
+        // `utils/local-devnet/service_node_network.py`
+        //
+        // TODO: This is probably best done with a `private_devnet`
+        // configuration type.
+
+        inline constexpr uint32_t ETHEREUM_CHAIN_ID = 31337;
+        inline constexpr auto ETHEREUM_REWARDS_CONTRACT =
+                "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv;
+        inline constexpr auto ETHEREUM_POOL_CONTRACT =
+                "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv;
+#else
+        inline constexpr uint32_t ETHEREUM_CHAIN_ID = 421614;
+        inline constexpr auto ETHEREUM_REWARDS_CONTRACT =
+                "0xC75A34c31C2b8780a20AfCD75473Ac0Ad82352B6"sv;
+        inline constexpr auto ETHEREUM_POOL_CONTRACT =
+                "0x821340A591C10492d7F494285BABFcc2645396a3"sv;
+#endif
     }  // namespace devnet
 
     namespace fakechain {
@@ -640,9 +682,9 @@ inline constexpr network_config testnet_config{
         config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         config::STORE_LONG_TERM_STATE_INTERVAL,
         config::testnet::ETH_EXIT_BUFFER,
-        config::ETHEREUM_CHAIN_ID,
-        config::ETHEREUM_REWARDS_CONTRACT,
-        config::ETHEREUM_POOL_CONTRACT,
+        config::testnet::ETHEREUM_CHAIN_ID,
+        config::testnet::ETHEREUM_REWARDS_CONTRACT,
+        config::testnet::ETHEREUM_POOL_CONTRACT,
 };
 inline constexpr network_config devnet_config{
         network_type::DEVNET,
@@ -672,9 +714,9 @@ inline constexpr network_config devnet_config{
         config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         config::STORE_LONG_TERM_STATE_INTERVAL,
         config::devnet::ETH_EXIT_BUFFER,
-        config::ETHEREUM_CHAIN_ID,
-        config::ETHEREUM_REWARDS_CONTRACT,
-        config::ETHEREUM_POOL_CONTRACT,
+        config::devnet::ETHEREUM_CHAIN_ID,
+        config::devnet::ETHEREUM_REWARDS_CONTRACT,
+        config::devnet::ETHEREUM_POOL_CONTRACT,
 };
 inline constexpr network_config fakenet_config{
         network_type::FAKECHAIN,

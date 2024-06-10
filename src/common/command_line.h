@@ -77,39 +77,18 @@ bool is_back(const S& str, const More&... more) {
 template <typename T, bool required = false, bool dependent = false, int NUM_DEPS = 1>
 struct arg_descriptor;
 
-template <typename T>
-struct arg_descriptor<T, false> {
+template <typename T, bool required>
+struct arg_descriptor<T, required> {
     using value_type = T;
 
     const char* name;
     const char* description;
     T default_value;
     bool not_use_default;
-};
 
-template <typename T>
-struct arg_descriptor<T, true> {
-    static_assert(!std::is_same_v<T, bool>, "Boolean switch can't be required");
-
-    using value_type = T;
-
-    const char* name;
-    const char* description;
-};
-
-template <typename T>
-struct arg_descriptor<T, false, true> {
-    using value_type = T;
-
-    const char* name;
-    const char* description;
-
-    T default_value;
-
-    const arg_descriptor<bool, false>& ref;
-    std::function<T(bool, bool, T)> depf;
-
-    bool not_use_default;
+    static constexpr void validate() requires std::is_same_v<T, bool> { // NOTE: Evaluated if [T = bool]
+        static_assert(!required, "Boolean switch can't be required");
+    }
 };
 
 template <typename T, int NUM_DEPS>

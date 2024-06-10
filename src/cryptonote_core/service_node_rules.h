@@ -17,6 +17,15 @@ struct invalid_registration : std::invalid_argument {
 inline constexpr size_t PULSE_QUORUM_ENTROPY_LAG =
         21;  // How many blocks back from the tip of the Blockchain to source entropy for the Pulse
              // quorums.
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+inline constexpr auto PULSE_ROUND_TIME = cryptonote::TARGET_BLOCK_TIME + 6s;
+inline constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_HASH_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_DURATION = 1s;
+inline constexpr auto PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION = 1s;
+#else
 inline constexpr auto PULSE_ROUND_TIME = 60s;
 inline constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION = 10s;
 inline constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 10s;
@@ -24,6 +33,7 @@ inline constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION = 10s;
 inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_HASH_DURATION = 10s;
 inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_DURATION = 10s;
 inline constexpr auto PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION = 10s;
+#endif
 
 inline constexpr size_t PULSE_QUORUM_NUM_VALIDATORS = 11;
 inline constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES =

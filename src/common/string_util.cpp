@@ -111,4 +111,11 @@ std::string friendly_duration(std::chrono::nanoseconds dur) {
     return friendly;
 }
 
+std::string_view string_safe_substr(std::string_view src, size_t pos, size_t size) noexcept {
+    std::string_view result = std::string_view(src.end(), 0);
+    if (pos < src.size()) {
+        result = src.substr(pos, size);
+    }
+    return result;
+}
 }  // namespace tools

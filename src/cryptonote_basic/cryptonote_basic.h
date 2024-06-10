@@ -420,8 +420,8 @@ struct block : public block_header {
     // hash cache
     mutable crypto::hash hash;
     std::vector<service_nodes::quorum_signature> signatures;
-    uint64_t l2_height;
-    crypto::hash l2_state;
+    uint64_t l2_height = 0;
+    crypto::hash l2_state = {};
 };
 
 template <class Archive>

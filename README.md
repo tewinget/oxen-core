@@ -486,6 +486,24 @@ The output of `mdb_dump -s blocks <path to blockchain dir>` and `mdb_dump -s blo
 
 These records are dumped as hex data, where the first line is the key and the second line is the data.
 
+## Testing tools
+
+### Local Devnet
+
+The local devnet script in `utils/local-devnet/service_node_network.py` will
+spin up a series of service nodes that can be interacted with locally for
+testing. This script requires that:
+
+- A development Ethereum environment and node is setup at `localhost:8545`
+  (which is the default for port for these environments). Currently we only
+  support Foundry's `anvil` testnet. (Hardhat's node does not support
+  `eth_getProof` calls).
+
+- The smart contracts are deployed from `oxen-io/eth-sn-contracts` by invoking
+  the `deploy-local` Makefile target.
+
+Thereafter the script can be invoked to launch the local network.
+
 # Known Issues
 
 ## Protocols

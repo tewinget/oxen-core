@@ -108,6 +108,8 @@ struct skip {
 template <typename T>
 using skip_t = skip<sizeof(T)>;
 
+struct ignore {};
+
 namespace detail {
     template <typename T>
     constexpr bool is_skip = false;
@@ -123,6 +125,8 @@ namespace detail {
     void load_split_tuple(Tuple& t, std::string_view from) {
         if constexpr (is_skip<Next>) {
             from.remove_prefix(Next::size);
+        } else if constexpr (std::is_same_v<Next, ignore>) {
+            from = {};
         } else {
             auto& e = std::get<I>(t);
             if constexpr (is_basic_sv<Next>) {
@@ -143,6 +147,8 @@ namespace detail {
     void load_split_tuple_hex(Tuple& t, std::string_view from) {
         if constexpr (is_skip<Next>) {
             from.remove_prefix(2 * Next::size);
+        } else if constexpr (std::is_same_v<Next, ignore>) {
+            from = {};
         } else {
             auto& e = std::get<I>(t);
             if constexpr (is_basic_sv<Next>) {
@@ -161,8 +167,10 @@ namespace detail {
     }
 
     template <typename... T>
-    using tuple_without_skips = decltype(std::tuple_cat(
-            std::conditional_t<is_skip<T>, std::tuple<>, std::tuple<T>>{}...));
+    using tuple_without_skips = decltype(std::tuple_cat(std::conditional_t<
+                                                        is_skip<T> || std::is_same_v<T, ignore>,
+                                                        std::tuple<>,
+                                                        std::tuple<T>>{}...));
 
     template <typename T>
     constexpr size_t split_guts_piece_size() {
@@ -181,11 +189,25 @@ namespace detail {
     template <typename T1, typename T2, typename... More>
     constexpr bool final_is_string_view<T1, T2, More...> = final_is_string_view<T2, More...>;
 
+    template <typename... More>
+    constexpr bool final_is_ignore = false;
+    template <typename T>
+    constexpr bool final_is_ignore<T> = std::is_same_v<T, ignore>;
+    template <typename T1, typename T2, typename... More>
+    constexpr bool final_is_ignore<T1, T2, More...> = final_is_ignore<T2, More...>;
+
     // Used below to check that either no string view is supplied at all, or exactly one is supplied
     // as the very last argument.
     template <typename... T>
     constexpr bool valid_sv_arg = (is_basic_sv<T> + ...) == 0 ||
                                   ((is_basic_sv<T> + ...) == 1 && final_is_string_view<T...>);
+
+    // Used below to check that either no ignore is supplied at all, or exactly one is supplied as
+    // the very last argument.
+    template <typename... T>
+    constexpr bool valid_ignore_arg =
+            (std::is_same_v<T, ignore> + ...) == 0 ||
+            ((std::is_same_v<T, ignore> + ...) == 1 && final_is_ignore<T...>);
 
 }  // namespace detail
 
@@ -196,8 +218,9 @@ concept splittable_into = safe_to_memcpy<T> || detail::is_skip<T> || detail::is_
 // consecutive locations in the string.  The given string must exactly match the sum of the sizes of
 // the primitive inputs.  You may also include `skip<N>` (or `skip_t<T>`) as a type, in which case
 // `N` bytes (for skip_t: N=sizeof(T)) will be skipped (the `skip<N>` type is not included in the
-// returned tuple).  The *final* type may be a basic_string_view<Char>, in which case the final
-// element of the tuple will be such a string view containing any unconsumed characters.
+// returned tuple).  The *final* type may optionally be a basic_string_view<Char>, in which case the
+// final element of the tuple will be such a string view containing any unconsumed characters, or
+// `ignore` which simply ignores any unconsumed trailing data.
 //
 // For example:
 //
@@ -217,12 +240,14 @@ concept splittable_into = safe_to_memcpy<T> || detail::is_skip<T> || detail::is_
 //     e == "omg"sv
 //
 template <splittable_into... T, byte_spannable Spannable>
-    requires(sizeof...(T) > 0 && detail::valid_sv_arg<T...>)
+    requires(sizeof...(T) > 0 && detail::valid_sv_arg<T...> && detail::valid_ignore_arg<T...>)
 constexpr detail::tuple_without_skips<T...> split_guts_into(const Spannable& s) {
     using Char = typename Spannable::value_type;
     std::span<const Char> span{s};
     constexpr auto min_size = (detail::split_guts_piece_size<T>() + ...);
-    if (detail::final_is_string_view<T...> ? span.size() < min_size : span.size() != min_size)
+    if ((detail::final_is_string_view<T...> || detail::final_is_ignore<T...>)
+                ? span.size() < min_size
+                : span.size() != min_size)
         throw std::runtime_error{"Invalid split_guts_into string size"};
 
     detail::tuple_without_skips<T...> result;
@@ -238,7 +263,7 @@ constexpr detail::tuple_without_skips<T...> split_guts_into(const Spannable& s) 
 // If a trailing std::basic_string_view type is specified then that string view will contain all
 // unconsumed *hex* digits, not *byte* values.
 template <splittable_into... T>
-    requires(sizeof...(T) > 0 && detail::valid_sv_arg<T...>)
+    requires(sizeof...(T) > 0 && detail::valid_sv_arg<T...> && detail::valid_ignore_arg<T...>)
 constexpr detail::tuple_without_skips<T...> split_hex_into(std::string_view hex_in) {
     if (hex_in.starts_with("0x") || hex_in.starts_with("0X"))
         hex_in.remove_prefix(2);

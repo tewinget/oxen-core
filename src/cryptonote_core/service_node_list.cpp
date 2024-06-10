@@ -2777,8 +2777,10 @@ void service_node_list::state_t::update_from_block(
                         block_height);
 
             need_swarm_update = need_swarm_update || i->second->is_active();
-            sn_list->recently_expired_nodes.emplace(
-                    i->second->bls_public_key, block_height + netconf.ETH_EXIT_BUFFER);
+            // NOTE: sn_list is not set in tests when we construct events to replay
+            if (sn_list)
+                sn_list->recently_expired_nodes.emplace(
+                        i->second->bls_public_key, block_height + netconf.ETH_EXIT_BUFFER);
             service_nodes_infos.erase(i);
         }
     }
@@ -3145,8 +3147,11 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
         if (block_leader.key != check_block_leader_pubkey)
             throw std::runtime_error{
-                    "Service node reward winner is incorrect! Expected {}, block has {}"_format(
-                            block_leader.key, check_block_leader_pubkey)};
+                    "Service node reward winner is incorrect! Expected {}, block {} hf{} has {}"_format(
+                            block_leader.key,
+                            height,
+                            static_cast<size_t>(block.major_version),
+                            check_block_leader_pubkey)};
     }
 
     enum struct verify_mode {
@@ -3154,13 +3159,14 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
         pulse_block_leader_is_producer,
         pulse_different_block_producer,
         batched_sn_rewards,
+        arbitrum_rewards,
     };
 
     verify_mode mode = verify_mode::miner;
     crypto::public_key block_producer_key = {};
 
     //
-    // NOTE: Determine if block leader/producer are different or the same.
+    // NOTE: Setup pulse components
     //
     if (cryptonote::block_has_pulse_components(block)) {
         std::vector<crypto::hash> entropy = get_pulse_entropy_for_next_block(
@@ -3177,6 +3183,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                     "Pulse block received but Pulse has insufficient nodes for quorum, block hash {}, height {}"_format(
                             cryptonote::get_block_hash(block), height)};
 
+        // NOTE: Determine if block leader/producer are different or the same.
         block_producer_key = pulse_quorum.workers[0];
         mode = (block_producer_key == block_leader.key)
                      ? verify_mode::pulse_block_leader_is_producer
@@ -3188,7 +3195,19 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                             block_leader.key, block_producer_key)};
     }
 
+    //
+    // NOTE: Update the method we should use to verify the block if required
+    //
+    if (block.major_version >= feature::ETH_BLS) {
+        mode = verify_mode::arbitrum_rewards;
+    } else if (block.major_version >= hf::hf19_reward_batching) {
+        mode = verify_mode::batched_sn_rewards;
+    }
+
     // NOTE: Verify miner tx vout composition
+    //
+    // Arbitrum
+    // 0       | Arbitrum smart contract distributes rewards to _all_ nodes
     //
     // Miner Block
     // 1       | Miner
@@ -3201,21 +3220,20 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     // Up To 1 | Governance
     //
     // NOTE: See cryptonote_tx_utils.cpp construct_miner_tx(...) for payment details.
-    //
 
     std::shared_ptr<const service_node_info> block_producer = nullptr;
-
-    if (block.major_version >= hf::hf19_reward_batching) {
-        mode = verify_mode::batched_sn_rewards;
-        log::debug(logcat, "Batched miner reward");
-    }
-
-    size_t expected_vouts_size;
+    size_t expected_vouts_size = 0;
     switch (mode) {
-        case verify_mode::batched_sn_rewards:
+        case verify_mode::arbitrum_rewards: {
+            expected_vouts_size = 0;
+        } break;
+
+        case verify_mode::batched_sn_rewards: {
             expected_vouts_size = batched_sn_payments.size();
-            break;
-        case verify_mode::pulse_block_leader_is_producer:
+        } break;
+
+        case verify_mode::pulse_block_leader_is_producer: [[fallthrough]];
+
         case verify_mode::pulse_different_block_producer: {
             auto info_it = m_state.service_nodes_infos.find(block_producer_key);
             if (info_it == m_state.service_nodes_infos.end())
@@ -3229,16 +3247,18 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                                         ? block_producer->contributors.size()
                                         : 0;
         } break;
-        case verify_mode::miner:
+
+        case verify_mode::miner: {
             expected_vouts_size =
                     reward_parts.base_miner + reward_parts.miner_fee >
                                     0  // (HF >= 16) this can be zero, no miner coinbase.
                             ? 1        /* miner */
                             : 0;
-            break;
+        } break;
     }
 
-    if (mode != verify_mode::batched_sn_rewards) {
+    // NOTE: Prior to batch rewards, expect the gvernance output and payout to service node leader
+    if (mode < verify_mode::batched_sn_rewards) {
         expected_vouts_size += block_leader.payouts.size();
         bool has_governance_output = cryptonote::height_has_governance_output(
                 m_blockchain.nettype(), hf_version, height);
@@ -3252,7 +3272,10 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                         mode == verify_mode::miner                            ? "miner"sv
                         : mode == verify_mode::batched_sn_rewards             ? "batch reward"sv
                         : mode == verify_mode::pulse_block_leader_is_producer ? "pulse"sv
-                                                                              : "pulse alt round"sv,
+                        : mode == verify_mode::pulse_different_block_producer ? "pulse alt round"sv
+                        : mode == verify_mode::batched_sn_rewards ? "batched sn rewards"sv
+                        : mode == verify_mode::arbitrum_rewards   ? "artbitrum rewards"sv
+                                                                  : "INTERNAL UNKNOWN ERROR",
                         expected_vouts_size,
                         miner_tx.vout.size())};
 
@@ -3386,6 +3409,10 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 throw std::runtime_error{
                         "Total service node reward amount incorrect: expected {}, not {}"_format(
                                 total_payout_in_our_db, total_payout_in_vouts)};
+        } break;
+
+        case verify_mode::arbitrum_rewards: {
+            // NOTE: No rewards are distributed by Oxen.
         } break;
     }
 }

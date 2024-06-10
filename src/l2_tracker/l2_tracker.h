@@ -61,7 +61,7 @@ class L2Tracker {
     std::vector<State> state_history;
     std::unordered_map<uint64_t, uint64_t>
             oxen_to_ethereum_block_heights;  // Maps Oxen block height to Ethereum block height
-    uint64_t latest_oxen_block;
+    uint64_t latest_oxen_block = 0;
     std::atomic<bool> stop_thread;
     std::thread update_thread;
 
@@ -96,6 +96,8 @@ class L2Tracker {
         return get_non_signers(std::unordered_set<crypto::bls_public_key>{begin, end});
     }
     std::vector<crypto::bls_public_key> get_all_bls_public_keys(uint64_t blockNumber);
+
+    bool provider_has_clients() const { return provider.clients.size(); }
 
     ethyl::Provider provider;
 

@@ -45,3 +45,7 @@ target_link_libraries(cryptonote_basic
     Boost::serialization
     logging
     extra)
+
+# TODO FIXME: this compile-time option that changes what devnet means needs a better solution
+option(USE_LOCAL_DEVNET_PARAMS "Use hardcoded addresses for our Ethereum contracts and parameters suitable for deployment on a local-devnet" OFF)
+target_compile_definitions(cryptonote_basic PUBLIC OXEN_USE_LOCAL_DEVNET_PARAMS)

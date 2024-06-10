@@ -3,7 +3,6 @@
 
 #include <ethyl/logs.hpp>
 #include <ethyl/provider.hpp>
-#include <memory>
 #include <string>
 #include <unordered_set>
 #include <variant>
@@ -51,8 +50,8 @@ using TransactionStateChangeVariant = std::variant<
         ServiceNodeDeregisterTx,
         ServiceNodeExitTx>;
 
-TransactionType getLogType(const LogEntry& log);
-TransactionStateChangeVariant getLogTransaction(const LogEntry& log);
+TransactionType getLogType(const ethyl::LogEntry& log);
+TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log);
 
 struct StateResponse {
     uint64_t height;
@@ -60,12 +59,15 @@ struct StateResponse {
 };
 
 struct ContractServiceNode {
+    bool good;
     uint64_t next;
     uint64_t prev;
-    crypto::eth_address recipient;
+    crypto::eth_address operatorAddr;
     crypto::bls_public_key pubkey;
     uint64_t leaveRequestTimestamp;
     uint64_t deposit;
+    std::array<Contributor, 10> contributors;
+    size_t contributorsSize;
 };
 
 class RewardsContract {
@@ -76,7 +78,7 @@ class RewardsContract {
     StateResponse State();
     StateResponse State(uint64_t height);
 
-    std::vector<LogEntry> Logs(uint64_t height);
+    std::vector<ethyl::LogEntry> Logs(uint64_t height);
     ContractServiceNode serviceNodes(
             uint64_t index, std::optional<uint64_t> blockNumber = std::nullopt);
     std::vector<uint64_t> getNonSigners(

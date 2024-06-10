@@ -64,6 +64,7 @@ extern "C" {
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
+#include "bls/bls_utils.h"
 #include "epee/memwipe.h"
 #include "epee/net/local_ip.h"
 #include "epee/string_tools.h"
@@ -1154,7 +1155,7 @@ std::vector<crypto::bls_public_key> core::get_removable_nodes() {
         std::lock_guard lock{m_blockchain_storage};
 
         auto sns = m_service_node_list.get_service_node_list_state();
-        auto oxen_height = m_blockchain_storage.get_current_blockchain_height();
+        auto oxen_height = m_blockchain_storage.get_current_blockchain_height() - 1;
 
         bls_pubkeys_in_snl.reserve(sns.size());
         for (const auto& sni : sns)
@@ -1162,8 +1163,9 @@ std::vector<crypto::bls_public_key> core::get_removable_nodes() {
 
         std::vector<cryptonote::block> blocks;
         if (!get_blocks(oxen_height, 1, blocks)) {
-            log::error(logcat, "Could not get latest block");
-            throw std::runtime_error("Could not get latest block");
+            std::string msg = "Failed to get the latest block at {} to determine the removable Service Nodes"_format(oxen_height);
+            log::error(logcat, "{}", msg);
+            throw std::runtime_error{msg};
         }
         l2_height = blocks[0].l2_height;
     }
@@ -2782,9 +2784,8 @@ core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
-AggregateWithdrawalResponse core::aggregate_withdrawal_request(const crypto::eth_address& address) {
-    const auto resp = m_bls_aggregator->aggregateRewards(address);
-    return resp;
+BLSRewardsResponse core::bls_rewards_request(const crypto::eth_address& address) {
+    return m_bls_aggregator->rewards_request(address);
 }
 //-----------------------------------------------------------------------------------------------
 AggregateExitResponse core::aggregate_exit_request(const crypto::bls_public_key& bls_pubkey) {

@@ -1,16 +1,3 @@
-// Copyright (c) 2014-2019, The Monero Project
-//
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without modification, are
-// permitted provided that the following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice, this list of
-//    conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list
-//    of conditions and the following disclaimer in the documentation and/or other
-//    materials provided with the distribution.
 //
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
@@ -950,7 +937,7 @@ class core : public i_miner_handler {
     const std::vector<service_nodes::key_image_blacklist_entry>&
     get_service_node_blacklisted_key_images() const;
 
-    AggregateWithdrawalResponse aggregate_withdrawal_request(const crypto::eth_address& address);
+    BLSRewardsResponse bls_rewards_request(const crypto::eth_address& address);
     AggregateExitResponse aggregate_exit_request(const crypto::bls_public_key& bls_pubkey);
     AggregateExitResponse aggregate_liquidation_request(const crypto::bls_public_key& bls_pubkey);
     BLSRegistrationResponse bls_registration(

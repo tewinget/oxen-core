@@ -91,6 +91,12 @@ oxen_generate_hard_fork_table(hf hf_version, uint64_t pos_delay)
     version_height += pos_delay;
   }
 
+  // TODO: Not thread-safe, we should just have hardfork functions that take in
+  // a list of hardfork entries ...
+  static auto thread_id = std::this_thread::get_id();
+  assert(thread_id == std::this_thread::get_id());
+
+  cryptonote::fakechain_hardforks = result;
   return result;
 }
 
@@ -270,9 +276,6 @@ oxen_blockchain_entry &oxen_chain_generator::add_block(oxen_blockchain_entry con
   {
     events_.push_back(oxen_blockchain_addable<cryptonote::block>(result.block, can_be_added_to_blockchain, fail_msg));
   }
-
-  cryptonote::block sopthing = entry.block;
-
 
   return result;
 }
@@ -472,6 +475,10 @@ oxen_chain_generator::create_registration_tx(const cryptonote::account_base& src
   uint64_t new_height = get_block_height(top().block) + 1;
   auto new_hf_version = get_hf_version_at(new_height);
 
+  uint64_t staking_requirement = service_nodes::get_staking_requirement(cryptonote::network_type::FAKECHAIN, new_height);
+  if (operator_stake == static_cast<uint64_t>(-1))
+      operator_stake = staking_requirement;
+
   service_nodes::registration_details reg{};
   reg.fee = fee;
   reg.reserved.reserve(1 + contributors.size());
@@ -489,8 +496,8 @@ oxen_chain_generator::create_registration_tx(const cryptonote::account_base& src
     reg.fee = mul128_div64(reg.fee, cryptonote::old::STAKING_PORTIONS, cryptonote::STAKING_FEE_BASIS);
     uint64_t total = 0;
     for (auto& [contrib, amount] : reg.reserved) {
-      assert(amount <= oxen::OXEN_STAKING_REQUIREMENT_TESTNET);
-      amount = mul128_div64(amount, cryptonote::old::STAKING_PORTIONS, oxen::OXEN_STAKING_REQUIREMENT_TESTNET);
+      assert(amount <= staking_requirement);
+      amount = mul128_div64(amount, cryptonote::old::STAKING_PORTIONS, staking_requirement);
       total += amount;
     }
 
@@ -511,8 +518,6 @@ oxen_chain_generator::create_registration_tx(const cryptonote::account_base& src
 
   auto hash = service_nodes::get_registration_hash(reg);
 
-  auto block_ts = static_cast<uint64_t>(std::time(nullptr));
-  const auto staking_requirement = service_nodes::get_staking_requirement(cryptonote::network_type::FAKECHAIN, new_height);
   reg.service_node_pubkey = service_node_keys.pub;
   crypto::generate_signature(hash, service_node_keys.pub, service_node_keys.sec, reg.signature);
 

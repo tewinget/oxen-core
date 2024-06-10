@@ -2,6 +2,7 @@
 
 #include <oxenmq/oxenmq.h>
 
+#include <span>
 #include <string>
 #include <vector>
 
@@ -19,7 +20,7 @@ struct AggregateExitResponse : AggregateSigned {
     crypto::bls_public_key exit_pubkey;
 };
 
-struct AggregateWithdrawalResponse : AggregateSigned {
+struct BLSRewardsResponse : AggregateSigned {
     crypto::eth_address address;
     uint64_t amount;
     uint64_t height;
@@ -48,7 +49,15 @@ class BLSAggregator {
 
     explicit BLSAggregator(cryptonote::core& core);
 
-    AggregateWithdrawalResponse aggregateRewards(const crypto::eth_address& address);
+    /// Request the service node network to sign the requested amount of
+    /// 'rewards' for the given Ethereum 'address' if by consensus they agree
+    /// that the amount is valid. This node (the aggregator) will aggregate the
+    /// signatures into the response.
+    ///
+    /// This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
+    /// amount is `0` or height is greater than the current blockchain height.
+    BLSRewardsResponse rewards_request(const crypto::eth_address& address);
+
     AggregateExitResponse aggregateExit(const crypto::bls_public_key& bls_pubkey);
     AggregateExitResponse aggregateLiquidation(const crypto::bls_public_key& bls_pubkey);
     BLSRegistrationResponse registration(

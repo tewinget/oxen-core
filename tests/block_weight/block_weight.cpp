@@ -129,7 +129,7 @@ static void test(test_t t, uint64_t blocks)
   const cryptonote::test_options test_options{hard_forks, 5000};
 
   auto& bc = bc_objects.m_blockchain;
-  if (!bc.init(new TestDB(), nullptr /*ons_db*/, nullptr /*sqlite_db*/, cryptonote::network_type::FAKECHAIN, true, &test_options, 0, NULL)) {
+  if (!bc.init(new TestDB(), nullptr /*ons_db*/, nullptr /*sqlite_db*/, cryptonote::network_type::FAKECHAIN, true, &test_options, 0, "", NULL)) {
     fprintf(stderr, "Failed to init blockchain\n");
     exit(1);
   };

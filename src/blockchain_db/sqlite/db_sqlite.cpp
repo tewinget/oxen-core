@@ -406,31 +406,28 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint
     return payments;
 }
 
-std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const std::string& address) {
-    log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
-    // auto earnings = prepared_maybe_get<int64_t>(R"(
-    // WITH RelevantOxenAddress AS (
-    // SELECT oxen_address
-    // FROM eth_mapping
-    // WHERE eth_address = ?
-    // HAVING height = MAX(height)
-    //)
-    // SELECT amount
-    // FROM batched_payments_accrued
-    // WHERE address = ?
-    // UNION
-    // SELECT bpa.amount
-    // FROM batched_payments_accrued bpa
-    // JOIN RelevantOxenAddress roa ON bpa.address = roa.oxen_address;
-    //)", address, address);
-    auto earnings = prepared_maybe_get<int64_t>(
+static std::pair<uint64_t, uint64_t> get_accrued_earnings_impl(BlockchainSQLite& db, const std::string& address, uint64_t height) {
+    log::trace(logcat, "BlockchainDB_SQLITE {} for {}", __func__, address);
+    auto earnings = db.prepared_maybe_get<int64_t>(
             R"(
         SELECT amount
         FROM batched_payments_accrued
         WHERE address = ?
-    )",
-            address);
-    return std::make_pair(height, static_cast<uint64_t>(earnings.value_or(0) / 1000));
+    )", address);
+    auto result = std::make_pair(height, static_cast<uint64_t>(earnings.value_or(0) / 1000));
+    return result;
+}
+
+std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const crypto::eth_address& address) {
+    std::string address_string = fmt::format("0x{:x}", address);
+    auto result = get_accrued_earnings_impl(*this, address_string, height);
+    return result;
+}
+
+std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const account_public_address& address) {
+    std::string address_string = get_account_address_as_str(m_nettype, false /*subaddress*/, address);
+    auto result = get_accrued_earnings_impl(*this, address_string, height);
+    return result;
 }
 
 std::pair<std::vector<std::string>, std::vector<uint64_t>>

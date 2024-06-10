@@ -44,7 +44,7 @@ crypto::hash BLSSigner::buildTagHash(std::string_view baseTag, cryptonote::netwo
     return crypto::keccak(
             baseTag,
             tools::encode_integer_be<32>(config.ETHEREUM_CHAIN_ID),
-            utils::fromHexString(config.ETHEREUM_REWARDS_CONTRACT));
+            ethyl::utils::fromHexString(config.ETHEREUM_REWARDS_CONTRACT));
 }
 
 crypto::hash BLSSigner::buildTagHash(std::string_view baseTag) {
@@ -73,7 +73,6 @@ crypto::bls_signature BLSSigner::signHash(const crypto::hash& hash) {
 crypto::bls_signature BLSSigner::proofOfPossession(
         crypto::eth_address sender, const crypto::public_key& serviceNodePubkey) {
     auto tag = buildTagHash(proofOfPossessionTag);
-
     auto hash = crypto::keccak(tag, getCryptoPubkey(), sender, serviceNodePubkey);
 
     bls::Signature sig;
@@ -104,17 +103,4 @@ crypto::bls_secret_key BLSSigner::getCryptoSeckey() {
     std::memcpy(csk.data(), sec_key.data(), sizeof(csk));
     memwipe(sec_key.data(), sec_key.size());
     return csk;
-}
-
-crypto::hash BLSSigner::hashModulus(std::string_view message) {
-    auto h = utils::hash(message);
-    mcl::bn::Fp x;
-    x.clear();
-    x.setArrayMask(h.data(), h.size());
-    crypto::hash serialized_hash;
-    uint8_t* hdst = serialized_hash.data();
-    if (x.serialize(hdst, serialized_hash.data_.max_size(), mcl::IoSerialize | mcl::IoBigEndian) ==
-        0)
-        throw std::runtime_error("size of x is zero");
-    return serialized_hash;
 }
