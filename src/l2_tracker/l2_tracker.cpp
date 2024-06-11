@@ -30,7 +30,7 @@ bool L2Tracker::start() {
     update_thread = std::thread([this] {
         while (!stop_thread.load()) {
             update_state();
-            std::this_thread::sleep_for(std::chrono::seconds(10));
+            std::this_thread::sleep_for(2s);
         }
     });
 
