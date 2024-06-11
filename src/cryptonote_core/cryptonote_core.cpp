@@ -64,7 +64,6 @@ extern "C" {
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
-#include "bls/bls_utils.h"
 #include "epee/memwipe.h"
 #include "epee/net/local_ip.h"
 #include "epee/string_tools.h"
@@ -1163,7 +1162,9 @@ std::vector<crypto::bls_public_key> core::get_removable_nodes() {
 
         std::vector<cryptonote::block> blocks;
         if (!get_blocks(oxen_height, 1, blocks)) {
-            std::string msg = "Failed to get the latest block at {} to determine the removable Service Nodes"_format(oxen_height);
+            std::string msg =
+                    "Failed to get the latest block at {} to determine the removable Service Nodes"_format(
+                            oxen_height);
             log::error(logcat, "{}", msg);
             throw std::runtime_error{msg};
         }
@@ -2113,8 +2114,14 @@ bool core::submit_uptime_proof() {
 //-----------------------------------------------------------------------------------------------
 bool core::handle_uptime_proof(
         const NOTIFY_BTENCODED_UPTIME_PROOF::request& req, bool& my_uptime_proof_confirmation) {
-    auto proof = std::make_unique<uptime_proof::Proof>(
-            get_network_version(m_nettype, get_current_blockchain_height()), req.proof);
+    std::unique_ptr<uptime_proof::Proof> proof;
+    try {
+        proof = std::make_unique<uptime_proof::Proof>(
+                get_network_version(m_nettype, get_current_blockchain_height()), req.proof);
+    } catch (const std::exception& e) {
+        log::warning(logcat, "Invalid incoming uptime proof: {}", e.what());
+        return false;
+    }
 
     if (req.sig)
         proof->sig = tools::make_from_guts<crypto::signature>(*req.sig);

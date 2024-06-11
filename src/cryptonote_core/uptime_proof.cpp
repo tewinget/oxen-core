@@ -136,6 +136,7 @@ std::string Proof::bt_encode_uptime_proof(hf hardfork) const {
     if (auto main_pk = tools::view_guts(pubkey); main_pk != tools::view_guts(pubkey_ed25519))
         proof.append("pk", main_pk);
     proof.append("pke", tools::view_guts(pubkey_ed25519));
+    proof.append("q", qnet_port);
     proof.append("shp", storage_https_port);
     proof.append("sop", storage_omq_port);
     proof.append("sv", storage_server_version);
