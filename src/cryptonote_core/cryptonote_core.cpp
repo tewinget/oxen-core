@@ -2121,7 +2121,7 @@ bool core::handle_uptime_proof(
 
         // devnet doesn't have storage server or lokinet, so these should be 0; everywhere else they
         // should be non-zero.
-        if (m_nettype != network_type::DEVNET) {
+        if (m_nettype == network_type::DEVNET) {
             if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
                 throw std::runtime_error{"Invalid storage port(s) in proof: devnet storage ports must be 0"};
         } else {
