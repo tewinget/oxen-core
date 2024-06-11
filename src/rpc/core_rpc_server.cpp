@@ -837,23 +837,14 @@ get_pool_txs_kis(cryptonote::core& core) {
     return {get_pool_txs_impl(core), core.get_pool().get_spent_key_images(true)};
 }
 
-/*
-static std::unordered_map<crypto::hash, tx_info> get_pool_txs(
-    cryptonote::core& core, std::function<void(const transaction&, tx_info&)> post_process = {}) {
-  auto locks = pool_locks(core);
-  return get_pool_txs_impl(core);
-}
-*/
-
-static tx_memory_pool::key_images_container get_pool_kis(
-        cryptonote::core& core,
-        std::function<void(const transaction&, tx_info&)> post_process = {}) {
+static tx_memory_pool::key_images_container get_pool_kis(cryptonote::core& core) {
     auto locks = pool_locks(core);
     return core.get_pool().get_spent_key_images(true);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_TRANSACTIONS& get, [[maybe_unused]] rpc_context context) {
+    // NB: this also handles the deprecated GET_TRANSACTION_POOL
     std::unordered_set<crypto::hash> missed_txs;
     using split_tx = std::tuple<crypto::hash, std::string, crypto::hash, std::string>;
     std::vector<split_tx> txs;
