@@ -567,8 +567,8 @@ bool rpc_command_executor::show_status() {
                 my_sn_active = state["active"].get<bool>();
                 my_decomm_remaining = state["earned_downtime_blocks"].get<uint64_t>();
                 my_sn_last_uptime = state["last_uptime_proof"].get<uint64_t>();
-                my_reason_all = state["last_decommission_reason_consensus_all"].get<uint16_t>();
-                my_reason_any = state["last_decommission_reason_consensus_any"].get<uint16_t>();
+                my_reason_all = state.value<uint16_t>("last_decommission_reason_consensus_all", 0);
+                my_reason_any = state.value<uint16_t>("last_decommission_reason_consensus_any", 0);
             }
         }
     }
@@ -1964,8 +1964,8 @@ static void append_printable_service_node_list_entry(
                    << " blocks required to enable deregistration delay)";
     } else if (is_funded) {
         stream << indent2 << "Current Status: DECOMMISSIONED";
-        auto reason_all = entry["last_decommission_reason_consensus_all"].get<uint16_t>();
-        auto reason_any = entry["last_decommission_reason_consensus_any"].get<uint16_t>();
+        auto reason_all = entry.value<uint16_t>("last_decommission_reason_consensus_all", 0);
+        auto reason_any = entry.value<uint16_t>("last_decommission_reason_consensus_any", 0);
         if (reason_any)
             stream << " - ";
         if (auto reasons = cryptonote::readable_reasons(reason_all); !reasons.empty())
