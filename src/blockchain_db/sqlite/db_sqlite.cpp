@@ -316,16 +316,6 @@ std::string BlockchainSQLite::get_address_str(const cryptonote::batch_sn_payment
     return address_str;
 }
 
-bool BlockchainSQLite::update_sn_rewards_address(
-        const std::string& oxen_address, const crypto::eth_address& eth_address) {
-    assert(eth_address);
-    auto update_address = prepared_st(
-            "UPDATE batched_payments_accrued SET address = ? WHERE address = ?"
-            " ON CONFLICT (address) DO UPDATE SET amount = amount + excluded.amount");
-    bool result = db::exec_query(update_address, "0x{:x}"_format(eth_address), oxen_address) > 0;
-    return result;
-}
-
 bool BlockchainSQLite::add_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments) {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
     auto insert_payment = prepared_st(

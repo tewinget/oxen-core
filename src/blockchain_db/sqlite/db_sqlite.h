@@ -65,8 +65,6 @@ class BlockchainSQLite : public db::Database {
     // exist it will be created.
     bool add_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
     bool subtract_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
-    bool update_sn_rewards_address(
-            const std::string& oxen_address, const crypto::eth_address& eth_address);
 
   private:
     bool reward_handler(
