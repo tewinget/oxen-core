@@ -1088,7 +1088,7 @@ oxenmq::AuthLevel core::omq_allow(
             log::info(log::Cat("omq"), "Incoming {}-authenticated connection", auth);
         }
 
-        log::info(
+        log::debug(
                 log::Cat("omq"),
                 "Incoming [{}] curve connection from {}/{}",
                 auth,
