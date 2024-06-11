@@ -5233,7 +5233,7 @@ bool Blockchain::handle_block_to_main_chain(
                 logcat,
                 fg(fmt::terminal_color::red),
                 "Block {} with id: {} has incorrect miner transaction",
-                (chain_height - 1),
+                chain_height,
                 id);
         bvc.m_verifivation_failed = true;
         return_tx_to_pool(txs);
