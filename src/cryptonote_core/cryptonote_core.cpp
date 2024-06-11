@@ -2118,8 +2118,19 @@ bool core::handle_uptime_proof(
     try {
         proof = std::make_unique<uptime_proof::Proof>(
                 get_network_version(m_nettype, get_current_blockchain_height()), req.proof);
+
+        // devnet doesn't have storage server or lokinet, so these should be 0; everywhere else they
+        // should be non-zero.
+        if (m_nettype != network_type::DEVNET) {
+            if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
+                throw std::runtime_error{"Invalid storage port(s) in proof: devnet storage ports must be 0"};
+        } else {
+            if (proof->storage_omq_port == 0 || proof->storage_https_port == 0)
+                throw std::runtime_error{"Invalid storage port(s) in proof: storage ports cannot be 0"};
+        }
+
     } catch (const std::exception& e) {
-        log::warning(logcat, "Invalid incoming uptime proof: {}", e.what());
+        log::warning(logcat, "Service node proof deserialization failed: {}", e.what());
         return false;
     }
 

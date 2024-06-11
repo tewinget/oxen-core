@@ -97,13 +97,9 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
         if (qnet_port == 0)
             throw std::runtime_error{"Invalid omq port in proof"};
 
+        // Unlike qnet_port, these *can* be zero (on devnet); but this is checked elsewhere.
         storage_https_port = proof.require<uint16_t>("shp");
-        if (storage_https_port == 0)
-            throw std::runtime_error{"Invalid HTTP storage port in proof"};
-
         storage_omq_port = proof.require<uint16_t>("sop");
-        if (storage_omq_port == 0)
-            throw std::runtime_error{"Invalid storage omq port in proof"};
 
         storage_server_version = proof.require<std::array<uint16_t, 3>>("sv");
 
