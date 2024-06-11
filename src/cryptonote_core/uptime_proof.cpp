@@ -69,53 +69,47 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
 
     proof_hash = crypto::keccak(serialized_proof);
 
-    try {
-        using namespace oxenc;
+    using namespace oxenc;
 
-        auto proof = oxenc::bt_dict_consumer{serialized_proof};
-        // NB: we must consume in sorted key order
+    auto proof = oxenc::bt_dict_consumer{serialized_proof};
+    // NB: we must consume in sorted key order
 
-        if (auto ip = proof.require<std::string>("ip");
-            !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)
-            throw std::runtime_error{"Invalid IP address in proof"};
+    if (auto ip = proof.require<std::string>("ip");
+        !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)
+        throw std::runtime_error{"Invalid IP address in proof"};
 
-        lokinet_version = proof.require<std::array<uint16_t, 3>>("lv");
+    lokinet_version = proof.require<std::array<uint16_t, 3>>("lv");
 
-        bool found_pk = false;
-        if (proof.skip_until("pk")) {
-            found_pk = true;
-            pubkey = tools::make_from_guts<crypto::public_key>(proof.consume_string_view());
-        }
+    bool found_pk = false;
+    if (proof.skip_until("pk")) {
+        found_pk = true;
+        pubkey = tools::make_from_guts<crypto::public_key>(proof.consume_string_view());
+    }
 
-        if (proof.skip_until("pkb"))
-            pubkey_bls = tools::make_from_guts<crypto::bls_public_key>(proof.consume_string_view());
+    if (proof.skip_until("pkb"))
+        pubkey_bls = tools::make_from_guts<crypto::bls_public_key>(proof.consume_string_view());
 
-        pubkey_ed25519 = tools::make_from_guts<crypto::ed25519_public_key>(
-                proof.require<std::string_view>("pke"));
+    pubkey_ed25519 = tools::make_from_guts<crypto::ed25519_public_key>(
+            proof.require<std::string_view>("pke"sv));
 
-        qnet_port = proof.require<uint16_t>("q");
-        if (qnet_port == 0)
-            throw std::runtime_error{"Invalid omq port in proof"};
+    qnet_port = proof.require<uint16_t>("q");
+    if (qnet_port == 0)
+        throw std::runtime_error{"Invalid omq port in proof"};
 
-        // Unlike qnet_port, these *can* be zero (on devnet); but this is checked elsewhere.
-        storage_https_port = proof.require<uint16_t>("shp");
-        storage_omq_port = proof.require<uint16_t>("sop");
+    // Unlike qnet_port, these *can* be zero (on devnet); but this is checked elsewhere.
+    storage_https_port = proof.require<uint16_t>("shp");
+    storage_omq_port = proof.require<uint16_t>("sop");
 
-        storage_server_version = proof.require<std::array<uint16_t, 3>>("sv");
+    storage_server_version = proof.require<std::array<uint16_t, 3>>("sv");
 
-        timestamp = proof.require<uint64_t>("t");
+    timestamp = proof.require<uint64_t>("t");
 
-        version = proof.require<std::array<uint16_t, 3>>("v");
+    version = proof.require<std::array<uint16_t, 3>>("v");
 
-        if (!found_pk) {
-            // If there is no primary pubkey then copy the ed25519 into primary (we don't send both
-            // when they are the same).
-            std::memcpy(pubkey.data(), pubkey_ed25519.data(), 32);
-        }
-
-    } catch (const std::exception& e) {
-        oxen::log::warning(logcat, "deserialization failed: {}", e.what());
-        throw;
+    if (!found_pk) {
+        // If there is no primary pubkey then copy the ed25519 into primary (we don't send both
+        // when they are the same).
+        std::memcpy(pubkey.data(), pubkey_ed25519.data(), 32);
     }
 }
 
