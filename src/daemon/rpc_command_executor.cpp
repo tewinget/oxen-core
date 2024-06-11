@@ -1079,7 +1079,8 @@ static void print_pool(const json& txs) {
                     tx["last_failed_block"].get<std::string_view>());
         if (auto extra = tx.find("extra"); extra != tx.end()) {
             msg.append("    transaction extra: ");
-            for (auto line : tools::split(extra->dump(2), "\n", true))
+            auto extra_json = extra->dump(2);
+            for (auto line : tools::split(extra_json, "\n", true))
                 msg.append("      {}\n", line);
         }
         msg.append("\n");
