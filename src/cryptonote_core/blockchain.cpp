@@ -1588,7 +1588,7 @@ bool Blockchain::validate_miner_transaction(
         return false;
     }
 
-    if (version <= hf::hf19_reward_batching) {
+    if (version < feature::ETH_BLS) {
         if (b.reward >
             reward_parts.base_miner + reward_parts.miner_fee + reward_parts.service_node_total) {
             log::error(
