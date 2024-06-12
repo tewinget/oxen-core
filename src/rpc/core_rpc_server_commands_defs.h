@@ -171,7 +171,7 @@ struct GET_HEIGHT : PUBLIC, LEGACY, NO_ARGS {
 ///     for mempool transactions.
 ///   - `last_failed_block` -- the hash of the last block where this transaction was attempted to
 ///     be mined (but failed).
-///   - `max_used_height` -- the height of the last block where this transaction failed to be
+///   - `last_failed_height` -- the height of the last block where this transaction failed to be
 ///     acceptable for a block.
 ///   - `weight` -- the transaction "weight" which is the size of the transaction with padding
 ///     removed.  Only included for mempool transactions (for mined transactions the size and

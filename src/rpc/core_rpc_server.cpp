@@ -1001,17 +1001,21 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, [[maybe_unused]] rpc_context
             e_bin["tx_extra_raw"] = std::string_view{
                     reinterpret_cast<const char*>(tx.extra.data()), tx.extra.size()};
 
-        // Clear it because we don't want/care about it in the RPC output (we already got it more
-        // usefully from the above).
-        tx.extra.clear();
-
         {
+            // Serialize *without* extra because we don't want/care about it in the RPC output (we
+            // already have all the extra info in more useful form from the other bits of this
+            // code).
+            std::vector<uint8_t> saved_extra;
+            std::swap(tx.extra, saved_extra);
+
             serialization::json_archiver ja{
                     get.is_bt() ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex};
 
             serialize(ja, tx);
             auto dumped = std::move(ja).json();
             e.update(dumped);
+
+            std::swap(saved_extra, tx.extra);
         }
 
         if (extra)
@@ -1066,13 +1070,11 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, [[maybe_unused]] rpc_context
             }
         }
 
-        {
-            service_nodes::staking_components sc;
-            if (service_nodes::tx_get_staking_components_and_amounts(
-                        nettype(), hf_version, tx, height, &sc) &&
-                sc.transferred > 0)
-                e["stake_amount"] = sc.transferred;
-        }
+        if (service_nodes::staking_components sc;
+            service_nodes::tx_get_staking_components_and_amounts(
+                    nettype(), hf_version, tx, height, &sc) &&
+            sc.transferred > 0)
+            e["stake_amount"] = sc.transferred;
 
         // output indices too if not in pool
         if (!in_pool) {
