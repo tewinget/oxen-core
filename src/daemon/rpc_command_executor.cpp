@@ -858,11 +858,14 @@ bool rpc_command_executor::print_quorum_state(
 }
 
 bool rpc_command_executor::set_log_level(int8_t level) {
-    if (!invoke<SET_LOG_LEVEL>(json{{"level", level}}))
+    try {
+        invoke<SET_LOG_LEVEL>(json{{"level", level}});
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("Failed to set log level: {}", e.what());
         return false;
+    }
 
-    tools::success_msg_writer("Log level is now {:d}", level);
-
+    tools::success_msg_writer("Log level set to {:d}", level);
     return true;
 }
 
@@ -1364,8 +1367,10 @@ bool rpc_command_executor::flush_txpool(std::string txid) {
     if (!txid.empty())
         txids.push_back(std::move(txid));
 
-    if (!invoke<FLUSH_TRANSACTION_POOL>(json{{txids, std::move(txids)}})) {
-        tools::fail_msg_writer("Failed to flush tx pool");
+    try {
+        invoke<FLUSH_TRANSACTION_POOL>(json{{"txids", std::move(txids)}});
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("Failed to flush tx pool: {}", e.what());
         return false;
     }
 
@@ -2125,9 +2130,14 @@ bool rpc_command_executor::print_sn(const std::vector<std::string>& args, bool s
 }
 
 bool rpc_command_executor::flush_cache(bool bad_txs, bool bad_blocks) {
-    if (!invoke<FLUSH_CACHE>(
-                json{{"bad_txs", bad_txs}, {"bad_blocks", bad_blocks}}, "Failed to flush TX cache"))
+    try {
+        invoke<FLUSH_CACHE>(json{{"bad_txs", bad_txs}, {"bad_blocks", bad_blocks}});
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("Failed to flush cache: {}", e.what());
         return false;
+    }
+
+    tools::success_msg_writer("Cache flushed successfully");
     return true;
 }
 
