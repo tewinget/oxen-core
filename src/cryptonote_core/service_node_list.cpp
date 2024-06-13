@@ -3621,7 +3621,7 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
         uint16_t quorumnet_port,
         std::array<uint16_t, 3> lokinet_version) const {
     const auto& keys = *m_service_node_keys;
-    return uptime_proof::Proof(
+    return uptime_proof::Proof{
             hardfork,
             public_ip,
             storage_https_port,
@@ -3629,7 +3629,7 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
             ss_version,
             quorumnet_port,
             lokinet_version,
-            keys);
+            keys};
 }
 
 template <typename T>
@@ -3645,7 +3645,7 @@ proof_info::proof_info() : proof(std::make_unique<uptime_proof::Proof>()){};
 
 void proof_info::store(const crypto::public_key& pubkey, cryptonote::Blockchain& blockchain) {
     if (!proof)
-        proof = std::unique_ptr<uptime_proof::Proof>(new uptime_proof::Proof());
+        proof = std::make_unique<uptime_proof::Proof>();
     std::unique_lock lock{blockchain};
     auto& db = blockchain.get_db();
     db.set_service_node_proof(pubkey, *this);

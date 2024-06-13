@@ -227,9 +227,9 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     std::atomic<bool> m_no_sync;
     std::mutex m_sync_lock;
     block_queue m_block_queue;
-    tools::periodic_task m_idle_peer_kicker{30s};
-    tools::periodic_task m_standby_checker{100ms};
-    tools::periodic_task m_sync_search_checker{101s};
+    tools::periodic_task m_idle_peer_kicker{"idle peer cleanup", 30s};
+    tools::periodic_task m_standby_checker{"standby checker", 100ms};
+    tools::periodic_task m_sync_search_checker{"sync search check", 101s};
     std::atomic<unsigned int> m_max_out_peers;
     std::chrono::steady_clock::time_point m_sync_timer;
     std::chrono::steady_clock::time_point m_last_add_end_time;

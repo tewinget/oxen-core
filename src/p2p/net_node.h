@@ -472,11 +472,11 @@ class node_server
     peerlist_storage m_peerlist_storage;
 
     tools::periodic_task m_peer_handshake_idle_maker_interval{
-            cryptonote::p2p::DEFAULT_HANDSHAKE_INTERVAL};
-    tools::periodic_task m_connections_maker_interval{1s};
-    tools::periodic_task m_peerlist_store_interval{30min};
-    tools::periodic_task m_gray_peerlist_housekeeping_interval{1min};
-    tools::periodic_task m_incoming_connections_interval{1h};
+            "p2p handshake cleanup", cryptonote::p2p::DEFAULT_HANDSHAKE_INTERVAL};
+    tools::periodic_task m_connections_maker_interval{"p2p connection maker", 1s};
+    tools::periodic_task m_peerlist_store_interval{"p2p peer storage", 30min};
+    tools::periodic_task m_gray_peerlist_housekeeping_interval{"p2p graylist", 1min};
+    tools::periodic_task m_incoming_connections_interval{"incoming connection warning", 1h};
 
     std::list<epee::net_utils::network_address> m_priority_peers;
     std::vector<epee::net_utils::network_address> m_exclusive_peers;

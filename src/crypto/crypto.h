@@ -166,6 +166,17 @@ T rand_range(T range_min, T range_max) {
     return std::uniform_int_distribution<T>{range_min, range_max}(rd);
 }
 
+/* Generate a random time interval between range_min and range_max.  This is just a wrapper around
+ * rand_range with integers (not that this does *not* yield a smaller interval, i.e. `rand_range(1s,
+ * 2s)` will return 1s or 2s but not 1278ms).
+ */
+template <std::integral Rep, typename Period>
+std::chrono::duration<Rep, Period> rand_range(
+        std::chrono::duration<Rep, Period> range_min,
+        std::chrono::duration<Rep, Period> range_max) {
+    return std::chrono::duration<Rep, Period>{rand_range(range_min.count(), range_max.count())};
+}
+
 /* Generate a random index between 0 and sz-1
  */
 template <std::integral T>

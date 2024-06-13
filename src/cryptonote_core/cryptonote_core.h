@@ -1268,22 +1268,26 @@ class core : public i_miner_handler {
     std::mutex m_sn_timestamp_mutex;
     service_nodes::participation_history<service_nodes::timesync_entry, 30> m_sn_times;
 
-    tools::periodic_task m_txpool_auto_relayer{
-            2min, false};  //!< interval for checking re-relaying txpool transactions
-    tools::periodic_task m_check_disk_space_interval{
-            10min};  //!< interval for checking for disk space
-    tools::periodic_task m_check_uptime_proof_interval{
-            30s};  //!< interval for checking our own uptime proof (will be set to
-                   //!< get_net_config().UPTIME_PROOF_CHECK_INTERVAL after init)
-    tools::periodic_task m_block_rate_interval{90s, false};  //!< interval for checking block rate
-    tools::periodic_task m_blockchain_pruning_interval{
-            5h};  //!< interval for incremental blockchain pruning
-    tools::periodic_task m_service_node_vote_relayer{2min, false};
-    tools::periodic_task m_sn_proof_cleanup_interval{1h, false};
-    tools::periodic_task m_systemd_notify_interval{10s};
+    /// interval for checking re-relaying txpool transactions
+    tools::periodic_task m_txpool_auto_relayer{"pool relay", 2min, false};
+    /// interval for checking for disk space
+    tools::periodic_task m_check_disk_space_interval{"disk space checker", 10min};
+    /// interval for checking our own uptime proof; starts low, but will be set to
+    /// get_net_config().UPTIME_PROOF_CHECK_INTERVAL after the first proof goes out.
+    tools::periodic_task m_check_uptime_proof_interval{"uptime proof", 30s};
+    /// interval for checking block rate
+    tools::periodic_task m_block_rate_interval{"block rate updater", 90s, false};
+    /// interval for incremental blockchain pruning
+    tools::periodic_task m_blockchain_pruning_interval{"pruning interval", 5h};
+    /// interval for when we re-relay service node votes
+    tools::periodic_task m_service_node_vote_relayer{"vote relay", 2min, false};
+    /// interval for when we drop expired uptime proofs
+    tools::periodic_task m_sn_proof_cleanup_interval{"proof cleanup", 1h, false};
+    /// interval for systemd watchdog pings & updating the service Status line
+    tools::periodic_task m_systemd_notify_interval{"systemd notifier", 10s};
 
-    std::atomic<bool>
-            m_starter_message_showed;  //!< has the "daemon will sync now" message been shown?
+    /// has the "daemon will sync now" message been shown?
+    std::atomic<bool> m_starter_message_showed;
 
     uint64_t m_target_blockchain_height;  //!< blockchain height target
 

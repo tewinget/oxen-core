@@ -532,14 +532,14 @@ class simple_wallet : public tools::i_wallet2_callback {
     std::atomic<bool> m_in_command;
 
     tools::periodic_task m_inactivity_checker{
-            std::chrono::seconds(0), true /*start_immediately*/, {80 * 1000000, 100 * 1000000}};
+            "inactivity check", 80s, true /*start_immediately*/, 20s /*up-to random delay*/};
     tools::periodic_task m_refresh_checker{
-            std::chrono::seconds(0), true /*start_immediately*/, {90 * 1000000, 110 * 1000000}};
+            "refresh check", 90s, true /*start_immediately*/, 20s /*up-to random delay*/};
 
 #ifdef WALLET_ENABLE_MMS
     // MMS
     tools::periodic_task m_mms_checker{
-            std::chrono::seconds(0), true /*start_immediately*/, {90 * 1000000, 115 * 1000000}};
+            "mms checker", 90s, true /*start_immediately*/, 25s /*up-to random delay*/};
 
     mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };
     mms::multisig_wallet_state get_multisig_wallet_state() const {

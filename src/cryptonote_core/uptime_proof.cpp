@@ -51,9 +51,9 @@ Proof::Proof(
     serialized_proof = bt_encode_uptime_proof(hardfork);
     proof_hash = crypto::keccak(serialized_proof);
 
-    if (hardfork < hf::hf21_eth)
+    if (hardfork < cryptonote::feature::ETH_BLS)
         // Starting from HF21 we have guaranteed unified pubkey/ed25519 pubkey, so don't need to
-        // send this one anymore.
+        // send the old primary SN signature anymore: the single ed25519 signature does it all.
         crypto::generate_signature(proof_hash, keys.pub, keys.key, sig);
 
     crypto_sign_detached(
