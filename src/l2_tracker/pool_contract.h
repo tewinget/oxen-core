@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+namespace eth {
+
 class RewardRateResponse {
   public:
     uint64_t timestamp;
@@ -22,3 +24,5 @@ class PoolContract {
     std::string contractAddress;
     ethyl::Provider& provider;
 };
+
+}  // namespace eth

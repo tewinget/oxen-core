@@ -10,26 +10,28 @@
 #include "crypto/crypto.h"
 #include "cryptonote_core/service_node_list.h"
 
+namespace eth {
+
 struct AggregateSigned {
     crypto::hash signed_hash;
-    std::vector<crypto::bls_public_key> signers_bls_pubkeys;
-    crypto::bls_signature signature;
+    std::vector<bls_public_key> signers_bls_pubkeys;
+    bls_signature signature;
 };
 
 struct AggregateExitResponse : AggregateSigned {
-    crypto::bls_public_key exit_pubkey;
+    bls_public_key exit_pubkey;
 };
 
 struct BLSRewardsResponse : AggregateSigned {
-    crypto::eth_address address;
+    eth::address address;
     uint64_t amount;
     uint64_t height;
 };
 
 struct BLSRegistrationResponse {
-    crypto::bls_public_key bls_pubkey;
-    crypto::bls_signature proof_of_possession;
-    crypto::eth_address address;
+    bls_public_key bls_pubkey;
+    bls_signature proof_of_possession;
+    eth::address address;
     crypto::public_key sn_pubkey;
     crypto::ed25519_signature ed_signature;
 };
@@ -56,12 +58,12 @@ class BLSAggregator {
     ///
     /// This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
     /// amount is `0` or height is greater than the current blockchain height.
-    BLSRewardsResponse rewards_request(const crypto::eth_address& address);
+    BLSRewardsResponse rewards_request(const eth::address& address);
 
-    AggregateExitResponse aggregateExit(const crypto::bls_public_key& bls_pubkey);
-    AggregateExitResponse aggregateLiquidation(const crypto::bls_public_key& bls_pubkey);
+    AggregateExitResponse aggregateExit(const bls_public_key& bls_pubkey);
+    AggregateExitResponse aggregateLiquidation(const bls_public_key& bls_pubkey);
     BLSRegistrationResponse registration(
-            const crypto::eth_address& sender, const crypto::public_key& serviceNodePubkey) const;
+            const eth::address& sender, const crypto::public_key& serviceNodePubkey) const;
 
   private:
     void get_reward_balance(oxenmq::Message& m);
@@ -69,7 +71,7 @@ class BLSAggregator {
     void get_liquidation(oxenmq::Message& m);
 
     AggregateExitResponse aggregateExitOrLiquidate(
-            const crypto::bls_public_key& bls_pubkey,
+            const bls_public_key& bls_pubkey,
             std::string_view hash_tag,
             std::string_view endpoint,
             std::string_view pubkey_key);
@@ -81,3 +83,5 @@ class BLSAggregator {
             std::string_view message,
             const request_callback& callback);
 };
+
+}  // namespace eth

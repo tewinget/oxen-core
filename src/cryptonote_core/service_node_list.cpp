@@ -436,7 +436,7 @@ void validate_registration(
                 reg.eth_contributions.begin(),
                 reg.eth_contributions.end(),
                 std::back_inserter(extracted_amounts),
-                [](const std::pair<crypto::eth_address, uint64_t>& pair) { return pair.second; });
+                [](const std::pair<eth::address, uint64_t>& pair) { return pair.second; });
     } else {
         if (reg.reserved.empty())
             throw invalid_registration{"No operator contribution given"};
@@ -4043,7 +4043,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
 }
 
 crypto::public_key service_node_list::bls_public_key_lookup(
-        const crypto::bls_public_key& bls_pubkey) const {
+        const eth::bls_public_key& bls_pubkey) const {
     bool found = false;
     crypto::public_key found_pk;
     {
@@ -4093,7 +4093,7 @@ void service_node_list::record_timesync_status(crypto::public_key const& pubkey,
         proofs[pubkey].timesync_status.add({synced});
 }
 
-bool service_node_list::is_recently_expired(const crypto::bls_public_key& node_bls_pubkey) const {
+bool service_node_list::is_recently_expired(const eth::bls_public_key& node_bls_pubkey) const {
     return recently_expired_nodes.count(node_bls_pubkey);
 }
 

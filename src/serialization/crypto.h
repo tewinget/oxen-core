@@ -34,6 +34,7 @@
 
 #include "crypto/chacha.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "crypto/hash.h"
 #include "serialization.h"
 
@@ -63,5 +64,6 @@ BLOB_SERIALIZER(crypto::key_image);
 BLOB_SERIALIZER(crypto::signature);
 BLOB_SERIALIZER(crypto::ed25519_public_key);
 BLOB_SERIALIZER(crypto::ed25519_signature);
-BLOB_SERIALIZER(crypto::eth_address);
-BLOB_SERIALIZER(crypto::bls_public_key);
+BLOB_SERIALIZER(eth::address);
+BLOB_SERIALIZER(eth::bls_public_key);
+BLOB_SERIALIZER(eth::block_hash);

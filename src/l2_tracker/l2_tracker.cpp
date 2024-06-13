@@ -7,7 +7,9 @@
 #include "crypto/crypto.h"
 #include "logging/oxen_logger.h"
 
-static auto logcat = oxen::log::Cat("l2_tracker");
+namespace eth {
+
+static auto logcat = log::Cat("l2_tracker");
 
 L2Tracker::L2Tracker(cryptonote::network_type nettype) :
         rewards_contract(std::make_shared<RewardsContract>(
@@ -85,20 +87,22 @@ void L2Tracker::update_state() {
             }
         }
     } catch (const std::exception& e) {
-        oxen::log::warning(logcat, "Failed to update state: {}", e.what());
+        log::warning(logcat, "Failed to update state: {}", e.what());
     }
 }
 
-static constexpr inline std::string_view NO_PROVIDER_CLIENTS_ERROR = "L2 tracker does not have any RPC servers configured for the Ethereum provider. Ensure that `--ethereum_provider` is set to an Ethereum RPC endpoint.";
+static constexpr inline std::string_view NO_PROVIDER_CLIENTS_ERROR =
+        "L2 tracker does not have any RPC servers configured for the Ethereum provider. Ensure "
+        "that `--ethereum_provider` is set to an Ethereum RPC endpoint.";
 std::pair<uint64_t, crypto::hash> L2Tracker::latest_state() {
     if (provider.clients.empty()) {
-        oxen::log::error(logcat, NO_PROVIDER_CLIENTS_ERROR);
+        log::error(logcat, NO_PROVIDER_CLIENTS_ERROR);
         throw std::runtime_error(std::string(NO_PROVIDER_CLIENTS_ERROR));
     }
     std::lock_guard lock{mutex};
 
     if (state_history.empty()) {
-        oxen::log::error(logcat, "L2 tracker doesnt have any state history to query");
+        log::error(logcat, "L2 tracker doesnt have any state history to query");
         throw std::runtime_error("Internal error getting latest state from l2 tracker");
     }
     auto& latest_state = state_history.front();
@@ -201,7 +205,8 @@ std::vector<TransactionStateChangeVariant> L2Tracker::get_block_transactions() {
 
 uint64_t L2Tracker::get_last_l2_height() {
     uint64_t last_height = 0;
-    if (oxen_to_ethereum_block_heights.find(latest_oxen_block) != oxen_to_ethereum_block_heights.end()) {
+    if (oxen_to_ethereum_block_heights.find(latest_oxen_block) !=
+        oxen_to_ethereum_block_heights.end()) {
         last_height = oxen_to_ethereum_block_heights[latest_oxen_block];
     }
     return last_height;
@@ -215,27 +220,27 @@ void L2Tracker::record_block_height_mapping(
 }
 
 bool TransactionReviewSession::processNewServiceNodeTx(
-        const crypto::bls_public_key& bls_pubkey,
-        const crypto::eth_address& eth_address,
+        const eth::bls_public_key& bls_pubkey,
+        const eth::address& eth_address,
         const crypto::public_key& service_node_pubkey,
         std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
         fail_reason = "Review not initialized";
-        oxen::log::error(
+        log::error(
                 logcat, "Failed to process new service node tx height {}", review_block_height_max);
         return false;
     }
 
-    oxen::log::info(
+    log::info(
             logcat,
             "Searching for new_service_node bls_pubkey: {} eth_address {} service_node pubkey {}",
             bls_pubkey,
             eth_address,
             service_node_pubkey);
     for (auto it = new_service_nodes.begin(); it != new_service_nodes.end(); ++it) {
-        oxen::log::info(
+        log::info(
                 logcat,
                 "new_service_node bls_pubkey: {} eth_address {} service_node_pubkey: {}",
                 it->bls_pubkey,
@@ -257,12 +262,12 @@ bool TransactionReviewSession::processNewServiceNodeTx(
 }
 
 bool TransactionReviewSession::processServiceNodeLeaveRequestTx(
-        const crypto::bls_public_key& bls_pubkey, std::string& fail_reason) {
+        const eth::bls_public_key& bls_pubkey, std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
         fail_reason = "Review not initialized";
-        oxen::log::error(
+        log::error(
                 logcat,
                 "Failed to process service node leave request tx height {}",
                 review_block_height_max);
@@ -281,15 +286,15 @@ bool TransactionReviewSession::processServiceNodeLeaveRequestTx(
 }
 
 bool TransactionReviewSession::processServiceNodeExitTx(
-        const crypto::eth_address& eth_address,
+        const eth::address& eth_address,
         const uint64_t amount,
-        const crypto::bls_public_key& bls_pubkey,
+        const eth::bls_public_key& bls_pubkey,
         std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
         fail_reason = "Review not initialized";
-        oxen::log::error(
+        log::error(
                 logcat,
                 "Failed to process service node exit tx height {}",
                 review_block_height_max);
@@ -309,13 +314,12 @@ bool TransactionReviewSession::processServiceNodeExitTx(
 }
 
 bool TransactionReviewSession::processServiceNodeDeregisterTx(
-        const crypto::bls_public_key& bls_pubkey, std::string& fail_reason) {
+        const eth::bls_public_key& bls_pubkey, std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
         fail_reason = "Review not initialized";
-        oxen::log::error(
-                logcat, "Failed to process deregister tx height {}", review_block_height_max);
+        log::error(logcat, "Failed to process deregister tx height {}", review_block_height_max);
         return false;
     }
 
@@ -348,10 +352,12 @@ uint64_t L2Tracker::get_pool_block_reward(uint64_t timestamp, uint64_t ethereum_
 }
 
 std::vector<uint64_t> L2Tracker::get_non_signers(
-        const std::unordered_set<crypto::bls_public_key>& bls_public_keys) {
+        const std::unordered_set<eth::bls_public_key>& bls_public_keys) {
     return rewards_contract->getNonSigners(bls_public_keys);
 }
 
-std::vector<crypto::bls_public_key> L2Tracker::get_all_bls_public_keys(uint64_t blockNumber) {
+std::vector<eth::bls_public_key> L2Tracker::get_all_bls_public_keys(uint64_t blockNumber) {
     return rewards_contract->getAllBLSPubkeys(blockNumber);
 }
+
+}  // namespace eth

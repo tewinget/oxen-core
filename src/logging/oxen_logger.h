@@ -25,6 +25,9 @@ namespace log = oxen::log;
 namespace rct {
 namespace log = oxen::log;
 }
+namespace eth {
+namespace log = oxen::log;
+}
 
 inline auto globallogcat = oxen::log::Cat("global");
 

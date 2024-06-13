@@ -43,6 +43,7 @@
 #include "common/unordered_containers_boost_serialization.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "cryptonote_basic.h"
 #include "ringct/rctOps.h"
 #include "ringct/rctTypes.h"
@@ -99,6 +100,13 @@ inline void serialize(
         crypto::hash8& x,
         [[maybe_unused]] const boost::serialization::version_type ver) {
     a& reinterpret_cast<char(&)[sizeof(crypto::hash8)]>(x);
+}
+template <class Archive>
+inline void serialize(
+        Archive& a,
+        eth::block_hash& x,
+        [[maybe_unused]] const boost::serialization::version_type ver) {
+    a& reinterpret_cast<char(&)[sizeof(eth::block_hash)]>(x);
 }
 
 template <class Archive>

@@ -781,7 +781,7 @@ bool core::init(
         return false;
 
     init_oxenmq(vm);
-    m_bls_aggregator = std::make_unique<BLSAggregator>(*this);
+    m_bls_aggregator = std::make_unique<eth::BLSAggregator>(*this);
 
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
     const auto ethereum_provider = command_line::get_arg(vm, arg_ethereum_provider);
@@ -973,7 +973,7 @@ bool core::init_service_keys() {
                     // Load from existing
 
                     try {
-                        bls_signer = std::make_shared<BLSSigner>(m_nettype, &sk);
+                        bls_signer = std::make_shared<eth::BLSSigner>(m_nettype, &sk);
                     } catch (const std::exception& e) {
                         log::critical(logcat, "Invalid BLS key: {}", e.what());
                         return false;
@@ -981,9 +981,9 @@ bool core::init_service_keys() {
                     pk = bls_signer->getCryptoPubkey();
                     return true;
                 },
-                [this](crypto::bls_secret_key& sk, crypto::bls_public_key& pk, auto& bls_signer) {
+                [this](eth::bls_secret_key& sk, eth::bls_public_key& pk, auto& bls_signer) {
                     // Generate new one
-                    bls_signer = std::make_shared<BLSSigner>(m_nettype);
+                    bls_signer = std::make_shared<eth::BLSSigner>(m_nettype);
                     sk = bls_signer->getCryptoSeckey();
                     pk = bls_signer->getCryptoPubkey();
                 },
@@ -1145,9 +1145,9 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     quorumnet_init(*this, m_quorumnet_state);
 }
 
-std::vector<crypto::bls_public_key> core::get_removable_nodes() {
+std::vector<eth::bls_public_key> core::get_removable_nodes() {
     // FIXME: this feels out of place here; move to blockchain.h/cpp!
-    std::vector<crypto::bls_public_key> bls_pubkeys_in_snl;
+    std::vector<eth::bls_public_key> bls_pubkeys_in_snl;
     uint64_t l2_height;
 
     {
@@ -1174,7 +1174,7 @@ std::vector<crypto::bls_public_key> core::get_removable_nodes() {
     auto bls_pubkeys_in_smart_contract =
             m_blockchain_storage.m_l2_tracker->get_all_bls_public_keys(l2_height);
 
-    std::vector<crypto::bls_public_key> removable_nodes;
+    std::vector<eth::bls_public_key> removable_nodes;
 
     // Find BLS keys that are in the smart contract but not in the service node list
     std::sort(bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end());
@@ -1188,13 +1188,13 @@ std::vector<crypto::bls_public_key> core::get_removable_nodes() {
     return removable_nodes;
 }
 
-bool core::is_node_removable(const crypto::bls_public_key& node_bls_pubkey) {
+bool core::is_node_removable(const eth::bls_public_key& node_bls_pubkey) {
     auto removable_nodes = get_removable_nodes();
     return std::find(removable_nodes.begin(), removable_nodes.end(), node_bls_pubkey) !=
            removable_nodes.end();
 }
 
-bool core::is_node_liquidatable(const crypto::bls_public_key& node_bls_pubkey) {
+bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
     return is_node_removable(node_bls_pubkey) &&
            !m_service_node_list.is_recently_expired(node_bls_pubkey);
 }
@@ -1443,7 +1443,7 @@ bool core::handle_parsed_txs(
     if (blink_rollback_height)
         *blink_rollback_height = 0;
     tx_pool_options tx_opts;
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session;
+    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
     if (version >= cryptonote::feature::ETH_BLS) {
         ethereum_transaction_review_session =
                 m_blockchain_storage.m_l2_tracker->initialize_mempool_review();
@@ -1817,7 +1817,6 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_service_node_time() {
-
     if (!is_active_sn()) {
         return true;
     }
@@ -2129,10 +2128,12 @@ bool core::handle_uptime_proof(
         // should be non-zero.
         if (m_nettype == network_type::DEVNET) {
             if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
-                throw std::runtime_error{"Invalid storage port(s) in proof: devnet storage ports must be 0"};
+                throw std::runtime_error{
+                        "Invalid storage port(s) in proof: devnet storage ports must be 0"};
         } else {
             if (proof->storage_omq_port == 0 || proof->storage_https_port == 0)
-                throw std::runtime_error{"Invalid storage port(s) in proof: storage ports cannot be 0"};
+                throw std::runtime_error{
+                        "Invalid storage port(s) in proof: storage ports cannot be 0"};
         }
 
     } catch (const std::exception& e) {
@@ -2761,23 +2762,23 @@ core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
-BLSRewardsResponse core::bls_rewards_request(const crypto::eth_address& address) {
+eth::BLSRewardsResponse core::bls_rewards_request(const eth::address& address) {
     return m_bls_aggregator->rewards_request(address);
 }
 //-----------------------------------------------------------------------------------------------
-AggregateExitResponse core::aggregate_exit_request(const crypto::bls_public_key& bls_pubkey) {
+eth::AggregateExitResponse core::aggregate_exit_request(const eth::bls_public_key& bls_pubkey) {
     const auto resp = m_bls_aggregator->aggregateExit(bls_pubkey);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------
-AggregateExitResponse core::aggregate_liquidation_request(
-        const crypto::bls_public_key& bls_pubkey) {
+eth::AggregateExitResponse core::aggregate_liquidation_request(
+        const eth::bls_public_key& bls_pubkey) {
     const auto resp = m_bls_aggregator->aggregateLiquidation(bls_pubkey);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------
-BLSRegistrationResponse core::bls_registration(
-        const crypto::eth_address& address, const uint64_t fee) const {
+eth::BLSRegistrationResponse core::bls_registration(
+        const eth::address& address, const uint64_t fee) const {
     const auto& keys = get_service_keys();
     auto resp = m_bls_aggregator->registration(address, keys.pub);
 

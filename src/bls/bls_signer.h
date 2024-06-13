@@ -14,11 +14,11 @@
 #undef MCLBN_NO_AUTOLINK
 #pragma GCC diagnostic pop
 
-#include "crypto/base.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "cryptonote_config.h"
 
-#include <span>
+namespace eth {
 
 class BLSSigner {
   private:
@@ -28,20 +28,19 @@ class BLSSigner {
   public:
     // Constructs a BLSSigner; if the `key` is nullptr, a key is generated; otherwise the key is
     // loaded from the given bls_secret_key data.
-    explicit BLSSigner(
-            const cryptonote::network_type nettype, const crypto::bls_secret_key* key = nullptr);
+    explicit BLSSigner(const cryptonote::network_type nettype, const bls_secret_key* key = nullptr);
 
     bls::Signature signHashSig(const crypto::hash& hash);
-    crypto::bls_signature signHash(const crypto::hash& hash);
-    crypto::bls_signature proofOfPossession(
-            crypto::eth_address sender, const crypto::public_key& serviceNodePubkey);
+    bls_signature signHash(const crypto::hash& hash);
+    bls_signature proofOfPossession(
+            const eth::address& sender, const crypto::public_key& serviceNodePubkey);
     std::string getPublicKeyHex();
     bls::PublicKey getPublicKey();
 
-    // Gets the public key as our crypto::bls_public_key type
-    crypto::bls_public_key getCryptoPubkey();
-    // Gets the secret key as our crypto::bls_secret_key type
-    crypto::bls_secret_key getCryptoSeckey();
+    // Gets the public key as our eth::bls_public_key type
+    eth::bls_public_key getCryptoPubkey();
+    // Gets the secret key as our eth::bls_secret_key type
+    eth::bls_secret_key getCryptoSeckey();
 
     static std::string buildTagHex(std::string_view baseTag, cryptonote::network_type nettype);
     static crypto::hash buildTagHash(std::string_view baseTag, cryptonote::network_type nettype);
@@ -53,3 +52,5 @@ class BLSSigner {
     static constexpr inline std::string_view removalTag = "BLS_SIG_TRYANDINCREMENT_REMOVE";
     static constexpr inline std::string_view liquidateTag = "BLS_SIG_TRYANDINCREMENT_LIQUIDATE";
 };
+
+}  // namespace eth

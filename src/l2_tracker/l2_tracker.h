@@ -11,6 +11,8 @@
 #include "pool_contract.h"
 #include "rewards_contract.h"
 
+namespace eth {
+
 struct State {
     uint64_t height;
     crypto::hash block_hash;
@@ -37,19 +39,18 @@ struct TransactionReviewSession {
             review_block_height_min(min_height), review_block_height_max(max_height) {}
 
     bool processNewServiceNodeTx(
-            const crypto::bls_public_key& bls_pubkey,
-            const crypto::eth_address& eth_address,
+            const bls_public_key& bls_pubkey,
+            const eth::address& eth_address,
             const crypto::public_key& service_node_pubkey,
             std::string& fail_reason);
     bool processServiceNodeLeaveRequestTx(
-            const crypto::bls_public_key& bls_pubkey, std::string& fail_reason);
+            const bls_public_key& bls_pubkey, std::string& fail_reason);
     bool processServiceNodeExitTx(
-            const crypto::eth_address& eth_address,
+            const eth::address& eth_address,
             const uint64_t amount,
-            const crypto::bls_public_key& bls_pubkey,
+            const bls_public_key& bls_pubkey,
             std::string& fail_reason);
-    bool processServiceNodeDeregisterTx(
-            const crypto::bls_public_key& bls_pubkey, std::string& fail_reason);
+    bool processServiceNodeDeregisterTx(const bls_public_key& bls_pubkey, std::string& fail_reason);
 
     bool finalize_review();
 };
@@ -90,12 +91,12 @@ class L2Tracker {
 
     uint64_t get_pool_block_reward(uint64_t timestamp, uint64_t ethereum_block_height);
     std::vector<uint64_t> get_non_signers(
-            const std::unordered_set<crypto::bls_public_key>& bls_public_keys);
+            const std::unordered_set<bls_public_key>& bls_public_keys);
     template <std::input_iterator It, std::sentinel_for<It> End>
     std::vector<uint64_t> get_non_signers(It begin, End end) {
-        return get_non_signers(std::unordered_set<crypto::bls_public_key>{begin, end});
+        return get_non_signers(std::unordered_set<bls_public_key>{begin, end});
     }
-    std::vector<crypto::bls_public_key> get_all_bls_public_keys(uint64_t blockNumber);
+    std::vector<bls_public_key> get_all_bls_public_keys(uint64_t blockNumber);
 
     bool provider_has_clients() const { return provider.clients.size(); }
 
@@ -112,3 +113,5 @@ class L2Tracker {
     void populate_review_transactions(std::shared_ptr<TransactionReviewSession> session);
     // END
 };
+
+}  // namespace eth

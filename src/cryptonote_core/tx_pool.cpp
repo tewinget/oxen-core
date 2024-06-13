@@ -306,7 +306,7 @@ bool tx_memory_pool::add_tx(
         tx_verification_context& tvc,
         const tx_pool_options& opts,
         hf hf_version,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
+        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
         uint64_t* blink_rollback_height) {
     // this should already be called with that lock, but let's make it explicit for clarity
     std::unique_lock lock{m_transactions_lock};
@@ -572,7 +572,7 @@ bool tx_memory_pool::add_tx(
         tx_verification_context& tvc,
         const tx_pool_options& opts,
         hf version,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session) {
+        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session) {
     crypto::hash h{};
     size_t blob_size = 0;
     std::string bl;
@@ -609,7 +609,7 @@ bool tx_memory_pool::add_new_blink(
 
     bool approved = blink.approved();
     auto hf_version = m_blockchain.get_network_version(blink.height);
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session =
+    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session =
             m_blockchain.m_l2_tracker->initialize_mempool_review();
     bool result =
             add_tx(tx,
@@ -1158,7 +1158,7 @@ bool tx_memory_pool::get_relayable_transactions(
 
     const uint64_t now = time(NULL);
     txs.reserve(m_blockchain.get_txpool_tx_count());
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session =
+    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session =
             m_blockchain.m_l2_tracker->initialize_mempool_review();
     m_blockchain.for_all_txpool_txes(
             [this, now, &txs, &ethereum_transaction_review_session](
@@ -1584,7 +1584,7 @@ bool tx_memory_pool::have_tx_keyimg_as_spent(const crypto::key_image& key_im) co
 bool tx_memory_pool::check_tx_inputs(
         const std::function<cryptonote::transaction&()>& get_tx,
         const crypto::hash& txid,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
+        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
         uint64_t& max_used_block_height,
         crypto::hash& max_used_block_id,
         tx_verification_context& tvc,
@@ -1703,7 +1703,7 @@ bool tx_memory_pool::check_tx_inputs(
 bool tx_memory_pool::is_transaction_ready_to_go(
         txpool_tx_meta_t& txd,
         const crypto::hash& txid,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
+        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
         const std::string& txblob,
         transaction& tx) const {
     struct transction_parser {
@@ -1905,7 +1905,7 @@ bool tx_memory_pool::fill_block_template(
     uint64_t next_reward = 0;
     uint64_t net_fee = 0;
 
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session;
+    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
     if (version >= cryptonote::feature::ETH_BLS) {
         ethereum_transaction_review_session =
                 m_blockchain.m_l2_tracker->initialize_mempool_review();

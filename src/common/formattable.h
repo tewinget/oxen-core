@@ -71,7 +71,7 @@ struct to_string_formatter : fmt::formatter<std::string_view> {
 // For example, for input span \0\0\0\0\0\0\0\x02 `fmt::format("0x{:z} 0x{:x} {}", val)` would
 // produced the string `"0x2 0x0000000000000002 0000000000000002"`.
 //
-// Some types extend this to override the default format -- for example, crypto::eth_address's
+// Some types extend this to override the default format -- for example, eth::address's
 // default format is `0xabc...` rather than `abc...`.
 struct hex_span_formatter {
   protected:

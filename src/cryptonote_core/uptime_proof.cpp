@@ -76,9 +76,9 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
     // NB: we must consume in sorted key order
 
     if (hardfork == feature::ETH_TRANSITION) {
-        pubkey_bls = tools::make_from_guts<crypto::bls_public_key>(
+        pubkey_bls = tools::make_from_guts<eth::bls_public_key>(
                 proof.require<std::string_view>("bk"sv));
-        pop_bls = tools::make_from_guts<crypto::bls_signature>(
+        pop_bls = tools::make_from_guts<eth::bls_signature>(
                 proof.require<std::string_view>("bp"sv));
     }
 

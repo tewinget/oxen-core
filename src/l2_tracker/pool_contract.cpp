@@ -4,6 +4,8 @@
 
 #include "logging/oxen_logger.h"
 
+namespace eth {
+
 static auto logcat = oxen::log::Cat("l2_tracker");
 
 PoolContract::PoolContract(std::string _contractAddress, ethyl::Provider& _provider) :
@@ -20,3 +22,5 @@ RewardRateResponse PoolContract::RewardRate(uint64_t timestamp, uint64_t ethereu
     std::string result = provider.callReadFunction(callData, ethereum_block_height);
     return RewardRateResponse{timestamp, ethyl::utils::hexStringToU64(result)};
 }
+
+}  // namespace eth

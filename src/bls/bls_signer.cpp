@@ -12,14 +12,15 @@
 #include "common/bigint.h"
 #include "common/guts.h"
 #include "common/oxen.h"
-#include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "logging/oxen_logger.h"
 
+namespace eth {
+
 static auto logcat = oxen::log::Cat("bls_signer");
 
-BLSSigner::BLSSigner(const cryptonote::network_type nettype, const crypto::bls_secret_key* key) :
+BLSSigner::BLSSigner(const cryptonote::network_type nettype, const bls_secret_key* key) :
         nettype{nettype} {
     bls_utils::init();
 
@@ -30,7 +31,7 @@ BLSSigner::BLSSigner(const cryptonote::network_type nettype, const crypto::bls_s
         OXEN_DEFER {
             memwipe(key_bytes.data(), key_bytes.size());
         };
-        key_bytes.reserve(sizeof(crypto::bls_secret_key));
+        key_bytes.reserve(sizeof(bls_secret_key));
         key_bytes.append(reinterpret_cast<const char*>(key->data()), key->size());
         secretKey.setStr(key_bytes, mcl::IoSerialize | mcl::IoBigEndian);
     } else {
@@ -65,12 +66,12 @@ bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) {
     return sig;
 }
 
-crypto::bls_signature BLSSigner::signHash(const crypto::hash& hash) {
+bls_signature BLSSigner::signHash(const crypto::hash& hash) {
     return bls_utils::to_crypto_signature(signHashSig(hash));
 }
 
-crypto::bls_signature BLSSigner::proofOfPossession(
-        crypto::eth_address sender, const crypto::public_key& serviceNodePubkey) {
+bls_signature BLSSigner::proofOfPossession(
+        const eth::address& sender, const crypto::public_key& serviceNodePubkey) {
     auto tag = buildTagHash(proofOfPossessionTag);
     auto hash = crypto::keccak(tag, getCryptoPubkey(), sender, serviceNodePubkey);
 
@@ -90,16 +91,18 @@ bls::PublicKey BLSSigner::getPublicKey() {
     return publicKey;
 }
 
-crypto::bls_public_key BLSSigner::getCryptoPubkey() {
+bls_public_key BLSSigner::getCryptoPubkey() {
     return bls_utils::to_crypto_pubkey(getPublicKey());
 }
 
-crypto::bls_secret_key BLSSigner::getCryptoSeckey() {
+bls_secret_key BLSSigner::getCryptoSeckey() {
     std::string sec_key = secretKey.getStr(mcl::IoSerialize | mcl::IoBigEndian);
-    assert(sec_key.size() == sizeof(crypto::bls_secret_key));
+    assert(sec_key.size() == sizeof(bls_secret_key));
 
-    crypto::bls_secret_key csk;
+    bls_secret_key csk;
     std::memcpy(csk.data(), sec_key.data(), sizeof(csk));
     memwipe(sec_key.data(), sec_key.size());
     return csk;
 }
+
+}  // namespace eth

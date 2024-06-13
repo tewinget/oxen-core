@@ -1,11 +1,14 @@
 #pragma once
-#include <crypto/crypto.h>
-
 #include <ethyl/logs.hpp>
 #include <ethyl/provider.hpp>
 #include <string>
 #include <unordered_set>
 #include <variant>
+
+#include "crypto/crypto.h"
+#include "crypto/eth.h"
+
+namespace eth {
 
 enum class TransactionType {
     NewServiceNode,
@@ -16,13 +19,13 @@ enum class TransactionType {
 };
 
 struct Contributor {
-    crypto::eth_address addr;
+    eth::address addr;
     uint64_t amount;
 };
 
 struct NewServiceNodeTx {
-    crypto::bls_public_key bls_pubkey;
-    crypto::eth_address eth_address;
+    bls_public_key bls_pubkey;
+    eth::address eth_address;
     crypto::public_key sn_pubkey;
     crypto::ed25519_signature sn_signature;
     uint64_t fee;
@@ -30,17 +33,17 @@ struct NewServiceNodeTx {
 };
 
 struct ServiceNodeLeaveRequestTx {
-    crypto::bls_public_key bls_pubkey;
+    bls_public_key bls_pubkey;
 };
 
 struct ServiceNodeDeregisterTx {
-    crypto::bls_public_key bls_pubkey;
+    bls_public_key bls_pubkey;
 };
 
 struct ServiceNodeExitTx {
-    crypto::eth_address eth_address;
+    eth::address eth_address;
     uint64_t amount;
-    crypto::bls_public_key bls_pubkey;
+    bls_public_key bls_pubkey;
 };
 
 using TransactionStateChangeVariant = std::variant<
@@ -62,8 +65,8 @@ struct ContractServiceNode {
     bool good;
     uint64_t next;
     uint64_t prev;
-    crypto::eth_address operatorAddr;
-    crypto::bls_public_key pubkey;
+    eth::address operatorAddr;
+    bls_public_key pubkey;
     uint64_t leaveRequestTimestamp;
     uint64_t deposit;
     std::array<Contributor, 10> contributors;
@@ -81,11 +84,12 @@ class RewardsContract {
     std::vector<ethyl::LogEntry> Logs(uint64_t height);
     ContractServiceNode serviceNodes(
             uint64_t index, std::optional<uint64_t> blockNumber = std::nullopt);
-    std::vector<uint64_t> getNonSigners(
-            const std::unordered_set<crypto::bls_public_key>& bls_public_keys);
-    std::vector<crypto::bls_public_key> getAllBLSPubkeys(uint64_t blockNumber);
+    std::vector<uint64_t> getNonSigners(const std::unordered_set<bls_public_key>& bls_public_keys);
+    std::vector<bls_public_key> getAllBLSPubkeys(uint64_t blockNumber);
 
   private:
     std::string contractAddress;
     ethyl::Provider& provider;
 };
+
+}  // namespace eth

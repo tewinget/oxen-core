@@ -16,6 +16,8 @@
 #include "common/guts.h"
 #include "logging/oxen_logger.h"
 
+namespace eth {
+
 static auto logcat = oxen::log::Cat("l2_tracker");
 
 TransactionType getLogType(const ethyl::LogEntry& log) {
@@ -69,8 +71,8 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             std::tie(eth_addr, bls_pk, sn_pubkey, sn_sig, fee256, c_size, c_len, contrib_hex) =
                     tools::split_hex_into<
                             skip<12>,
-                            crypto::eth_address,
-                            crypto::bls_public_key,
+                            eth::address,
+                            bls_public_key,
                             crypto::public_key,
                             crypto::ed25519_signature,
                             u256,
@@ -91,8 +93,8 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             contributors.resize(num_contributors);
             for (auto& [addr, amt] : contributors) {
                 u256 amt256;
-                std::tie(addr, amt256, contrib_hex) = tools::
-                        split_hex_into<skip<12>, crypto::eth_address, u256, std::string_view>(
+                std::tie(addr, amt256, contrib_hex) =
+                        tools::split_hex_into<skip<12>, eth::address, u256, std::string_view>(
                                 contrib_hex);
                 amt = tools::decode_integer_be(amt256);
             }
@@ -107,8 +109,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes,
             auto& [bls_pk] = result.emplace<ServiceNodeLeaveRequestTx>();
-            std::tie(bls_pk) =
-                    tools::split_hex_into<skip<12 + 20>, crypto::bls_public_key>(log.data);
+            std::tie(bls_pk) = tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
             break;
         }
         case TransactionType::ServiceNodeDeregister: {
@@ -120,8 +121,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes
             auto& [bls_pk] = result.emplace<ServiceNodeDeregisterTx>();
-            std::tie(bls_pk) =
-                    tools::split_hex_into<skip<12 + 20>, crypto::bls_public_key>(log.data);
+            std::tie(bls_pk) = tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
             break;
         }
         case TransactionType::ServiceNodeExit: {
@@ -135,8 +135,8 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // pubkey is 64 bytes
             auto& [eth_addr, amount, bls_pk] = result.emplace<ServiceNodeExitTx>();
             u256 amt256;
-            std::tie(eth_addr, amt256, bls_pk) = tools::split_hex_into<skip<12>, crypto::eth_address, u256, crypto::bls_public_key>(
-                            log.data);
+            std::tie(eth_addr, amt256, bls_pk) =
+                    tools::split_hex_into<skip<12>, eth::address, u256, bls_public_key>(log.data);
             amount = tools::decode_integer_be(amt256);
             break;
         }
@@ -164,13 +164,13 @@ std::vector<ethyl::LogEntry> RewardsContract::Logs(uint64_t height) {
     return provider.getLogs(height, contractAddress);
 }
 
-std::vector<crypto::bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumber) {
+std::vector<bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumber) {
     // Get the sentinel node to start the iteration
     const uint64_t service_node_sentinel_id = 0;
     ContractServiceNode sentinelNode = serviceNodes(service_node_sentinel_id, blockNumber);
     uint64_t currentNodeId = sentinelNode.next;
 
-    std::vector<crypto::bls_public_key> blsPublicKeys;
+    std::vector<bls_public_key> blsPublicKeys;
 
     // Iterate over the linked list of service nodes
     while (currentNodeId != service_node_sentinel_id) {
@@ -226,19 +226,20 @@ ContractServiceNode RewardsContract::serviceNodes(
     // dynamic) hence the offset struct is encoded in the first 32 byte element.
     auto [sn_data_offset] = tools::split_hex_into<u256, tools::ignore>(callResultHex);
     auto sn_data = callResultHex.substr(tools::decode_integer_be(sn_data_offset));
-    auto [next, prev, op_addr, pubkey, leaveRequestTimestamp, deposit, contr_offset] = tools::split_hex_into<
-            u256,
-            u256,
-            skip<12>,
-            crypto::eth_address,
-            crypto::bls_public_key,
-            u256,
-            u256,
-            u256,
-            tools::ignore>(sn_data);
+    auto [next, prev, op_addr, pubkey, leaveRequestTimestamp, deposit, contr_offset] =
+            tools::split_hex_into<
+                    u256,
+                    u256,
+                    skip<12>,
+                    eth::address,
+                    bls_public_key,
+                    u256,
+                    u256,
+                    u256,
+                    tools::ignore>(sn_data);
 
     ContractServiceNode result{};
-    result.good = false; // until proven otherwise
+    result.good = false;  // until proven otherwise
     result.next = tools::decode_integer_be(next);
     result.prev = tools::decode_integer_be(prev);
     result.operatorAddr = op_addr;
@@ -272,29 +273,36 @@ ContractServiceNode RewardsContract::serviceNodes(
         try {
             auto& [addr, amount] = result.contributors[i];
             u256 amt;
-            std::tie(addr, amt, contrib_data) = tools::split_hex_into<skip<12>, crypto::eth_address, u256, std::string_view>(contrib_data);
+            std::tie(addr, amt, contrib_data) =
+                    tools::split_hex_into<skip<12>, eth::address, u256, std::string_view>(
+                            contrib_data);
             amount = tools::decode_integer_be(amt);
         } catch (const std::exception& e) {
             oxen::log::error(
                     logcat,
-                    "Failed to parse contributor/contribution [{}] for service node {} with BLS pubkey {} at height {}: {}",
-                    i, index, result.pubkey,
-                    blockNumber ? "{}"_format(*blockNumber) : "(latest)", e.what());
+                    "Failed to parse contributor/contribution [{}] for service node {} with BLS "
+                    "pubkey {} at height {}: {}",
+                    i,
+                    index,
+                    result.pubkey,
+                    blockNumber ? "{}"_format(*blockNumber) : "(latest)",
+                    e.what());
             oxen::log::debug(logcat, "{}", service_node_blob_debug(result, callResultHex));
             return result;
         }
     }
 
     oxen::log::trace(
-                logcat,
-                "Successfully parsed new SN. {}", service_node_blob_debug(result, callResultHex));
+            logcat,
+            "Successfully parsed new SN. {}",
+            service_node_blob_debug(result, callResultHex));
 
     result.good = true;
     return result;
 }
 
 std::vector<uint64_t> RewardsContract::getNonSigners(
-        const std::unordered_set<crypto::bls_public_key>& bls_public_keys) {
+        const std::unordered_set<bls_public_key>& bls_public_keys) {
     const uint64_t service_node_sentinel_id = 0;
     ContractServiceNode service_node_end = serviceNodes(service_node_sentinel_id);
     uint64_t service_node_id = service_node_end.next;
@@ -309,3 +317,5 @@ std::vector<uint64_t> RewardsContract::getNonSigners(
 
     return non_signers;
 }
+
+}  // namespace eth

@@ -703,7 +703,7 @@ class Blockchain {
     bool check_tx_inputs(
             transaction& tx,
             tx_verification_context& tvc,
-            std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
+            std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
             crypto::hash& max_used_block_id,
             uint64_t& pmax_used_block_height,
             std::unordered_set<crypto::key_image>* key_image_conflicts = nullptr,
@@ -1165,7 +1165,7 @@ class Blockchain {
 
     void add_ethereum_transactions_to_tx_pool();
 
-    std::shared_ptr<L2Tracker> m_l2_tracker;
+    std::shared_ptr<eth::L2Tracker> m_l2_tracker;
 
 #ifndef IN_UNIT_TESTS
   private:
@@ -1397,7 +1397,7 @@ class Blockchain {
     bool check_tx_inputs(
             transaction& tx,
             tx_verification_context& tvc,
-            std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
+            std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
             uint64_t* pmax_used_block_height = nullptr,
             std::unordered_set<crypto::key_image>* key_image_conflicts = nullptr);
 

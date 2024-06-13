@@ -8,7 +8,7 @@ using cryptonote::hf;
 
 static auto logcat = oxen::log::Cat("l2_tracker");
 
-namespace ethereum {
+namespace eth {
 
 template <typename... T>
 static bool check_condition(
@@ -125,4 +125,4 @@ bool validate_ethereum_service_node_deregister_tx(
     return true;
 }
 
-}  // namespace ethereum
+}  // namespace eth

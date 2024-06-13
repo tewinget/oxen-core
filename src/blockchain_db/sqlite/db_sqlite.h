@@ -80,7 +80,7 @@ class BlockchainSQLite : public db::Database {
   public:
     // get_accrued_earnings -> queries the database for the amount that has been accrued to
     // the Ethereum `address` will return the atomic value in oxen that the service node is owed.
-    std::pair<uint64_t, uint64_t> get_accrued_earnings(const crypto::eth_address& address);
+    std::pair<uint64_t, uint64_t> get_accrued_earnings(const eth::address& address);
 
     // See `get_accrued_earnings`
     std::pair<uint64_t, uint64_t> get_accrued_earnings(const account_public_address& address);

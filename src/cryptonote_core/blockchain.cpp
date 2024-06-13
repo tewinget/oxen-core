@@ -533,7 +533,7 @@ bool Blockchain::init(
     if (!m_checkpoints.init(m_nettype, m_db))
         throw std::runtime_error("Failed to initialize checkpoints");
 
-    m_l2_tracker                          = std::make_shared<L2Tracker>(m_nettype);
+    m_l2_tracker                          = std::make_shared<eth::L2Tracker>(m_nettype);
     m_l2_tracker->provider.connectTimeout = 2000ms;
     if (ethereum_provider.size()) {
         std::string_view delimiter = ",";
@@ -863,7 +863,7 @@ block Blockchain::pop_block_from_blockchain(bool pop_batching_rewards = true) {
 
     // return transactions from popped block to the tx_pool
     size_t pruned = 0;
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session;
+    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
     if (popped_block.major_version >= cryptonote::feature::ETH_BLS) {
         ethereum_transaction_review_session = m_l2_tracker->initialize_mempool_review();
     }
@@ -2062,7 +2062,7 @@ void Blockchain::add_ethereum_transactions_to_tx_pool() {
         const crypto::hash tx_hash = get_transaction_hash(tx);
         tx_verification_context tvc = {};
 
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session =
+        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session =
                 m_l2_tracker->initialize_mempool_review();
         on_new_tx_from_block(tx);
         // Add transaction to memory pool
@@ -3526,7 +3526,7 @@ void Blockchain::on_new_tx_from_block(const cryptonote::transaction& tx) {
 bool Blockchain::check_tx_inputs(
         transaction& tx,
         tx_verification_context& tvc,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
+        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
         crypto::hash& max_used_block_id,
         uint64_t& max_used_block_height,
         std::unordered_set<crypto::key_image>* key_image_conflicts,
@@ -3788,7 +3788,7 @@ bool Blockchain::expand_transaction_2(
 bool Blockchain::check_tx_inputs(
         transaction& tx,
         tx_verification_context& tvc,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
+        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
         uint64_t* pmax_used_block_height,
         std::unordered_set<crypto::key_image>* key_image_conflicts) {
     log::trace(logcat, "Blockchain::{}", __func__);
@@ -4173,7 +4173,7 @@ bool Blockchain::check_tx_inputs(
         if (tx.type == txtype::ethereum_new_service_node) {
             cryptonote::tx_extra_ethereum_new_service_node entry = {};
             std::string fail_reason;
-            if (!ethereum::validate_ethereum_new_service_node_tx(
+            if (!eth::validate_ethereum_new_service_node_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processNewServiceNodeTx(
                         entry.bls_pubkey,
@@ -4190,7 +4190,7 @@ bool Blockchain::check_tx_inputs(
         } else if (tx.type == txtype::ethereum_service_node_leave_request) {
             cryptonote::tx_extra_ethereum_service_node_leave_request entry = {};
             std::string fail_reason;
-            if (!ethereum::validate_ethereum_service_node_leave_request_tx(
+            if (!eth::validate_ethereum_service_node_leave_request_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processServiceNodeLeaveRequestTx(
                         entry.bls_pubkey, fail_reason)) {
@@ -4204,7 +4204,7 @@ bool Blockchain::check_tx_inputs(
         } else if (tx.type == txtype::ethereum_service_node_exit) {
             cryptonote::tx_extra_ethereum_service_node_exit entry = {};
             std::string fail_reason;
-            if (!ethereum::validate_ethereum_service_node_exit_tx(
+            if (!eth::validate_ethereum_service_node_exit_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processServiceNodeExitTx(
                         entry.eth_address, entry.amount, entry.bls_pubkey, fail_reason)) {
@@ -4218,7 +4218,7 @@ bool Blockchain::check_tx_inputs(
         } else if (tx.type == txtype::ethereum_service_node_deregister) {
             cryptonote::tx_extra_ethereum_service_node_deregister entry = {};
             std::string fail_reason;
-            if (!ethereum::validate_ethereum_service_node_deregister_tx(
+            if (!eth::validate_ethereum_service_node_deregister_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processServiceNodeDeregisterTx(
                         entry.bls_pubkey, fail_reason)) {
@@ -4714,7 +4714,7 @@ bool Blockchain::check_block_timestamp(const block& b, uint64_t& median_ts) cons
 //------------------------------------------------------------------
 void Blockchain::return_tx_to_pool(std::vector<std::pair<transaction, std::string>>& txs) {
     auto version = get_network_version();
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session;
+    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
     if (version >= cryptonote::feature::ETH_BLS) {
         ethereum_transaction_review_session = m_l2_tracker->initialize_mempool_review();
     }
@@ -5065,7 +5065,7 @@ bool Blockchain::handle_block_to_main_chain(
     txs.reserve(bl.tx_hashes.size());
 
     auto hf_version = bl.major_version;
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session;
+    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
     if (hf_version >= cryptonote::feature::ETH_BLS) {
         ethereum_transaction_review_session =
                 m_l2_tracker->initialize_transaction_review(bl.l2_height);
