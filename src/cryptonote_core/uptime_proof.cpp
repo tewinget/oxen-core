@@ -20,6 +20,7 @@ namespace uptime_proof {
 static auto logcat = oxen::log::Cat("uptime_proof");
 
 using cryptonote::hf;
+namespace feature = cryptonote::feature;
 
 // Constructor for the uptime proof, will take the service node keys as a param and sign
 Proof::Proof(
@@ -43,7 +44,7 @@ Proof::Proof(
         storage_omq_port{sn_storage_omq_port},
         qnet_port{quorumnet_port} {
 
-    if (hardfork == hf::hf20_eth_transition) {
+    if (hardfork == feature::ETH_TRANSITION) {
         assert(keys.pub_bls);
         pop_bls = keys.bls_signer->signHash(crypto::keccak(keys.pub_bls, keys.pub));
     }
@@ -51,7 +52,7 @@ Proof::Proof(
     serialized_proof = bt_encode_uptime_proof(hardfork);
     proof_hash = crypto::keccak(serialized_proof);
 
-    if (hardfork < cryptonote::feature::ETH_BLS)
+    if (hardfork < feature::ETH_BLS)
         // Starting from HF21 we have guaranteed unified pubkey/ed25519 pubkey, so don't need to
         // send the old primary SN signature anymore: the single ed25519 signature does it all.
         crypto::generate_signature(proof_hash, keys.pub, keys.key, sig);
@@ -74,6 +75,14 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
     auto proof = oxenc::bt_dict_consumer{serialized_proof};
     // NB: we must consume in sorted key order
 
+    if (hardfork == feature::ETH_TRANSITION) {
+        pubkey_bls = tools::make_from_guts<crypto::bls_public_key>(
+                proof.require<std::string_view>("bk"sv));
+        pop_bls = tools::make_from_guts<crypto::bls_signature>(
+                proof.require<std::string_view>("bp"sv));
+    }
+
+
     if (auto ip = proof.require<std::string>("ip");
         !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)
         throw std::runtime_error{"Invalid IP address in proof"};
@@ -85,9 +94,6 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
         found_pk = true;
         pubkey = tools::make_from_guts<crypto::public_key>(proof.consume_string_view());
     }
-
-    if (proof.skip_until("pkb"))
-        pubkey_bls = tools::make_from_guts<crypto::bls_public_key>(proof.consume_string_view());
 
     pubkey_ed25519 = tools::make_from_guts<crypto::ed25519_public_key>(
             proof.require<std::string_view>("pke"sv));
@@ -114,10 +120,10 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
 }
 
 std::string Proof::bt_encode_uptime_proof(hf hardfork) const {
+    // NB: must append in ascii order
     oxenc::bt_dict_producer proof;
 
-    // NB: must append in ascii order
-    if (hardfork == hf::hf20_eth_transition) {
+    if (hardfork == cryptonote::feature::ETH_TRANSITION) {
         proof.append("bk", tools::view_guts(pubkey_bls));
         proof.append("bp", tools::view_guts(pop_bls));
     }
@@ -139,9 +145,9 @@ cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request Proof::generate_request(hf ha
     cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request request;
     assert(!serialized_proof.empty());
     request.proof = serialized_proof;
-    if (hardfork < hf::hf21_eth) {
-        // Starting at HF21 we only send the ed25519 sig (because ed and primary pubkeys are
-        // guaranteed unified starting at HF21).
+    if (hardfork < feature::ETH_BLS) {
+        // Starting at the full ETH hardfork we only send the ed25519 sig (because ed and primary
+        // pubkeys are guaranteed unified starting at HF21).
         request.sig = tools::view_guts(sig);
     }
     request.ed_sig = tools::view_guts(sig_ed25519);
