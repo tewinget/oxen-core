@@ -66,12 +66,12 @@ namespace
 
 TEST(Crypto, Format)
 {
-  EXPECT_EQ("{}"_format(shove_into<crypto::hash8>()), "<{}>"_format(hex_data<8>));
-  EXPECT_EQ("{}"_format(shove_into<crypto::hash>()), "<{}>"_format(hex_data<32>));
-  EXPECT_EQ("{}"_format(shove_into<crypto::public_key>()), "<{}>"_format(hex_data<32>));
-  EXPECT_EQ("{}"_format(shove_into<crypto::signature>()), "<{}>"_format(hex_data<64>));
-  EXPECT_EQ("{}"_format(shove_into<crypto::key_derivation>()), "<{}>"_format(hex_data<32>));
-  EXPECT_EQ("{}"_format(shove_into<crypto::key_image>()), "<{}>"_format(hex_data<32>));
+  EXPECT_EQ("{}"_format(shove_into<crypto::hash8>()), "{}"_format(hex_data<8>));
+  EXPECT_EQ("{}"_format(shove_into<crypto::hash>()), "{}"_format(hex_data<32>));
+  EXPECT_EQ("{}"_format(shove_into<crypto::public_key>()), "{}"_format(hex_data<32>));
+  EXPECT_EQ("{}"_format(shove_into<crypto::signature>()), "{}"_format(hex_data<64>));
+  EXPECT_EQ("{}"_format(shove_into<crypto::key_derivation>()), "{}"_format(hex_data<32>));
+  EXPECT_EQ("{}"_format(shove_into<crypto::key_image>()), "{}"_format(hex_data<32>));
 }
 
 TEST(Crypto, null_keys)
@@ -88,7 +88,7 @@ TEST(Crypto, equality)
 {
   crypto::public_key pk1{};
   std::copy(source.data(), source.data() + 32, pk1.begin());
-  ASSERT_EQ("{}"_format(pk1), "<{}>"_format(hex_full.substr(0, 64)));
+  ASSERT_EQ("{}"_format(pk1), "{}"_format(hex_full.substr(0, 64)));
   crypto::public_key pk2 = pk1;
   ASSERT_EQ(tools::view_guts(pk1), tools::view_guts(pk2));
   EXPECT_EQ(pk1, pk2);
@@ -97,13 +97,13 @@ TEST(Crypto, equality)
   ASSERT_EQ(tools::view_guts(pk1), tools::view_guts(pk3));
   EXPECT_EQ(pk1, pk3);
   pk3.zero();
-  ASSERT_EQ("{}"_format(pk3), "<{:064x}>"_format(0));
+  ASSERT_EQ("{}"_format(pk3), "{:064x}"_format(0));
   ASSERT_NE(tools::view_guts(pk1), tools::view_guts(pk3));
   EXPECT_NE(pk1, pk3);
   EXPECT_LT(pk3, pk1);
 
   std::copy(source.data() + 32, source.data() + 64, pk2.begin());
-  ASSERT_EQ("{}"_format(pk2), "<{}>"_format(hex_full.substr(64)));
+  ASSERT_EQ("{}"_format(pk2), "{}"_format(hex_full.substr(64)));
   EXPECT_NE(pk1, pk2);
   EXPECT_LT(pk2, pk1);
   EXPECT_FALSE(pk1 == pk2);
