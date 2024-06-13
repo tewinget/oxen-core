@@ -2648,7 +2648,6 @@ Use "help <command>" to see a command's documentation.
     m_txpool_auto_relayer.do_call([this] { return relay_txpool_transactions(); });
     m_service_node_vote_relayer.do_call([this] { return relay_service_node_votes(); });
     m_check_disk_space_interval.do_call([this] { return check_disk_space(); });
-    m_block_rate_interval.do_call([this] { return check_block_rate(); });
     m_sn_proof_cleanup_interval.do_call([&snl = m_service_node_list] {
         snl.cleanup_proofs();
         return true;
@@ -2709,52 +2708,6 @@ static double probability(unsigned int blocks, unsigned int expected) {
             p += probability1(b, expected);
     }
     return p;
-}
-//-----------------------------------------------------------------------------------------------
-bool core::check_block_rate() {
-    if (m_offline || m_nettype == network_type::FAKECHAIN ||
-        m_target_blockchain_height > get_current_blockchain_height() ||
-        m_target_blockchain_height == 0) {
-        log::debug(logcat, "Not checking block rate, offline or syncing");
-        return true;
-    }
-
-    static constexpr double threshold =
-            1. / ((24h * 10) / TARGET_BLOCK_TIME);  // one false positive every 10 days
-    static constexpr unsigned int max_blocks_checked = 150;
-
-    const time_t now = time(NULL);
-    const std::vector<time_t> timestamps =
-            m_blockchain_storage.get_last_block_timestamps(max_blocks_checked);
-
-    static const unsigned int seconds[] = {5400, 3600, 1800, 1200, 600};
-    for (size_t n = 0; n < sizeof(seconds) / sizeof(seconds[0]); ++n) {
-        unsigned int b = 0;
-        const time_t time_boundary = now - static_cast<time_t>(seconds[n]);
-        for (time_t ts : timestamps)
-            b += ts >= time_boundary;
-        const double p = probability(b, seconds[n] / tools::to_seconds(TARGET_BLOCK_TIME));
-        log::debug(
-                logcat,
-                "blocks in the last {} minutes: {} (probability {})",
-                seconds[n] / 60,
-                b,
-                p);
-        if (p < threshold) {
-            log::warning(
-                    logcat,
-                    "There were {}{} blocks in the last {} minutes, \
-            there might be large hash rate changes, or we might be partitioned, \
-            cut off from the Loki network or under attack, or your computer's time is off. \
-            Or it could be just sheer bad luck.",
-                    b,
-                    (b == max_blocks_checked ? " or more" : ""),
-                    seconds[n] / 60);
-            break;  // no need to look further
-        }
-    }
-
-    return true;
 }
 //-----------------------------------------------------------------------------------------------
 void core::flush_bad_txs_cache() {

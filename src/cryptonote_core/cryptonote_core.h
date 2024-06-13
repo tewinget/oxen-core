@@ -1275,8 +1275,6 @@ class core : public i_miner_handler {
     /// interval for checking our own uptime proof; starts low, but will be set to
     /// get_net_config().UPTIME_PROOF_CHECK_INTERVAL after the first proof goes out.
     tools::periodic_task m_check_uptime_proof_interval{"uptime proof", 30s};
-    /// interval for checking block rate
-    tools::periodic_task m_block_rate_interval{"block rate updater", 90s, false};
     /// interval for incremental blockchain pruning
     tools::periodic_task m_blockchain_pruning_interval{"pruning interval", 5h};
     /// interval for when we re-relay service node votes
