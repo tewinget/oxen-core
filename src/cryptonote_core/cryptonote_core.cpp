@@ -2089,26 +2089,32 @@ bool core::submit_uptime_proof() {
     if (!m_service_node)
         return true;
 
-    cryptonote_connection_context fake_context{};
-    bool relayed;
-    auto height = get_current_blockchain_height();
-    auto hf_version = get_network_version(m_nettype, height);
+    try {
+        cryptonote_connection_context fake_context{};
+        bool relayed;
+        auto height = get_current_blockchain_height();
+        auto hf_version = get_network_version(m_nettype, height);
 
-    auto proof = m_service_node_list.generate_uptime_proof(
-            hf_version,
-            m_sn_public_ip,
-            storage_https_port(),
-            storage_omq_port(),
-            ss_version,
-            m_quorumnet_port,
-            lokinet_version);
-    auto req = proof.generate_request(hf_version);
-    relayed = get_protocol()->relay_uptime_proof(req, fake_context);
+        auto proof = m_service_node_list.generate_uptime_proof(
+                hf_version,
+                m_sn_public_ip,
+                storage_https_port(),
+                storage_omq_port(),
+                ss_version,
+                m_quorumnet_port,
+                lokinet_version);
+        auto req = proof.generate_request(hf_version);
+        relayed = get_protocol()->relay_uptime_proof(req, fake_context);
 
-    if (relayed)
-        log::info(
-                logcat, "Submitted uptime-proof for Service Node (yours): {}", m_service_keys.pub);
-
+        if (relayed)
+            log::info(
+                    logcat,
+                    "Submitted uptime-proof for Service Node (yours): {}",
+                    m_service_keys.pub);
+    } catch (const std::exception& e) {
+        log::error(logcat, "Failed to generate/submit uptime proof: {}", e.what());
+        return false;
+    }
     return true;
 }
 //-----------------------------------------------------------------------------------------------
