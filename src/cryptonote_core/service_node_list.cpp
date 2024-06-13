@@ -3836,10 +3836,8 @@ bool service_node_list::handle_uptime_proof(
     // BLS pubkey and verification: these only get sent during the HF20 transition; for HF21+ the
     // data will be stored in the SN registration data itself.
     if (vers.first == hf::hf20_eth_transition) {
-        log::critical(logcat, "FIXME: checking proof for BLS");  // FIXME DEBUG
         // BLS pubkey and signature verification
         if (!proof->pubkey_bls || !proof->pop_bls) {
-            log::critical(logcat, "FIXME: missing something BLS");  // FIXME DEBUG
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: BLS pubkey and pop are required in HF20",
@@ -3849,15 +3847,12 @@ bool service_node_list::handle_uptime_proof(
 
         auto pop_hash = crypto::keccak(proof->pubkey_bls, proof->pubkey);
         if (!bls_utils::verify(proof->pop_bls, pop_hash, proof->pubkey_bls)) {
-            log::critical(logcat, "FIXME: BLS sig check failed");  // FIXME DEBUG
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: BLS proof of possession verification failed",
                     proof->pubkey);
             return false;
         }
-
-        log::critical(logcat, "BLS passed 🎉");  // FIXME DEBUG
     }
 
     if (proof->qnet_port == 0) {
