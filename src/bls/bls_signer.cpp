@@ -66,8 +66,7 @@ bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) {
 }
 
 crypto::bls_signature BLSSigner::signHash(const crypto::hash& hash) {
-    return tools::make_from_guts<crypto::bls_signature>(
-            signHashSig(hash).getStr(bls_utils::BLS_MODE_BINARY));
+    return bls_utils::to_crypto_signature(signHashSig(hash));
 }
 
 crypto::bls_signature BLSSigner::proofOfPossession(
