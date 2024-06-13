@@ -25,6 +25,7 @@
 #include <ctime>
 #include <future>
 #include <mutex>
+#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain.h"
 #include "bls/bls_aggregator.h"
@@ -755,7 +756,7 @@ class core : public i_miner_handler {
     /// node.
     eth::BLSSigner& get_bls_signer() {
         if (!m_bls_signer)
-            throw std::logic_error{"Not a service node: no BLS Signer available"};
+            throw cpptrace::logic_error{"Not a service node: no BLS Signer available"};
         return *m_bls_signer;
     }
 

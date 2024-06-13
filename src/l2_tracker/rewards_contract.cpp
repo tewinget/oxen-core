@@ -77,13 +77,13 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
 
             fee = tools::decode_integer_be(fee256);
             if (fee > cryptonote::STAKING_FEE_BASIS)
-                throw std::invalid_argument{
+                throw cpptrace::invalid_argument{
                         "Invalid NewServiceNode data: fee must be in [0, {}]"_format(
                                 cryptonote::STAKING_FEE_BASIS)};
             auto num_contributors = tools::decode_integer_be(c_len);
             if (tools::decode_integer_be(c_size) != 64 ||
                 contrib_hex.size() != 2 * num_contributors * (32 + 32))
-                throw std::invalid_argument{
+                throw cpptrace::invalid_argument{
                         "Invalid NewServiceNode data: invalid contributor data"};
 
             contributors.resize(num_contributors);

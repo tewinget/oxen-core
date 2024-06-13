@@ -31,6 +31,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <chrono>
+#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
@@ -48,6 +49,7 @@ using namespace cryptonote;
 static bool stop_requested = false;
 
 int main(int argc, char* argv[]) {
+    cpptrace::register_terminate_handler();
     static auto logcat = log::Cat("bcutil");
 
     TRY_ENTRY();
@@ -132,7 +134,7 @@ int main(int argc, char* argv[]) {
     auto bdb = new_db();
     if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw cpptrace::runtime_error("Failed to initialize a database");
     }
 
     const fs::path filename = tools::utf8_path(opt_data_dir) / bdb->get_db_name();
@@ -269,10 +271,15 @@ int main(int argc, char* argv[]) {
         currsz += bd.size();
         for (const auto& tx_id : blk.tx_hashes) {
             if (!tx_id) {
-                throw std::runtime_error("Aborting: null txid");
+                throw cpptrace::runtime_error("Aborting: null txid");
             }
+<<<<<<< HEAD
             if (!db.get_pruned_tx_blob(tx_id, bd)) {
                 throw std::runtime_error("Aborting: tx not found");
+=======
+            if (!db->get_pruned_tx_blob(tx_id, bd)) {
+                throw cpptrace::runtime_error("Aborting: tx not found");
+>>>>>>> 3c5657422 (Add cpptrace for stack trace on exception)
             }
             transaction tx;
             if (!parse_and_validate_tx_base_from_blob(bd, tx)) {

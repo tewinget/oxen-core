@@ -28,6 +28,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <fmt/std.h>
+#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
@@ -77,6 +78,7 @@ struct reference {
 };
 
 int main(int argc, char* argv[]) {
+    cpptrace::register_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -155,7 +157,7 @@ int main(int argc, char* argv[]) {
     auto db = new_db();
     if (!db) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw cpptrace::runtime_error("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 

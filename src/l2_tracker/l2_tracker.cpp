@@ -6,6 +6,7 @@
 #include <concepts>
 #include <thread>
 #include <utility>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/bigint.h"
 #include "common/guts.h"

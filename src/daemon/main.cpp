@@ -30,6 +30,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <cstdlib>
+#include <cpptrace/cpptrace.hpp>
 
 #include "command_server.h"
 #include "common/command_line.h"
@@ -49,6 +50,7 @@
 #include "rpc/core_rpc_server.h"
 #include "version.h"
 
+
 namespace po = boost::program_options;
 
 namespace Log = oxen::log;  // capital Log to avoid conflict with math.h log()
@@ -67,6 +69,7 @@ constexpr auto CYAN = "\033[36;1m";
 }  // namespace
 
 int main(int argc, char const* argv[]) {
+    cpptrace::register_terminate_handler();
     bool logs_initialized = false;
     try {
         // TODO parse the debug options like set log level right here at start
@@ -229,7 +232,7 @@ int main(int argc, char const* argv[]) {
             try {
                 std::ifstream cfg{*load_config};
                 if (!cfg.is_open())
-                    throw std::runtime_error{"Unable to open file"};
+                    throw cpptrace::runtime_error{"Unable to open file"};
                 po::store(
                         po::parse_config_file<char>(
                                 cfg,
@@ -354,7 +357,7 @@ int main(int argc, char const* argv[]) {
                     rpc_addr = command_line::get_arg(
                             vm, cryptonote::rpc::http_server::arg_rpc_admin)[0];
                     if (rpc_addr == "none")
-                        throw std::runtime_error{
+                        throw cpptrace::runtime_error{
                                 "Cannot invoke oxend command: --rpc-admin is disabled"};
                 }
 

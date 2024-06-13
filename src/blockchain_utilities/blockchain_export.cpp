@@ -28,6 +28,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <fmt/std.h>
+#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain_objects.h"
 #include "blocksdat_file.h"
@@ -41,6 +42,7 @@ namespace po = boost::program_options;
 using namespace blockchain_utils;
 
 int main(int argc, char* argv[]) {
+    cpptrace::register_terminate_handler();
     using namespace oxen;
     auto logcat = log::Cat("bcutil");
 
@@ -122,7 +124,7 @@ int main(int argc, char* argv[]) {
     auto db = new_db();
     if (!db) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw cpptrace::runtime_error("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 

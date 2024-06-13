@@ -1,5 +1,7 @@
 #include "bls_aggregator.h"
 
+#include <cpptrace/cpptrace.hpp>
+
 #include <oxenc/bt_producer.h>
 
 #include "blockchain_db/sqlite/db_sqlite.h"
@@ -11,6 +13,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "ethyl/utils.hpp"
 #include "logging/oxen_logger.h"
+
 
 #define BLS_ETH
 #define MCLBN_FP_UNIT_SIZE 4
@@ -194,7 +197,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
 
     // NOTE: Validate the arguments
     if (!address) {
-        throw std::invalid_argument(fmt::format(
+        throw cpptrace::invalid_argument(fmt::format(
                 "Aggregating a rewards request for the zero address for {} SENT at height {} is "
                 "invalid because address is invalid. Request rejected",
                 address,
@@ -204,7 +207,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
     }
 
     if (amount == 0) {
-        throw std::invalid_argument(fmt::format(
+        throw cpptrace::invalid_argument(fmt::format(
                 "Aggregating a rewards request for '{}' for 0 SENT at height {} is invalid because "
                 "no rewards are available. Request rejected.",
                 address,
@@ -212,7 +215,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
     }
 
     if (height > service_node_list.height()) {
-        throw std::invalid_argument(fmt::format(
+        throw cpptrace::invalid_argument(fmt::format(
                 "Aggregating a rewards request for '{}' for {} SENT at height {} is invalid "
                 "because the height is greater than the blockchain height {}. Request rejected",
                 address,
@@ -244,23 +247,23 @@ BLSRewardsResponse BLSAggregator::rewards_request(
                     const BLSRequestResult& request_result, const std::vector<std::string>& data) {
                 try {
                     if (!request_result.success || data.size() != 2 || data[0] != "200")
-                        throw std::runtime_error{
+                        throw cpptrace::runtime_error{
                                 "Error retrieving reward balance: {}"_format(fmt::join(data, " "))};
 
                     oxenc::bt_dict_consumer d{data[1]};
 
                     auto bal = d.require<uint64_t>("balance");
                     auto hei = d.require<uint64_t>("height");
-                    auto sig =
-                            tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
-                                                                                             "tur"
-                                                                                             "e"));
+                    auto sig = tools::make_from_guts<eth::bls_signature>(
+                            d.require<std::string_view>("signa"
+                                                        "tur"
+                                                        "e"));
 
                     if (result.address !=
                         tools::make_from_guts<eth::address>(d.require<std::string_view>("address")))
-                        throw std::runtime_error{"ETH address does not match the request"};
+                        throw cpptrace::runtime_error{"ETH address does not match the request"};
                     if (result.amount != bal || hei != result.height)
-                        throw std::runtime_error{
+                        throw cpptrace::runtime_error{
                                 "Balance/height mismatch: expected {}/{}, got {}/{}"_format(
                                         result.amount, result.height, bal, hei)};
 
@@ -269,7 +272,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
                                 bls_utils::from_crypto_pubkey(request_result.sn.bls_pubkey),
                                 result.signed_hash.data(),
                                 result.signed_hash.size()))
-                        throw std::runtime_error{"Invalid BLS signature for BLS pubkey {}"_format(
+                        throw cpptrace::runtime_error{"Invalid BLS signature for BLS pubkey {}"_format(
                                 request_result.sn.bls_pubkey)};
 
                     std::lock_guard lock{sig_mutex};
@@ -390,13 +393,13 @@ AggregateExitResponse BLSAggregator::aggregateExitOrLiquidate(
                     const BLSRequestResult& request_result, const std::vector<std::string>& data) {
                 try {
                     if (!request_result.success || data.size() != 2 || data[0] != "200")
-                        throw std::runtime_error{
+                        throw cpptrace::runtime_error{
                                 "Request returned an error: {}"_format(fmt::join(data, " "))};
 
                     oxenc::bt_dict_consumer d{data[1]};
                     if (result.exit_pubkey != tools::make_from_guts<bls_public_key>(
                                                       d.require<std::string_view>(pubkey_key)))
-                        throw std::runtime_error{"BLS pubkey does not match the request"};
+                        throw cpptrace::runtime_error{"BLS pubkey does not match the request"};
 
                     auto sig =
                             tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
@@ -409,7 +412,7 @@ AggregateExitResponse BLSAggregator::aggregateExitOrLiquidate(
                                 bls_utils::from_crypto_pubkey(request_result.sn.bls_pubkey),
                                 result.signed_hash.data(),
                                 result.signed_hash.size()))
-                        throw std::runtime_error{"Invalid BLS signature for BLS pubkey {}"_format(
+                        throw cpptrace::runtime_error{"Invalid BLS signature for BLS pubkey {}"_format(
                                 request_result.sn.bls_pubkey)};
 
                     std::lock_guard<std::mutex> lock(signers_mutex);
