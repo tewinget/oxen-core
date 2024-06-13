@@ -2,12 +2,14 @@
 
 #include <oxenc/hex.h>
 
+#include <array>
 #include <concepts>
 #include <cstring>
 #include <span>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 #include "epee/span.h"  // epee
 
@@ -209,6 +211,11 @@ namespace detail {
             (std::is_same_v<T, ignore> + ...) == 0 ||
             ((std::is_same_v<T, ignore> + ...) == 1 && final_is_ignore<T...>);
 
+    template <size_t SpanSize, typename Char, size_t... I>
+    std::array<std::span<Char, SpanSize>, sizeof...(I)> subspans(
+            Char* data, std::index_sequence<I...>) {
+        return {std::span<Char, SpanSize>{data + SpanSize * I, SpanSize}...};
+    }
 }  // namespace detail
 
 template <typename T>
@@ -278,6 +285,31 @@ constexpr detail::tuple_without_skips<T...> split_hex_into(std::string_view hex_
     detail::tuple_without_skips<T...> result;
     detail::load_split_tuple_hex<0, T...>(result, hex_in);
     return result;
+}
+
+// Splits a memcpy-able type into an array of consecutive, fixed-width byte spans, each of the given
+// size.  The span size must evenly divide the type being split.
+//
+// For example:
+//
+//     crypto::ed25519_signature sig{...};
+//     auto [r, s] = subspans<32>(sig);
+//
+// yields two 32-byte spans r and s of the 64-byte signature value.
+//
+template <size_t SpanSize, oxenc::basic_char Char = std::byte, safe_to_memcpy T>
+    requires(sizeof(T) % SpanSize == 0)
+constexpr std::array<std::span<Char, SpanSize>, sizeof(T) / SpanSize> subspans(T& val) {
+    return detail::subspans<SpanSize>(
+            reinterpret_cast<Char*>(&val), std::make_index_sequence<sizeof(T) / SpanSize>{});
+}
+
+// const version of the above
+template <size_t SpanSize, oxenc::basic_char Char = std::byte, safe_to_memcpy T>
+    requires(sizeof(T) % SpanSize == 0)
+constexpr std::array<std::span<const Char, SpanSize>, sizeof(T) / SpanSize> subspans(const T& val) {
+    return detail::subspans<SpanSize, const Char>(
+            reinterpret_cast<const Char*>(&val), std::make_index_sequence<sizeof(T) / SpanSize>{});
 }
 
 }  // namespace tools

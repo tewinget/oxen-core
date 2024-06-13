@@ -3,6 +3,7 @@
 #include <oxenc/hex.h>
 
 #include <cstring>
+#include <type_traits>
 
 #include "common/guts.h"
 #include "crypto/crypto.h"
@@ -55,40 +56,104 @@ void init() {
     _need_init = false;
 }
 
-crypto::bls_signature to_crypto_signature(const bls::Signature& sig) {
+/// Serialize a bls point-backed type (bls::Signature, bls::PublicKey) into our desired
+/// serialization format (to be compatible with Solidity's BN256G1 library), which wants a
+/// normalized (z == 1) form, with decompressed x and y values in big-endian byte format.
+///
+/// For signatures, that is G2 (with 64-bit x and y); for pubkeys G1 (with 32-bit x and y), but
+/// aside from which curve is used, the operation here is identical (and hence this templated
+/// function).
+///
+/// Herumi BLS makes this difficult, though, as it wants to use its own serialization functions, but
+/// they won't do what we need, hence this code which gets a little dirty with the herumi BLS
+/// internals to do our own serialization.
+template <typename CryptoT, typename Gx, typename BLS_T>
+static CryptoT to_normalized_crypto(const BLS_T& in) {
     init();
-    constexpr mclSize serializedSignatureSize = 32;
-    crypto::bls_signature serialized_signature;
-    static_assert(serialized_signature.size() == serializedSignatureSize * 4);
+    CryptoT serialized{};
 
-    auto* dst = serialized_signature.data();
-    const blsSignature* blssig = sig.getPtr();
-    const mcl::bn::G2* g2Point = reinterpret_cast<const mcl::bn::G2*>(&blssig->v);
-    mcl::bn::G2 g2Point2 = *g2Point;
-    g2Point2.normalize();
-    if (g2Point2.x.a.serialize(dst, serializedSignatureSize, BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of x.a is zero");
-    if (g2Point2.x.b.serialize(
-                dst + serializedSignatureSize, serializedSignatureSize, BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of x.b is zero");
-    if (g2Point2.y.a.serialize(
-                dst + serializedSignatureSize * 2, serializedSignatureSize, BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of y.a is zero");
-    if (g2Point2.y.b.serialize(
-                dst + serializedSignatureSize * 3, serializedSignatureSize, BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of y.b is zero");
-    return serialized_signature;
+    // Divide the output into the X,Y components:
+    auto [x, y] = tools::subspans<sizeof(CryptoT) / 2>(serialized);
+
+    const auto* blsraw = in.getPtr();
+    static_assert(sizeof(blsraw->v) == sizeof(Gx));
+    const Gx* point_in = reinterpret_cast<const Gx*>(&blsraw->v);
+
+    // Copy the point from then input because we need to normalize it to z == 1 (so that we don't
+    // have to serialize the z value at all).
+    Gx point = *point_in;
+    point.normalize();
+    if (point.x.serialize(x.data(), x.size(), BLS_MODE_BINARY) == 0)
+        throw std::runtime_error("size of x is zero");
+    if (point.y.serialize(y.data(), y.size(), BLS_MODE_BINARY) == 0)
+        throw std::runtime_error("size of y is zero");
+
+    return serialized;
+}
+
+crypto::bls_signature to_crypto_signature(const bls::Signature& sig) {
+    return to_normalized_crypto<crypto::bls_signature, mcl::bn::G2>(sig);
+}
+
+crypto::bls_public_key to_crypto_pubkey(const bls::PublicKey& publicKey) {
+    return to_normalized_crypto<crypto::bls_public_key, mcl::bn::G1>(publicKey);
+}
+static_assert(std::is_same_v<char*, std::remove_const_t<std::remove_pointer_t<const char*>>*>);
+
+/// This is the reverse of to_normalized_crypto: it takes a crypto::bls_signature or
+/// crypto::bls_pubkey value, encoded in Solidity's BN256G1/2 form, and deserializes it into a
+/// herumi bls::Signature of bls::PublicKey object.
+template <typename BLS_T, typename Gx, typename CryptoT>
+static BLS_T from_normalized_crypto(const CryptoT& in) {
+    init();
+
+    // This herumi API is atrocious.
+    //
+    // TODO: It's impossible to create a bls::PublicKey from a G1 point through the C++ interface.
+    // It allows deserialization from a hex or binary string, but, the hex string must originally
+    // have been serialised through its member function.
+    //
+    // Since we have a custom format for Solidity, although we can reconstruct the individual
+    // components of the public key in binary we have to go a roundabout way to load these bytes
+    // into the key with this not-very-nice casting.
+
+    BLS_T bls;
+    bls.clear();
+
+    // const_cast away the pointer's constness which is gross but legal because the original object
+    // was not declared const and the herumi C++ API forces const on them for no good reason.
+    using BlsRawT = std::remove_const_t<std::remove_pointer_t<decltype(bls.getPtr())>>;
+    auto* blsraw = const_cast<BlsRawT*>(bls.getPtr());
+    static_assert(sizeof(blsraw->v) == sizeof(Gx));
+    static_assert(alignof(decltype(blsraw->v)) >= alignof(Gx));
+    auto* point = reinterpret_cast<Gx*>(&blsraw->v);
+
+    constexpr size_t component_size = sizeof(CryptoT) / 2;
+    static_assert(component_size == sizeof(blsraw->v.x));
+
+    // When serializing we normalize, which means we have an implicit z = 1 to load (which we load
+    // from this little endian value for convenience):
+    constexpr std::array<unsigned char, component_size> z = {1, 0, /*..., 0*/};
+
+    auto [x, y] = tools::subspans<component_size>(in);
+    size_t readX = point->x.deserialize(x.data(), x.size(), BLS_MODE_BINARY);
+    size_t readY = point->y.deserialize(y.data(), y.size(), BLS_MODE_BINARY);
+    [[maybe_unused]] size_t readZ = point->z.deserialize(z.data(), z.size(), mcl::IoSerialize);
+
+    assert(readZ == z.size());
+    if (bool x_fail = readX != x.size(); x_fail || readY != x.size())
+        throw std::runtime_error{
+                "Failed to deserialize BLS {} component from input value '{:x}'"_format(
+                        x_fail ? 'x' : 'y', in)};
+    return bls;
 }
 
 bls::Signature from_crypto_signature(const crypto::bls_signature& sig) {
-    init();
-    bls::Signature bls_sig;
-    bls_sig.clear();
-    auto sig_bytes = tools::view_guts(sig);
-    if (0 !=
-        mclBnG2_setStr(&bls_sig.getPtr()->v, sig_bytes.data(), sig_bytes.size(), BLS_MODE_BINARY))
-        throw std::runtime_error{"Invalid signature"};
-    return bls_sig;
+    return from_normalized_crypto<bls::Signature, mcl::bn::G2>(sig);
+}
+
+bls::PublicKey from_crypto_pubkey(const crypto::bls_public_key& pk) {
+    return from_normalized_crypto<bls::PublicKey, mcl::bn::G1>(pk);
 }
 
 [[nodiscard]] bool verify(
@@ -97,49 +162,7 @@ bls::Signature from_crypto_signature(const crypto::bls_signature& sig) {
         const crypto::bls_public_key& pk) {
     init();
 
-    blsPublicKey blspk{};
-    if (0 !=
-        mclBnG1_setStr(
-                &blspk.v, reinterpret_cast<const char*>(pk.data()), pk.size(), BLS_MODE_BINARY))
-        return false;
-
-    blsSignature blssig{};
-    if (0 !=
-        mclBnG2_setStr(
-                &blssig.v, reinterpret_cast<const char*>(sig.data()), sig.size(), BLS_MODE_BINARY))
-        return false;
-
-    return blsVerifyHash(&blssig, &blspk, hash.data(), hash.size()) == 1;
-}
-
-crypto::bls_public_key to_crypto_pubkey(const bls::PublicKey& publicKey) {
-    init();
-    constexpr mclSize KEY_SIZE = 32;
-    crypto::bls_public_key serializedKey;
-    static_assert(serializedKey.size() == KEY_SIZE * 2 /*X, Y component*/);
-
-    auto* dst = serializedKey.data();
-    const blsPublicKey* rawKey = publicKey.getPtr();
-
-    mcl::bn::G1 g1Point = {};
-    g1Point.clear();
-
-    // NOTE: const_cast is legal because the original g1Point was not declared const
-    static_assert(
-            sizeof(*g1Point.x.getUnit()) * g1Point.x.maxSize == sizeof(rawKey->v.x.d),
-            "We memcpy the key X,Y,Z component into G1 point's X,Y,Z component, hence, the sizes "
-            "must match");
-    std::memcpy(const_cast<uint64_t*>(g1Point.x.getUnit()), rawKey->v.x.d, sizeof(rawKey->v.x.d));
-    std::memcpy(const_cast<uint64_t*>(g1Point.y.getUnit()), rawKey->v.y.d, sizeof(rawKey->v.y.d));
-    std::memcpy(const_cast<uint64_t*>(g1Point.z.getUnit()), rawKey->v.z.d, sizeof(rawKey->v.z.d));
-    g1Point.normalize();
-
-    if (g1Point.x.serialize(dst, KEY_SIZE, BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of x is zero");
-    if (g1Point.y.serialize(dst + KEY_SIZE, KEY_SIZE, BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of y is zero");
-
-    return serializedKey;
+    return from_crypto_signature(sig).verifyHash(from_crypto_pubkey(pk), hash.data(), hash.size());
 }
 
 std::string PublicKeyToHex(const bls::PublicKey& publicKey) {
@@ -149,61 +172,6 @@ std::string PublicKeyToHex(const bls::PublicKey& publicKey) {
 std::string SignatureToHex(const bls::Signature& sig) {
     auto s = to_crypto_signature(sig);
     return oxenc::to_hex(s.begin(), s.end());
-}
-
-bls::PublicKey from_crypto_pubkey(const crypto::bls_public_key& pk) {
-    init();
-    constexpr size_t BLS_PKEY_COMPONENT_SIZE = 32;
-    static_assert(sizeof(pk) == 2 * BLS_PKEY_COMPONENT_SIZE);
-
-    // NOTE: Divide the 2 keys into the X,Y component
-    std::span pkeyX{pk.data(), BLS_PKEY_COMPONENT_SIZE};
-    std::span pkeyY{pk.data() + BLS_PKEY_COMPONENT_SIZE, BLS_PKEY_COMPONENT_SIZE};
-
-    // NOTE: In `to_crypto_pubkey` before we serialize the G1 point, we normalize
-    // the point which divides X, Y by the Z component. This transformation then
-    // converts the divisor to 1 (Z) as the division has already been applied to
-    // X and Y. Here we reconstruct Z as 1.
-    std::array<unsigned char, 32> pkeyZ = {1, 0 /*, ..., 0*/};
-
-    // NOTE: This is the reverse of utils::to_crypto_pubkey (above). We serialize
-    // a G1 point to conform the required format to interop directly with
-    // Solidity's BN256G1 library.
-    mcl::bn::G1 g1Point = {};
-    g1Point.clear();  // NOTE: Default init has *uninitialized values*!
-
-    // NOTE: Deserialize the components back into the point.
-    size_t readX = g1Point.x.deserialize(pkeyX.data(), pkeyX.size(), BLS_MODE_BINARY);
-    size_t readY = g1Point.y.deserialize(pkeyY.data(), pkeyY.size(), BLS_MODE_BINARY);
-    size_t readZ = g1Point.z.deserialize(pkeyZ.data(), pkeyZ.size(), mcl::IoSerialize);
-
-    // NOTE: This is hardcoded so it should always succeed, if not something
-    // bad has gone wrong.
-    assert(readZ == pkeyZ.size());
-
-    if (bool x_fail = readX != pkeyX.size(); x_fail || readY != pkeyY.size())
-        throw std::runtime_error{
-                "Failed to deserialize BLS key {} component from input bls pubkey '{:x}'"_format(
-                        x_fail ? 'x' : 'y', pk)};
-
-    // TODO: It's impossible to create a bls::PublicKey from a G1 point through
-    // the C++ interface. It allows deserialization from a hex string, but, the
-    // hex string must originally have been serialised through its member
-    // function.
-    //
-    // Since we have a custom format for Solidity, although we can reconstruct
-    // the individual components of the public key in binary we have to go a
-    // roundabout way to restore these bytes into the key.
-    //
-    // const_cast away the pointer which is legal because the original object
-    // was not declared const.
-    bls::PublicKey result = {};
-    blsPublicKey* rawKey = const_cast<blsPublicKey*>(result.getPtr());
-    std::memcpy(rawKey->v.x.d, g1Point.x.getUnit(), sizeof(rawKey->v.x.d));
-    std::memcpy(rawKey->v.y.d, g1Point.y.getUnit(), sizeof(rawKey->v.y.d));
-    std::memcpy(rawKey->v.z.d, g1Point.z.getUnit(), sizeof(rawKey->v.z.d));
-
-    return result;
 }
 
 }  // namespace bls_utils
