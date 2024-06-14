@@ -26,18 +26,17 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <fmt/std.h>
-#include <cpptrace/cpptrace.hpp>
-
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
-#include "common/command_line.h"
-#include "common/guts.h"
-#include "common/median.h"
-#include "common/varint.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_core/uptime_proof.h"
 #include "version.h"
+
+#include <common/command_line.h>
+#include <common/guts.h>
+#include <common/median.h>
+#include <common/exception.h>
+
+#include <fmt/std.h>
 
 namespace po = boost::program_options;
 using namespace cryptonote;
@@ -45,7 +44,7 @@ using namespace cryptonote;
 static auto logcat = log::Cat("bcutil");
 
 int main(int argc, char* argv[]) {
-    cpptrace::register_terminate_handler();
+    std::set_terminate(oxen::on_terminate_handler);
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -125,7 +124,7 @@ int main(int argc, char* argv[]) {
     auto bdb = new_db();
     if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
-        throw cpptrace::runtime_error("Failed to initialize a database");
+        throw oxen::runtime_error("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 

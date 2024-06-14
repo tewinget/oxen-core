@@ -37,6 +37,7 @@
 #include "common/file.h"
 #include "common/i18n.h"
 #include "common/util.h"
+#include "common/exception.h"
 #include "epee/misc_log_ex.h"
 #include "epee/string_tools.h"
 #include "logging/oxen_logger.h"
@@ -166,7 +167,7 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
             if (std::error_code ec; fs::exists(config, ec)) {
                 std::ifstream cfg{config};
                 if (!cfg.is_open())
-                    throw cpptrace::runtime_error{"Unable to open config file: {}"_format(config)};
+                    throw oxen::runtime_error{"Unable to open config file: {}"_format(config)};
                 po::store(po::parse_config_file<char>(cfg, desc_params), vm);
             } else {
                 log::error(logcat, "{}{}", wallet_args::tr("Can't find config file "), config);
