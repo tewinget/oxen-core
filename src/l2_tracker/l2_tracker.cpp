@@ -159,8 +159,7 @@ void L2Tracker::populate_review_transactions(std::shared_ptr<TransactionReviewSe
             state.height <= session->review_block_height_max) {
             for (const auto& transactionVariant : state.state_changes) {
                 std::visit(
-                        [&session](auto&& arg) {
-                            using T = std::decay_t<decltype(arg)>;
+                        [&session]<typename T>(const T& arg) {
                             if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
                                 session->new_service_nodes.push_back(arg);
                             } else if constexpr (std::is_same_v<T, ServiceNodeLeaveRequestTx>) {
@@ -169,6 +168,10 @@ void L2Tracker::populate_review_transactions(std::shared_ptr<TransactionReviewSe
                                 session->exits.push_back(arg);
                             } else if constexpr (std::is_same_v<T, ServiceNodeDeregisterTx>) {
                                 session->deregs.push_back(arg);
+                            } else {
+                                static_assert(
+                                        std::is_same_v<T, std::monostate>,
+                                        "unhandled state change type");
                             }
                         },
                         transactionVariant);
