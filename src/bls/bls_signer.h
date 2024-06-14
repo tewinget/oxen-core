@@ -44,8 +44,8 @@ class BLSSigner {
 
     static std::string buildTagHex(std::string_view baseTag, cryptonote::network_type nettype);
     static crypto::hash buildTagHash(std::string_view baseTag, cryptonote::network_type nettype);
-    std::string buildTagHex(std::string_view baseTag);
-    crypto::hash buildTagHash(std::string_view baseTag);
+    std::string buildTagHex(std::string_view baseTag) const;
+    crypto::hash buildTagHash(std::string_view baseTag) const;
 
     static constexpr inline std::string_view proofOfPossessionTag = "BLS_SIG_TRYANDINCREMENT_POP";
     static constexpr inline std::string_view rewardTag = "BLS_SIG_TRYANDINCREMENT_REWARD";

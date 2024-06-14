@@ -48,7 +48,7 @@ crypto::hash BLSSigner::buildTagHash(std::string_view baseTag, cryptonote::netwo
             ethyl::utils::fromHexString(config.ETHEREUM_REWARDS_CONTRACT));
 }
 
-crypto::hash BLSSigner::buildTagHash(std::string_view baseTag) {
+crypto::hash BLSSigner::buildTagHash(std::string_view baseTag) const {
     return buildTagHash(baseTag, nettype);
 }
 
@@ -56,11 +56,11 @@ std::string BLSSigner::buildTagHex(std::string_view baseTag, cryptonote::network
     return tools::hex_guts(buildTagHash(baseTag, nettype));
 }
 
-std::string BLSSigner::buildTagHex(std::string_view baseTag) {
+std::string BLSSigner::buildTagHex(std::string_view baseTag) const {
     return buildTagHex(baseTag, nettype);
 }
 
-bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) {
+bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) const {
     bls::Signature sig;
     secretKey.signHash(sig, hash.data(), hash.size());
     return sig;
@@ -80,12 +80,12 @@ bls_signature BLSSigner::proofOfPossession(
     return bls_utils::to_crypto_signature(sig);
 }
 
-std::string BLSSigner::getPublicKeyHex() {
+std::string BLSSigner::getPublicKeyHex() const {
     auto pk = getCryptoPubkey();
     return oxenc::to_hex(pk.begin(), pk.end());
 }
 
-bls::PublicKey BLSSigner::getPublicKey() {
+bls::PublicKey BLSSigner::getPublicKey() const {
     bls::PublicKey publicKey;
     secretKey.getPublicKey(publicKey);
     return publicKey;
