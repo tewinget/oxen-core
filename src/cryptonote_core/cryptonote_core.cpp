@@ -1172,7 +1172,7 @@ std::vector<eth::bls_public_key> core::get_removable_nodes() {
     }
 
     auto bls_pubkeys_in_smart_contract =
-            m_blockchain_storage.m_l2_tracker->get_all_bls_public_keys(l2_height);
+            m_blockchain_storage.l2_tracker().get_all_bls_public_keys(l2_height);
 
     std::vector<eth::bls_public_key> removable_nodes;
 
@@ -1446,7 +1446,7 @@ bool core::handle_parsed_txs(
     std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
     if (version >= cryptonote::feature::ETH_BLS) {
         ethereum_transaction_review_session =
-                m_blockchain_storage.m_l2_tracker->initialize_mempool_review();
+                m_blockchain_storage.l2_tracker().initialize_mempool_review();
     }
     for (size_t i = 0; i < parsed_txs.size(); i++) {
         auto& info = parsed_txs[i];

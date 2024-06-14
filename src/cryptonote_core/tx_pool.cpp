@@ -610,7 +610,7 @@ bool tx_memory_pool::add_new_blink(
     bool approved = blink.approved();
     auto hf_version = m_blockchain.get_network_version(blink.height);
     std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session =
-            m_blockchain.m_l2_tracker->initialize_mempool_review();
+            m_blockchain.l2_tracker().initialize_mempool_review();
     bool result =
             add_tx(tx,
                    tvc,
@@ -1159,7 +1159,7 @@ bool tx_memory_pool::get_relayable_transactions(
     const uint64_t now = time(NULL);
     txs.reserve(m_blockchain.get_txpool_tx_count());
     std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session =
-            m_blockchain.m_l2_tracker->initialize_mempool_review();
+            m_blockchain.l2_tracker().initialize_mempool_review();
     m_blockchain.for_all_txpool_txes(
             [this, now, &txs, &ethereum_transaction_review_session](
                     const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string*) {
@@ -1908,7 +1908,7 @@ bool tx_memory_pool::fill_block_template(
     std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
     if (version >= cryptonote::feature::ETH_BLS) {
         ethereum_transaction_review_session =
-                m_blockchain.m_l2_tracker->initialize_mempool_review();
+                m_blockchain.l2_tracker().initialize_mempool_review();
     }
 
     for (auto sorted_it : m_txs_by_fee_and_receive_time) {

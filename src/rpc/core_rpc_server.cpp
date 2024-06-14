@@ -2540,7 +2540,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_conte
     bls_rewards_request.response_hex["signed_hash"] = bls_withdrawal_signature_response.signed_hash;
     bls_rewards_request.response_hex["signature"] = bls_withdrawal_signature_response.signature;
     bls_rewards_request.response["non_signer_indices"] =
-            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+            m_core.get_blockchain_storage().l2_tracker().get_non_signers(
                     bls_withdrawal_signature_response.signers_bls_pubkeys.begin(),
                     bls_withdrawal_signature_response.signers_bls_pubkeys.end());
 }
@@ -2552,7 +2552,7 @@ void core_rpc_server::invoke(BLS_EXIT_REQUEST& exit, rpc_context) {
     exit.response_hex["signed_hash"] = exit_sig.signed_hash;
     exit.response_hex["signature"] = exit_sig.signature;
     exit.response["non_signer_indices"] =
-            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+            m_core.get_blockchain_storage().l2_tracker().get_non_signers(
                     exit_sig.signers_bls_pubkeys.begin(), exit_sig.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2563,7 +2563,7 @@ void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& liquidate, rpc_context) {
     liquidate.response_hex["signed_hash"] = liquidate_sig.signed_hash;
     liquidate.response_hex["signature"] = liquidate_sig.signature;
     liquidate.response["non_signer_indices"] =
-            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+            m_core.get_blockchain_storage().l2_tracker().get_non_signers(
                     liquidate_sig.signers_bls_pubkeys.begin(),
                     liquidate_sig.signers_bls_pubkeys.end());
 }

@@ -1158,14 +1158,14 @@ class Blockchain {
 
     cryptonote::BlockchainSQLite& sqlite_db() { return *m_sqlite_db; }
 
+    eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
+
     /**
      * @brief flush the invalid blocks set
      */
     void flush_invalid_blocks();
 
     void add_ethereum_transactions_to_tx_pool();
-
-    std::shared_ptr<eth::L2Tracker> m_l2_tracker;
 
 #ifndef IN_UNIT_TESTS
   private:
@@ -1289,8 +1289,8 @@ class Blockchain {
 
     checkpoints m_checkpoints;
 
-    // Ethereum client for communicating with L2 blockchain
-    std::shared_ptr<ethyl::Provider> m_provider;
+    // Ethereum L2 tracking object
+    std::shared_ptr<eth::L2Tracker> m_l2_tracker;
 
     network_type m_nettype;
     bool m_offline;
