@@ -760,7 +760,7 @@ bool core::init(
             [this](const auto& info) { m_service_node_list.alt_block_add(info); });
 
     m_blockchain_storage.hook_blockchain_detached([this](const auto& info) {
-        m_blockchain_storage.sqlite_db()->blockchain_detached(info.height);
+        m_blockchain_storage.sqlite_db().blockchain_detached(info.height);
     });
 
     // NOTE: There is an implicit dependency on service node lists being hooked first!

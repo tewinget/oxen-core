@@ -3418,13 +3418,13 @@ void core_rpc_server::invoke(
             if (address_parse_info parse_info{};
                 get_account_address_from_str(parse_info, net, address)) {
                 std::tie(std::ignore, amount) =
-                        blockchain.sqlite_db()->get_accrued_earnings(parse_info.address);
+                        blockchain.sqlite_db().get_accrued_earnings(parse_info.address);
                 at_least_one_succeeded = true;
             }
             balances[address] = amount;
         }
     } else {
-        auto [addresses, amounts] = blockchain.sqlite_db()->get_all_accrued_earnings();
+        auto [addresses, amounts] = blockchain.sqlite_db().get_all_accrued_earnings();
         for (size_t i = 0; i < addresses.size(); i++) {
             balances[addresses[i]] = amounts[i];
         }

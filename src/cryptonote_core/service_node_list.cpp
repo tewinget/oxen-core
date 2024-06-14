@@ -1126,7 +1126,7 @@ bool service_node_list::state_t::process_ethereum_exit_tx(
     auto node = std::find_if(service_nodes_infos.begin(), service_nodes_infos.end(),
         [&exit_data](const auto& pair) {
             const auto& [key, info] = pair;
-            return info->bls_public_key == exit_data.bls_key;
+            return info->bls_public_key == exit_data.bls_pubkey;
         });
     std::vector<cryptonote::batch_sn_payment> returned_stakes;
     for (const auto& contributor : node->second->contributors)
@@ -1134,7 +1134,7 @@ bool service_node_list::state_t::process_ethereum_exit_tx(
 
     returned_stakes[0].amount -= stake_reduction;
 
-    return sn_list->m_blockchain.sqlite_db()->return_staked_amount_to_user(returned_stakes, block_delay);
+    return sn_list->m_blockchain.sqlite_db().return_staked_amount_to_user(returned_stakes, block_delay);
 }
 
 bool service_node_list::state_t::process_key_image_unlock_tx(
@@ -2334,10 +2334,10 @@ bool service_node_list::process_batching_rewards(const cryptonote::block& block)
                 "because the service node list is at height: {} and the batching database is at "
                 "height: {}",
                 height(),
-                m_blockchain.sqlite_db()->height + 1);
+                m_blockchain.sqlite_db().height + 1);
         return false;
     }
-    return m_blockchain.sqlite_db()->add_block(block, m_state);
+    return m_blockchain.sqlite_db().add_block(block, m_state);
 }
 bool service_node_list::pop_batching_rewards_block(const cryptonote::block& block) {
     uint64_t block_height = cryptonote::get_block_height(block);
@@ -2345,11 +2345,11 @@ bool service_node_list::pop_batching_rewards_block(const cryptonote::block& bloc
         block.major_version >= hf::hf19_reward_batching && height() != block_height) {
         if (auto it = m_transient.state_history.find(block_height);
             it != m_transient.state_history.end())
-            return m_blockchain.sqlite_db()->pop_block(block, *it);
-        m_blockchain.sqlite_db()->reset_database();
+            return m_blockchain.sqlite_db().pop_block(block, *it);
+        m_blockchain.sqlite_db().reset_database();
         return false;
     }
-    return m_blockchain.sqlite_db()->pop_block(block, m_state);
+    return m_blockchain.sqlite_db().pop_block(block, m_state);
 }
 
 static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {

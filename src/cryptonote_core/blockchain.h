@@ -1156,7 +1156,7 @@ class Blockchain {
 
     const ons::name_system_db& name_system_db() const { return m_ons_db; }
 
-    std::shared_ptr<cryptonote::BlockchainSQLite> sqlite_db() { return m_sqlite_db; }
+    cryptonote::BlockchainSQLite& sqlite_db() { return *m_sqlite_db; }
 
     /**
      * @brief flush the invalid blocks set
