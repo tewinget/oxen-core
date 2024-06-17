@@ -34,7 +34,7 @@ struct NewServiceNodeTx : L2StateChange {
     bls_public_key bls_pubkey;
     eth::address eth_address;
     crypto::public_key sn_pubkey;
-    crypto::ed25519_signature sn_signature;
+    crypto::ed25519_signature ed_signature;
     uint64_t fee;
     std::array<Contributor, oxen::MAX_CONTRIBUTORS_HF19> contributors;
     size_t contributors_size;
