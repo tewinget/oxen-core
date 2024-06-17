@@ -100,7 +100,7 @@ block::block(const block& b) {
 }
 
 block::block(block&& b) {
-    *this = b;
+    *this = std::move(b);
 }
 
 block& block::operator=(const block& b) {
