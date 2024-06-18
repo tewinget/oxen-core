@@ -139,7 +139,7 @@ void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
     auto [batchdb_height, amount] =
             core.get_blockchain_storage().sqlite_db().get_accrued_earnings(eth_addr);
     if (amount == 0) {
-        m.send_reply("400", "Address has a zero balance in the database");
+        m.send_reply("400", "Address '{}' has a zero balance in the database"_format(eth_addr));
         return;
     }
 
