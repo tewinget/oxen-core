@@ -33,6 +33,7 @@
 
 #include <cassert>
 
+#include "common/guts.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/blockchain.h"
@@ -654,7 +655,7 @@ bool BlockchainSQLite::add_block(
         std::vector<cryptonote::batch_sn_payment> delayed_payments;
         for (auto [eth_address_str, amount] : delayed_payments_st) {
             eth::address eth_address;
-            tools::hex_to_type(eth_address_str.substr(2), eth_address);
+            tools::load_from_hex_guts(eth_address_str, eth_address);
             delayed_payments.emplace_back(eth_address, amount);
         }
 
@@ -707,7 +708,7 @@ bool BlockchainSQLite::pop_block(
         std::vector<cryptonote::batch_sn_payment> delayed_payments;
         for (auto [eth_address_str, amount] : delayed_payments_st) {
             eth::address eth_address;
-            tools::hex_to_type(eth_address_str.substr(2), eth_address);
+            tools::load_from_hex_guts(eth_address_str, eth_address);
             delayed_payments.emplace_back(eth_address, amount);
         }
 

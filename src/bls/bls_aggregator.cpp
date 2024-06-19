@@ -113,21 +113,12 @@ static bool extract_1part_msg(
                         cmd_name, value_name, m.data.size()));
         return false;
     }
-    if (m.data[0].size() == 2 + 2 * sizeof(T) &&
-        (m.data[0].starts_with("0x") || m.data[0].starts_with("0X")) && oxenc::is_hex(m.data[0])) {
-        std::string_view hex{m.data[0]};
-        hex.remove_prefix(2);
-        val = tools::make_from_hex_guts<T>(hex, false);
-        return true;
-    }
-    if (m.data[0].size() == 2 * sizeof(T) && oxenc::is_hex(m.data[0])) {
-        val = tools::make_from_hex_guts<T>(m.data[0], false);
-        return true;
-    }
     if (m.data[0].size() == sizeof(T)) {
-        tools::make_from_guts<T>(m.data[0]);
+        val = tools::make_from_guts<T>(m.data[0]);
         return true;
     }
+    if (tools::try_load_from_hex_guts(m.data[0], val))
+        return true;
 
     m.send_reply(
             "400",

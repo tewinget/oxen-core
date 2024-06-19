@@ -153,11 +153,8 @@ StateResponse RewardsContract::State() {
 }
 
 StateResponse RewardsContract::State(uint64_t height) {
-    std::string blockHash = provider.getContractStorageRoot(contractAddress, height);
-    std::string_view bh{blockHash};
-    if (bh.starts_with("0x"))
-        bh.remove_prefix(2);
-    return {height, tools::make_from_hex_guts<crypto::hash>(bh)};
+    return {height, tools::make_from_hex_guts<crypto::hash>(
+            provider.getContractStorageRoot(contractAddress, height))};
 }
 
 std::vector<ethyl::LogEntry> RewardsContract::Logs(uint64_t height) {
