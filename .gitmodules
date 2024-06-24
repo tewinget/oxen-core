@@ -16,9 +16,6 @@
 [submodule "external/libuv"]
 	path = external/libuv
 	url = https://github.com/libuv/libuv.git
-[submodule "external/cpr"]
-	path = external/cpr
-	url = https://github.com/whoshuu/cpr.git
 [submodule "external/Catch2"]
 	path = external/Catch2
 	url = https://github.com/catchorg/Catch2
