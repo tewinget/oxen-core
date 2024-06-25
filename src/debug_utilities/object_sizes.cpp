@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
     tools::on_startup();
 
     auto log_file_path = "object_sizes.log";
-    oxen::logging::init(log_file_path, oxen::log::Level::info);
+    oxen::logging::init(log_file_path, "*=info");
 
     SL(boost::thread);
     SL(boost::asio::io_service);

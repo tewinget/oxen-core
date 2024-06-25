@@ -1346,7 +1346,7 @@ void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, [[maybe_unused]] rpc_
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
         SET_LOG_CATEGORIES& set_log_categories, [[maybe_unused]] rpc_context context) {
-    oxen::logging::process_categories_string(set_log_categories.request.categories.c_str());
+    oxen::logging::apply_categories_string(set_log_categories.request.categories);
     set_log_categories.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------

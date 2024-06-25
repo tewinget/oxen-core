@@ -32,12 +32,39 @@ namespace log = oxen::log;
 inline auto globallogcat = oxen::log::Cat("global");
 
 namespace oxen::logging {
-void init(const std::string& log_location, log::Level log_level, bool log_to_stdout = true);
+void init(const std::string& log_location, std::string_view log_level, bool log_to_stdout = true);
 void set_file_sink(const std::string& log_location);
 void set_additional_log_categories(const log::Level& log_level);
-void process_categories_string(const std::string& categories);
+// Takes a string such as "warning, abc=info, quic=debug" and applies it to the logger.  String
+// rules:
+//
+// - Categories can be separated with spaces, commas, or semicolons
+// - The category name and the level can be separated with `=` or `:`
+// - A bare level can be specified and is equivalent to `*=level`
+// - A single `*` as the category resets all existing categories to the given level (and so means
+//   that anything before the *, such as 'abc=info, *=warning', has no effect).
+// - anything else sets the level of a single category.  (Note that `foo*=debug` is not special: it
+//   just sets a literal category 'foo*' to a level of debug, which probably doesn't do anything).
+//
+// TODO: this would probably be usefully adapted into oxen-logging itself.
+void apply_categories_string(std::string_view categories);
 
-std::optional<log::Level> parse_level(std::string input);
+// The return value of `extract_categories`: this contains the (possible) default as well as any
+// individual log categories specified by a category string.
+struct LogCats {
+    std::optional<log::Level> default_level;
+    std::unordered_map<std::string, log::Level> cat_levels;
+    // Applies the settings in the object to the global logger.
+    void apply();
+};
+
+/// Given a log level string this extracts the default and individual category levels applied by the
+/// string, returning them in a LogCats struct.  Only final settings are included (i.e. settings
+/// overridden by a later default, or same category occuring again later, are omitted).  This is
+/// used internally by apply_categories_string but can also be used directly.
+[[nodiscard]] LogCats extract_categories(std::string_view categories);
+
+std::optional<log::Level> parse_level(std::string_view input);
 std::optional<log::Level> parse_level(uint8_t input);
 std::optional<log::Level> parse_level(oxenmq::LogLevel input);
 

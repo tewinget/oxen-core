@@ -110,15 +110,7 @@ int main(int argc, char* argv[]) {
 
     auto m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
     auto log_file_path = m_config_folder + "oxen-blockchain-stats.log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level).c_str())) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
-    oxen::logging::init(log_file_path, log_level);
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
     std::string opt_data_dir = command_line::get_arg(vm, cryptonote::arg_data_dir);

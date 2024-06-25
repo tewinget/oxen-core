@@ -187,16 +187,8 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
         log_path = command_line::get_arg(vm, arg_log_file);
     else
         log_path = epee::string_tools::get_current_module_name() + ".log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level).c_str())) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
 
-    oxen::logging::init(log_path, log_level, false /*do not log to stdout.*/);
+    oxen::logging::init(log_path, command_line::get_arg(vm, arg_log_level), false /*do not log to stdout.*/);
 
     if (notice)
         print("{}\n"_format(notice));

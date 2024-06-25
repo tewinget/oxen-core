@@ -77,13 +77,7 @@ int main(int argc, char** argv)
 
   unit_test::data_dir = command_line::get_arg(vm, arg_data_dir);
 
-  oxen::log::Level log_level;
-  if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level))) {
-      log_level = *level;
-  } else {
-      throw std::runtime_error{"Incorrect log level"};
-  }
-  oxen::logging::init("unit_tests.log", log_level);
+  oxen::logging::init("unit_tests.log", command_line::get_arg(vm, arg_log_level));
 
 
   CATCH_ENTRY("main", 1);

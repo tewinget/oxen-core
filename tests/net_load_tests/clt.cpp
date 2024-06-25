@@ -622,7 +622,7 @@ int main(int argc, char** argv)
   TRY_ENTRY();
   tools::on_startup();
   //set up logging options
-  oxen::logging::init("net_load_tests_clt.log", oxen::log::Level::debug);
+  oxen::logging::init("net_load_tests_clt.log", "*=debug");
 
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

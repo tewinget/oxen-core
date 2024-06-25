@@ -290,7 +290,7 @@ void WalletManagerFactory::setLogLevel(int level) {
 
 EXPORT
 void WalletManagerFactory::setLogCategories(const std::string& categories) {
-    oxen::logging::process_categories_string(categories);
+    oxen::logging::apply_categories_string(categories);
 }
 
 }  // namespace Wallet

@@ -73,7 +73,7 @@ int main(int argc, char* argv[])
   epee::string_tools::set_module_name_and_folder(argv[0]);
 
   //set up logging options
-  oxen::logging::init("core_proxy.log", oxen::log::Level::debug);
+  oxen::logging::init("core_proxy.log", "*=debug");
 
 
   po::options_description desc("Allowed options");

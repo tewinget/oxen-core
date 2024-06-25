@@ -3373,7 +3373,7 @@ bool simple_wallet::set_log(const std::vector<std::string>& args) {
         if (log_level.has_value())
             log::reset_level(*log_level);
         else {
-            oxen::logging::process_categories_string(args[0]);
+            oxen::logging::apply_categories_string(args[0]);
         }
     }
 
