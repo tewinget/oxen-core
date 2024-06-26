@@ -68,6 +68,7 @@
 #include "epee/warnings.h"
 #include "ethereum_transactions.h"
 #include "logging/oxen_logger.h"
+#include "oxen/log.hpp"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
 #include "service_node_list.h"

@@ -35,6 +35,7 @@
 
 // Workaround for boost::serialization issue #219
 #include <boost/version.hpp>
+#include <type_traits>
 #if BOOST_VERSION == 107400
 #include <boost/serialization/library_version_type.hpp>
 #endif

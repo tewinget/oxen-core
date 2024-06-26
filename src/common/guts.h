@@ -94,7 +94,8 @@ void load_from_hex_guts(const Spannable& s, T& x, bool check_hex = true) {
 
 /// Same as above, but loads the hex into an object of type T that is returned.  If `check_hex` is
 /// true (the default) the span will be validated to make sure it is hex, but can be given as false
-/// if such validation has already been done.
+/// if such validation has already been done.  The input hex may optionally be prefixed with 0x or
+/// 0X.
 template <safe_to_memcpy T, byte_spannable Spannable>
 T make_from_hex_guts(const Spannable& s, bool check_hex = true) {
     T x;

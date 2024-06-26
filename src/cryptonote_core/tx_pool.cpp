@@ -47,7 +47,6 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_tx_utils.h"
-#include "epee/int-util.h"
 #include "epee/warnings.h"
 
 DISABLE_VS_WARNINGS(4244 4345 4503)  //'boost::foreach_detail_::or_' : decorated name length
@@ -68,7 +67,6 @@ namespace {
     time_t const MIN_RELAY_TIME =
             (60 * 5);  // only start re-relaying transactions after that many seconds
     time_t const MAX_RELAY_TIME = (60 * 60 * 4);  // at most that many seconds between resends
-    float const ACCEPT_THRESHOLD = 1.0f;
 
     // a kind of increasing backoff within min/max bounds
     uint64_t get_relay_delay(time_t now, time_t received) {
@@ -89,10 +87,10 @@ namespace {
 //---------------------------------------------------------------------------------
 // warning: bchs is passed here uninitialized, so don't do anything but store it
 tx_memory_pool::tx_memory_pool(Blockchain& bchs) :
+        m_cookie(0),
         m_blockchain(bchs),
         m_txpool_max_weight(DEFAULT_MEMPOOL_MAX_WEIGHT),
-        m_txpool_weight(0),
-        m_cookie(0) {}
+        m_txpool_weight(0) {}
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::have_duplicated_non_standard_tx(
         transaction const& tx, hf hard_fork_version) const {
@@ -467,7 +465,7 @@ bool tx_memory_pool::add_tx(
             meta.last_failed_id = null<hash>;
             meta.kept_by_block = opts.kept_by_block;
             meta.receive_time = receive_time;
-            meta.last_relayed_time = time(NULL);
+            meta.last_relayed_time = receive_time;
             meta.relayed = opts.relayed;
             meta.do_not_relay = opts.do_not_relay;
             meta.double_spend_seen =
@@ -511,7 +509,7 @@ bool tx_memory_pool::add_tx(
         meta.last_failed_height = 0;
         meta.last_failed_id = null<hash>;
         meta.receive_time = receive_time;
-        meta.last_relayed_time = time(NULL);
+        meta.last_relayed_time = receive_time;
         meta.relayed = opts.relayed;
         meta.do_not_relay = opts.do_not_relay;
         meta.double_spend_seen = false;
@@ -574,7 +572,6 @@ bool tx_memory_pool::add_tx(
         hf version,
         std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session) {
     crypto::hash h{};
-    size_t blob_size = 0;
     std::string bl;
     t_serializable_object_to_blob(tx, bl);
     if (bl.size() == 0 || !get_transaction_hash(tx, h))
@@ -1275,7 +1272,7 @@ void tx_memory_pool::get_transactions(
 
     txs.reserve(m_blockchain.get_txpool_tx_count(include_unrelayed_txes));
     m_blockchain.for_all_txpool_txes(
-            [&txs](const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
+            [&txs](const crypto::hash& txid, const txpool_tx_meta_t&, const std::string* bd) {
                 transaction tx;
                 if (!parse_and_validate_tx_from_blob(*bd, tx)) {
                     log::error(logcat, "Failed to parse tx from txpool");
@@ -1299,7 +1296,7 @@ void tx_memory_pool::get_transaction_hashes(
     txs.reserve(m_blockchain.get_txpool_tx_count(include_unrelayed_txes));
     m_blockchain.for_all_txpool_txes(
             [&txs, include_only_blinked, this](
-                    const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
+                    const crypto::hash& txid, const txpool_tx_meta_t&, const std::string*) {
                 bool include_tx = true;
                 if (include_only_blinked)
                     include_tx = has_blink(txid);
@@ -1322,7 +1319,7 @@ tx_memory_pool::tx_stats tx_memory_pool::get_transaction_stats(bool include_unre
     weights.reserve(stats.txs_total);
     m_blockchain.for_all_txpool_txes(
             [&stats, &weights, now, &agebytes](
-                    const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
+                    const crypto::hash&, const txpool_tx_meta_t& meta, const std::string*) {
                 weights.push_back(meta.weight);
                 stats.bytes_total += meta.weight;
                 if (!stats.bytes_min || meta.weight < stats.bytes_min)

@@ -111,7 +111,7 @@ struct tx_pool_options {
         o.do_not_relay = do_not_relay;
         return o;
     }
-    static tx_pool_options new_blink(bool approved, hf hf_version) {
+    static tx_pool_options new_blink(bool approved, hf) {
         tx_pool_options o;
         o.do_not_relay = !approved;
         o.approved_blink = approved;
