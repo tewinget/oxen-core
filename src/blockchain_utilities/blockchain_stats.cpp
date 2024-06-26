@@ -129,29 +129,30 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
-    BlockchainDB* db = new_db();
-    if (db == NULL) {
+    auto bdb = new_db();
+    if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
         throw std::runtime_error("Failed to initialize a database");
     }
 
-    const fs::path filename = tools::utf8_path(opt_data_dir) / db->get_db_name();
+    const fs::path filename = tools::utf8_path(opt_data_dir) / bdb->get_db_name();
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {
-        db->open(filename, core_storage->nettype(), DBF_RDONLY);
+        bdb->open(filename, core_storage->nettype(), DBF_RDONLY);
     } catch (const std::exception& e) {
         log::warning(logcat, "Error opening database: {}", e.what());
         return 1;
     }
-    r = core_storage->init(db, nullptr /*ons_db*/, nullptr, net_type);
+    r = core_storage->init(std::move(bdb), net_type);
 
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
     log::warning(logcat, "Source blockchain storage initialized OK");
 
     tools::signal_handler::install([](int type) { stop_requested = true; });
 
-    const uint64_t db_height = db->height();
+    auto& db = core_storage->get_db();
+    const uint64_t db_height = db.height();
     if (!block_stop)
         block_stop = db_height;
     log::info(logcat, "Starting from height {}, stopping at height {}", block_start, block_stop);
@@ -205,7 +206,7 @@ int main(int argc, char* argv[]) {
     unsigned int i;
 
     for (uint64_t h = block_start; h < block_stop; ++h) {
-        std::string bd = db->get_block_blob_from_height(h);
+        std::string bd = db.get_block_blob_from_height(h);
         cryptonote::block blk;
         if (!cryptonote::parse_and_validate_block_from_blob(bd, blk)) {
             log::warning(logcat, "Bad block from db");
@@ -270,7 +271,7 @@ int main(int argc, char* argv[]) {
             if (!tx_id) {
                 throw std::runtime_error("Aborting: null txid");
             }
-            if (!db->get_pruned_tx_blob(tx_id, bd)) {
+            if (!db.get_pruned_tx_blob(tx_id, bd)) {
                 throw std::runtime_error("Aborting: tx not found");
             }
             transaction tx;

@@ -42,6 +42,7 @@
 #include <cstdio>
 
 #include "blockchain_db/blockchain_db.h"
+#include "blockchain_db/sqlite/db_sqlite.h"
 #include "common/boost_serialization_helper.h"
 #include "common/guts.h"
 #include "common/lock.h"
@@ -495,11 +496,14 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems() {
 //------------------------------------------------------------------
 // FIXME: possibly move this into the constructor, to avoid accidentally
 //       dereferencing a null BlockchainDB pointer
+//
+// FIXME TODO: the number of things we take here seems sort of silly: we could just be holding a
+// reference to the `core` that owns us and get most of thoese through that.
 bool Blockchain::init(
-        BlockchainDB* db,
-        sqlite3* ons_db,
-        std::shared_ptr<cryptonote::BlockchainSQLite> sqlite_db,
+        std::unique_ptr<BlockchainDB> db,
         const network_type nettype,
+        sqlite3* ons_db,
+        cryptonote::BlockchainSQLite* sqlite_db,
         bool offline,
         const cryptonote::test_options* test_options,
         difficulty_type fixed_difficulty,
@@ -512,25 +516,30 @@ bool Blockchain::init(
     CHECK_AND_ASSERT_MES(
             nettype != network_type::FAKECHAIN || test_options,
             false,
-            "fake chain network type used without options");
+            "fakechain network initialization cannot be used without test options");
+
+    CHECK_AND_ASSERT_MES(
+            nettype == network_type::FAKECHAIN || !test_options,
+            false,
+            "non-fakechain network initialization cannot use test options");
 
     auto lock = tools::unique_locks(m_tx_pool, *this);
 
-    if (db == nullptr) {
+    if (!db) {
         log::error(logcat, "Attempted to init Blockchain with null DB");
         return false;
     }
     if (!db->is_open()) {
         log::error(logcat, "Attempted to init Blockchain with unopened DB");
-        delete db;
+        db->reset();
         return false;
     }
 
-    m_db = db;
+    m_db = std::move(db);
 
     m_nettype = test_options != NULL ? network_type::FAKECHAIN : nettype;
 
-    if (!m_checkpoints.init(m_nettype, m_db))
+    if (!m_checkpoints.init(m_nettype, m_db.get()))
         throw std::runtime_error("Failed to initialize checkpoints");
 
     m_l2_tracker                          = std::make_shared<eth::L2Tracker>(m_nettype);
@@ -575,7 +584,7 @@ bool Blockchain::init(
     if (test_options)  // Fakechain mode
         fakechain_hardforks = test_options->hard_forks;
     if (sqlite_db) {
-        m_sqlite_db = std::move(sqlite_db);
+        m_sqlite_db.reset(sqlite_db);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
             throw std::logic_error("Blockchain missing SQLite Database");
@@ -590,7 +599,7 @@ bool Blockchain::init(
         block bl;
         block_verification_context bvc{};
         generate_genesis_block(bl, m_nettype);
-        db_wtxn_guard wtxn_guard(m_db);
+        db_wtxn_guard wtxn_guard{*m_db};
         add_new_block(bl, bvc, nullptr /*checkpoint*/);
         CHECK_AND_ASSERT_MES(
                 !bvc.m_verifivation_failed, false, "Failed to add genesis block to blockchain");
@@ -603,7 +612,7 @@ bool Blockchain::init(
     if (m_nettype != network_type::FAKECHAIN)
         m_db->fixup(m_nettype);
 
-    db_rtxn_guard rtxn_guard(m_db);
+    db_rtxn_guard rtxn_guard{*m_db};
 
     // check how far behind we are
     uint64_t top_block_timestamp = m_db->get_top_block_timestamp();
@@ -691,7 +700,7 @@ bool Blockchain::init(
     }
 
     {
-        db_txn_guard txn_guard(m_db, m_db->is_read_only());
+        db_txn_guard txn_guard{*m_db, m_db->is_read_only()};
         if (!update_next_cumulative_weight_limit())
             return false;
     }
@@ -773,8 +782,7 @@ bool Blockchain::deinit() {
                 "issues!");
     }
 
-    delete m_db;
-    m_db = nullptr;
+    m_db.reset();
     return true;
 }
 //------------------------------------------------------------------
@@ -918,7 +926,7 @@ bool Blockchain::reset_and_set_genesis_block(const block& b) {
     for (const auto& hook : m_init_hooks)
         hook();
 
-    db_wtxn_guard wtxn_guard(m_db);
+    db_wtxn_guard wtxn_guard{*m_db};
     block_verification_context bvc{};
     add_new_block(b, bvc, nullptr /*checkpoint*/);
     if (!update_next_cumulative_weight_limit())
@@ -957,7 +965,7 @@ void Blockchain::get_short_chain_history(std::list<crypto::hash>& ids) const {
     if (!sz)
         return;
 
-    db_rtxn_guard rtxn_guard(m_db);
+    db_rtxn_guard rtxn_guard{*m_db};
     for (uint64_t i = 0, decr = 1, offset = 1; offset < sz; ++i) {
         ids.push_back(m_db->get_block_hash_from_height(sz - offset));
         if (i >= 10)
@@ -2748,7 +2756,7 @@ bool Blockchain::handle_get_blocks(
     auto blink_lock = m_tx_pool.blink_shared_lock(std::defer_lock);
     std::lock(blockchain_lock, blink_lock);
 
-    db_rtxn_guard rtxn_guard(m_db);
+    db_rtxn_guard rtxn_guard{*m_db};
     rsp.current_blockchain_height = get_current_blockchain_height();
     std::vector<std::pair<std::string, block>> blocks;
     {
@@ -2836,7 +2844,7 @@ bool Blockchain::handle_get_txs(
     auto blink_lock = m_tx_pool.blink_shared_lock(std::defer_lock);
     std::lock(blockchain_lock, blink_lock);
 
-    db_rtxn_guard rtxn_guard(m_db);
+    db_rtxn_guard rtxn_guard{*m_db};
     std::unordered_set<crypto::hash> missed;
 
     // First check the blockchain for any txs:
@@ -3036,7 +3044,7 @@ bool Blockchain::find_blockchain_supplement(
         return false;
     }
 
-    db_rtxn_guard rtxn_guard(m_db);
+    db_rtxn_guard rtxn_guard{*m_db};
     // make sure that the last block in the request's block list matches
     // the genesis block
     auto gen_hash = m_db->get_block_hash_from_height(0);
@@ -3247,7 +3255,7 @@ bool Blockchain::find_blockchain_supplement(
         return false;
     }
 
-    db_rtxn_guard rtxn_guard(m_db);
+    db_rtxn_guard rtxn_guard{*m_db};
     current_height = get_current_blockchain_height();
     uint64_t stop_height = current_height;
     if (clip_pruned) {
@@ -3313,7 +3321,7 @@ bool Blockchain::find_blockchain_supplement(
         }
     }
 
-    db_rtxn_guard rtxn_guard(m_db);
+    db_rtxn_guard rtxn_guard{*m_db};
     total_height = get_current_blockchain_height();
     size_t count = 0, size = 0;
     blocks.reserve(
@@ -3375,6 +3383,10 @@ hf Blockchain::get_network_version(std::optional<uint64_t> height) const {
     if (!height)
         height = get_current_blockchain_height();
     return cryptonote::get_network_version(m_nettype, *height);
+}
+
+cryptonote::BlockchainSQLite& Blockchain::sqlite_db() {
+    return *m_sqlite_db;
 }
 
 //------------------------------------------------------------------
@@ -5007,7 +5019,7 @@ bool Blockchain::handle_block_to_main_chain(
 
     auto block_processing_start = std::chrono::steady_clock::now();
     std::unique_lock lock{*this};
-    db_rtxn_guard rtxn_guard(m_db);
+    db_rtxn_guard rtxn_guard{*m_db};
 
     auto t1 = std::chrono::steady_clock::now();
     if (!basic_block_checks(bl, false /*alt_block*/)) {
@@ -5567,7 +5579,7 @@ bool Blockchain::add_new_block(
     log::trace(logcat, "Blockchain::{}", __func__);
     crypto::hash id = get_block_hash(bl);
     auto lock = tools::unique_locks(m_tx_pool, *this);
-    db_rtxn_guard rtxn_guard(m_db);
+    db_rtxn_guard rtxn_guard{*m_db};
     if (have_block(id)) {
         log::trace(logcat, "block with id = {} already exists", id);
         bvc.m_already_exists = true;

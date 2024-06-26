@@ -152,8 +152,8 @@ int main(int argc, char* argv[]) {
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
     tx_memory_pool& m_mempool = blockchain_objects.m_mempool;
-    BlockchainDB* db = new_db();
-    if (db == NULL) {
+    auto db = new_db();
+    if (!db) {
         log::error(logcat, "Failed to initialize a database");
         throw std::runtime_error("Failed to initialize a database");
     }
@@ -169,7 +169,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    r = core_storage->init(db, nullptr /*ons_db*/, nullptr, net_type);
+    r = core_storage->init(std::move(db), net_type);
 
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
     log::warning(logcat, "Source blockchain storage initialized OK");

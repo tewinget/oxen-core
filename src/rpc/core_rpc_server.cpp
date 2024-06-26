@@ -43,6 +43,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "blockchain_db/sqlite/db_sqlite.h"
 #include "common/command_line.h"
 #include "common/guts.h"
 #include "common/json_binary_proxy.h"

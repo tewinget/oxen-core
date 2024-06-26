@@ -113,7 +113,7 @@ bool load_checkpoints_from_json(
 
 bool checkpoints::get_checkpoint(uint64_t height, checkpoint_t& checkpoint) const {
     try {
-        auto guard = db_rtxn_guard(m_db);
+        auto guard = db_rtxn_guard{*m_db};
         return m_db->get_block_checkpoint(height, checkpoint);
     } catch (const std::exception& e) {
         log::error(
@@ -193,7 +193,7 @@ void checkpoints::block_add(const block_add_info& info) {
                  (start_cull_height % service_nodes::CHECKPOINT_INTERVAL));
 
     m_last_cull_height = std::max(m_last_cull_height, start_cull_height);
-    auto guard = db_wtxn_guard(m_db);
+    auto guard = db_wtxn_guard{*m_db};
     for (; m_last_cull_height < end_cull_height;
          m_last_cull_height += service_nodes::CHECKPOINT_INTERVAL) {
         if (m_last_cull_height % service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
@@ -219,7 +219,7 @@ void checkpoints::blockchain_detached(uint64_t height) {
     m_last_cull_height = std::min(m_last_cull_height, height);
 
     checkpoint_t top_checkpoint;
-    auto guard = db_wtxn_guard(m_db);
+    auto guard = db_wtxn_guard{*m_db};
     if (m_db->get_top_checkpoint(top_checkpoint)) {
         uint64_t start_height = top_checkpoint.height;
         for (size_t delete_height = start_height;

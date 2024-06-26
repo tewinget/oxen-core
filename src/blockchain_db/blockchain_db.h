@@ -1961,15 +1961,13 @@ class db_txn_guard {
 class db_rtxn_guard : public db_txn_guard {
   public:
     explicit db_rtxn_guard(BlockchainDB& db) : db_txn_guard{db, true} {}
-    explicit db_rtxn_guard(BlockchainDB* db) : db_rtxn_guard{*db} {}
 };
 class db_wtxn_guard : public db_txn_guard {
   public:
     explicit db_wtxn_guard(BlockchainDB& db) : db_txn_guard{db, false} {}
-    explicit db_wtxn_guard(BlockchainDB* db) : db_wtxn_guard{*db} {}
 };
 
-BlockchainDB* new_db();
+std::unique_ptr<BlockchainDB> new_db();
 
 }  // namespace cryptonote
 

@@ -603,7 +603,7 @@ bool core::init(
         m_service_node_list.set_my_service_node_keys(&m_service_keys);
     }
 
-    std::unique_ptr<BlockchainDB> db(new_db());
+    auto db = new_db();
     if (!db) {
         log::error(logcat, "Failed to initialize a database");
         return false;
@@ -617,7 +617,7 @@ bool core::init(
     if (m_nettype == network_type::FAKECHAIN) {
         sqlite_db_file_path = ":memory:";
     }
-    auto sqliteDB = std::make_shared<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
+    auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
 
     folder /= db->get_db_name();
     log::info(logcat, "Loading blockchain from folder {} ...", folder);
@@ -783,16 +783,15 @@ bool core::init(
     init_oxenmq(vm);
     m_bls_aggregator = std::make_unique<eth::BLSAggregator>(*this);
 
-    const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
     const auto ethereum_provider = command_line::get_arg(vm, arg_ethereum_provider);
     r = m_blockchain_storage.init(
-            db.release(),
-            ons_db,
-            std::move(sqliteDB),
+            std::move(db),
             m_nettype,
+            ons_db,
+            sqliteDB.release(),
             m_offline,
             regtest ? &regtest_test_options : test_options,
-            fixed_difficulty,
+            command_line::get_arg(vm, arg_fixed_difficulty),
             ethereum_provider,
             get_checkpoints);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
