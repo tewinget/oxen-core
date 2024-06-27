@@ -70,6 +70,8 @@ class command_parser_executor final {
 
     bool prepare_registration(const std::vector<std::string>& args);
 
+    bool prepare_eth_registration(const std::vector<std::string>& args);
+
     bool print_sn(const std::vector<std::string>& args);
 
     bool print_sn_status(const std::vector<std::string>& args);

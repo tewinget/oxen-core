@@ -2781,21 +2781,14 @@ BLSRegistrationResponse core::bls_registration(
     const auto& keys = get_service_keys();
     auto resp = m_bls_aggregator->registration(address, keys.pub);
 
-    auto height = get_current_blockchain_height();
-    auto hf_version = get_network_version(m_nettype, height);
-
-    assert(hf_version >= hf::hf21_eth);
-
     service_nodes::registration_details reg{};
     reg.service_node_pubkey = keys.pub;
+    reg.bls_pubkey = keys.bls_signer->getCryptoPubkey();
 
     // If we're constructing a BLS registration then dual keys should have been unified in our own
     // keys:
     assert(tools::view_guts(keys.pub) == tools::view_guts(keys.pub_ed25519));
 
-    reg.hf = static_cast<uint64_t>(hf_version);
-    reg.uses_portions = false;
-    reg.fee = fee;
     auto reg_msg = get_registration_message_for_signing(reg);
     crypto_sign_ed25519_detached(
             resp.ed_signature.data(),
