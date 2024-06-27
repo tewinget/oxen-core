@@ -973,7 +973,7 @@ bool core::init_service_keys() {
                     // Load from existing
 
                     try {
-                        bls_signer = std::make_shared<BLSSigner>(m_nettype, &sk);
+                        bls_signer = BLSSigner{m_nettype, &sk};
                     } catch (const std::exception& e) {
                         log::critical(logcat, "Invalid BLS key: {}", e.what());
                         return false;
@@ -983,7 +983,7 @@ bool core::init_service_keys() {
                 },
                 [this](crypto::bls_secret_key& sk, crypto::bls_public_key& pk, auto& bls_signer) {
                     // Generate new one
-                    bls_signer = std::make_shared<BLSSigner>(m_nettype);
+                    bls_signer = BLSSigner{m_nettype};
                     sk = bls_signer->getCryptoSeckey();
                     pk = bls_signer->getCryptoPubkey();
                 },
