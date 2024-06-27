@@ -30,12 +30,14 @@ class BLSSigner {
     // loaded from the given bls_secret_key data.
     explicit BLSSigner(const cryptonote::network_type nettype, const bls_secret_key* key = nullptr);
 
-    bls::Signature signHashSig(const crypto::hash& hash);
-    bls_signature signHash(const crypto::hash& hash);
-    bls_signature proofOfPossession(
-            const eth::address& sender, const crypto::public_key& serviceNodePubkey);
-    std::string getPublicKeyHex();
-    bls::PublicKey getPublicKey();
+    bls::Signature signSig2(std::span<const uint8_t> msg) const;
+
+    bls::Signature signHashSig(const crypto::hash& hash) const;
+    eth::bls_signature signHash(const crypto::hash& hash) const;
+    eth::bls_signature proofOfPossession(
+            eth::address sender, const crypto::public_key& serviceNodePubkey) const;
+    std::string getPublicKeyHex() const;
+    bls::PublicKey getPublicKey() const;
 
     // Gets the public key as our eth::bls_public_key type
     eth::bls_public_key getCryptoPubkey();
@@ -51,6 +53,7 @@ class BLSSigner {
     static constexpr inline std::string_view rewardTag = "BLS_SIG_TRYANDINCREMENT_REWARD";
     static constexpr inline std::string_view removalTag = "BLS_SIG_TRYANDINCREMENT_REMOVE";
     static constexpr inline std::string_view liquidateTag = "BLS_SIG_TRYANDINCREMENT_LIQUIDATE";
+    static constexpr inline std::string_view hashToG2Tag = "BLS_SIG_HASH_TO_FIELD_TAG";
 };
 
 }  // namespace eth
