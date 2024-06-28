@@ -31,6 +31,7 @@ class BLSSigner {
     explicit BLSSigner(const cryptonote::network_type nettype, const bls_secret_key* key = nullptr);
 
     bls::Signature signSig2(std::span<const uint8_t> msg) const;
+    static bool verifyHash(cryptonote::network_type nettype, const bls::Signature& signature, const bls::PublicKey &pubKey, std::span<const uint8_t> hash);
 
     bls::Signature signHashSig(const crypto::hash& hash) const;
     eth::bls_signature signHash(const crypto::hash& hash) const;
