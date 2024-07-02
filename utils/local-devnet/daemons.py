@@ -167,7 +167,7 @@ class Daemon(RPCDaemon):
                 '--p2p-bind-port={}'.format(self.p2p_port),
                 '--rpc-admin={}:{}'.format(self.listen_ip, self.rpc_port),
                 '--quorumnet-port={}'.format(self.qnet_port),
-                '--ethereum-provider={}'.format("http://127.0.0.1:8545"),
+                '--l2-provider={}'.format("http://127.0.0.1:8545"),
                 )
 
         for d in peers:

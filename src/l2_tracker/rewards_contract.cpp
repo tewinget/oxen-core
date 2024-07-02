@@ -1,43 +1,39 @@
 #include "rewards_contract.h"
 
 #include <ethyl/utils.hpp>
-#include <common/oxen.h>
-#include <common/string_util.h>
 
+#include "common/bigint.h"
+#include "common/guts.h"
+#include "contracts.h"
 #include "crypto/crypto.h"
+#include "crypto/hash.h"
 #include "cryptonote_config.h"
+#include "logging/oxen_logger.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wuseless-cast"
 #include <nlohmann/json.hpp>
 #pragma GCC diagnostic pop
 
-#include "common/bigint.h"
-#include "common/guts.h"
-#include "logging/oxen_logger.h"
-
 namespace eth {
 
-static auto logcat = oxen::log::Cat("l2_tracker");
+namespace {
+    auto logcat = oxen::log::Cat("l2_tracker");
 
-TransactionType getLogType(const ethyl::LogEntry& log) {
-    if (log.topics.empty()) {
-        throw std::runtime_error("No topics in log entry");
+    TransactionType getLogType(const ethyl::LogEntry& log) {
+        if (log.topics.empty())
+            throw std::runtime_error("No topics in log entry");
+
+        auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
+
+        return event_sig == contract::event::NewServiceNode ? TransactionType::NewServiceNode
+             : event_sig == contract::event::ServiceNodeRemovalRequest
+                     ? TransactionType::ServiceNodeLeaveRequest
+             : event_sig == contract::event::ServiceNodeRemoval ? TransactionType::ServiceNodeExit
+                                                                : TransactionType::Other;
     }
-    // keccak256('NewServiceNode(uint64,address,(uint256,uint256),(uint256,uint256,uint256,uint16),(address,uint256)[])')
-    if (log.topics[0] == "0xe82ed1bfc15e6602fba1a19273171c8a63c1d40b0e0117be4598167b8655498f") {
-        return TransactionType::NewServiceNode;
-        // keccak256('ServiceNodeRemovalRequest(uint64,address,(uint256,uint256))')
-    } else if (
-            log.topics[0] == "0x89477e9f4ddcb5eb9f30353ab22c31ef9a91ab33fd1ffef09aadb3458be7775d") {
-        return TransactionType::ServiceNodeLeaveRequest;
-        // keccak256('ServiceNodeRemoval(uint64,address,uint256,(uint256,uint256))')
-    } else if (
-            log.topics[0] == "0x130a7be04ef1f87b2b436f68f389bf863ee179b95399a3a8444196fab7a4e54c") {
-        return TransactionType::ServiceNodeExit;
-    }
-    return TransactionType::Other;
-}
+
+}  // namespace
 
 using u256 = std::array<std::byte, 32>;
 using tools::skip;
@@ -45,8 +41,7 @@ using tools::skip_t;
 
 TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
     TransactionStateChangeVariant result;
-    TransactionType type = getLogType(log);
-    switch (type) {
+    switch (getLogType(log)) {
         case TransactionType::NewServiceNode: {
             // event NewServiceNode(
             //      uint64 indexed serviceNodeID,
@@ -83,7 +78,8 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             fee = tools::decode_integer_be(fee256);
             if (fee > cryptonote::STAKING_FEE_BASIS)
                 throw std::invalid_argument{
-                    "Invalid NewServiceNode data: fee must be in [0, {}]"_format(cryptonote::STAKING_FEE_BASIS)};
+                        "Invalid NewServiceNode data: fee must be in [0, {}]"_format(
+                                cryptonote::STAKING_FEE_BASIS)};
             auto num_contributors = tools::decode_integer_be(c_len);
             if (tools::decode_integer_be(c_size) != 64 ||
                 contrib_hex.size() != 2 * num_contributors * (32 + 32))
@@ -145,21 +141,8 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
     return result;
 }
 
-RewardsContract::RewardsContract(const std::string& _contractAddress, ethyl::Provider& _provider) :
-        contractAddress(_contractAddress), provider(_provider) {}
-
-StateResponse RewardsContract::State() {
-    return State(provider.getLatestHeight());
-}
-
-StateResponse RewardsContract::State(uint64_t height) {
-    return {height, tools::make_from_hex_guts<crypto::hash>(
-            provider.getContractStorageRoot(contractAddress, height))};
-}
-
-std::vector<ethyl::LogEntry> RewardsContract::Logs(uint64_t height) {
-    return provider.getLogs(height, contractAddress);
-}
+RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider) :
+        contractAddress{contract::rewards_address(nettype)}, provider{provider} {}
 
 std::vector<bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumber) {
     // Get the sentinel node to start the iteration
@@ -180,35 +163,33 @@ std::vector<bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumb
 }
 
 static std::string service_node_blob_debug(
-    const ContractServiceNode& result, std::string_view full_hex) {
+        const ContractServiceNode& result, std::string_view full_hex) {
     return "Service node blob components were:\n"
-                "\n"
-                "  - next:                   {}\n"
-                "  - prev:                   {}\n"
-                "  - operator:               {}\n"
-                "  - pubkey:                 {}\n"
-                "  - leaveRequestTimestamp:  {}\n"
-                "  - deposit:                {}\n"
-                "  - num contributors:       {}\n"
-                "\n"
-                "The raw blob was:\n\n{}"_format(
-                result.next,
-                result.prev,
-                result.operatorAddr,
-                result.pubkey,
-                result.leaveRequestTimestamp,
-                result.deposit,
-                result.contributorsSize,
-                full_hex);
+           "\n"
+           "  - next:                   {}\n"
+           "  - prev:                   {}\n"
+           "  - operator:               {}\n"
+           "  - pubkey:                 {}\n"
+           "  - leaveRequestTimestamp:  {}\n"
+           "  - deposit:                {}\n"
+           "  - num contributors:       {}\n"
+           "\n"
+           "The raw blob was:\n\n{}"_format(
+                   result.next,
+                   result.prev,
+                   result.operatorAddr,
+                   result.pubkey,
+                   result.leaveRequestTimestamp,
+                   result.deposit,
+                   result.contributorsSize,
+                   full_hex);
 }
 
 ContractServiceNode RewardsContract::serviceNodes(
         uint64_t index, std::optional<uint64_t> blockNumber) {
-    ethyl::ReadCallData callData = {};
-    std::string indexABI =
-            ethyl::utils::padTo32Bytes(ethyl::utils::decimalToHex(index), ethyl::utils::PaddingDirection::LEFT);
-    callData.contractAddress = contractAddress;
-    callData.data = ethyl::utils::toEthFunctionSignature("serviceNodes(uint64)") + indexABI;
+    // callData.contractAddress = contractAddress;
+    auto callData = "0x{:x}{:032x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
+
     // FIXME(OXEN11): we *cannot* make a blocking request here like this because we are blocking
     // some other thread from doing work; we either need to get this from a local cache of the info,
     // or make it asynchronous (i.e. with a completion/timeout callback), or both (i.e. try cache,
@@ -216,7 +197,8 @@ ContractServiceNode RewardsContract::serviceNodes(
     //
     // FIXME(OXEN11): nor can we make recursive linked lists requests like this!
     std::string blockNumArg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
-    nlohmann::json callResult = provider.callReadFunctionJSON(callData, blockNumArg);
+    nlohmann::json callResult =
+            provider.callReadFunctionJSON(contractAddress, callData, blockNumArg);
     auto callResultHex = callResult.get<std::string_view>();
 
     // NOTE: The ServiceNode struct is a dynamic type (because its child `Contributor` field is
@@ -248,7 +230,8 @@ ContractServiceNode RewardsContract::serviceNodes(
     auto [contrib_len] = tools::split_hex_into<u256, tools::ignore>(contrib_data);
 
     // NOTE: Start parsing the contributors blobs
-    if (auto contributorSize = tools::decode_integer_be(contrib_len);contributorSize <= result.contributors.max_size())
+    if (auto contributorSize = tools::decode_integer_be(contrib_len);
+        contributorSize <= result.contributors.max_size())
         result.contributorsSize = contributorSize;
     else {
         oxen::log::error(
@@ -260,9 +243,7 @@ ContractServiceNode RewardsContract::serviceNodes(
                 index,
                 result.pubkey,
                 blockNumber ? "{}"_format(*blockNumber) : "(latest)");
-        oxen::log::debug(
-                logcat,
-                "{}", service_node_blob_debug(result, callResultHex));
+        oxen::log::debug(logcat, "{}", service_node_blob_debug(result, callResultHex));
         return result;
     }
 
@@ -313,6 +294,24 @@ std::vector<uint64_t> RewardsContract::getNonSigners(
     }
 
     return non_signers;
+}
+
+std::string NewServiceNodeTx::to_string() const {
+    return "{} [bls_pubkey={}, addr={}, sn_pubkey={}]"_format(
+            state_change_name<NewServiceNodeTx>(), bls_pubkey, eth_address, sn_pubkey);
+}
+
+std::string ServiceNodeLeaveRequestTx::to_string() const {
+    return "{} [bls_pubkey={}]"_format(state_change_name<ServiceNodeLeaveRequestTx>(), bls_pubkey);
+}
+
+std::string ServiceNodeDeregisterTx::to_string() const {
+    return "{} [bls_pubkey={}]"_format(state_change_name<ServiceNodeDeregisterTx>(), bls_pubkey);
+}
+
+std::string ServiceNodeExitTx::to_string() const {
+    return "{} [bls_pubkey={}, addr={}, amount={}]"_format(
+            state_change_name<ServiceNodeExitTx>(), bls_pubkey, eth_address, amount);
 }
 
 }  // namespace eth

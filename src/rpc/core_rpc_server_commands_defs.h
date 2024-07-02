@@ -682,7 +682,6 @@ struct block_header_response {
     std::vector<std::string> tx_hashes;
     std::string service_node_winner;
     uint64_t l2_height;
-    std::string l2_state;
 };
 
 void to_json(nlohmann::json& j, const block_header_response& h);

@@ -66,4 +66,3 @@ BLOB_SERIALIZER(crypto::ed25519_public_key);
 BLOB_SERIALIZER(crypto::ed25519_signature);
 BLOB_SERIALIZER(eth::address);
 BLOB_SERIALIZER(eth::bls_public_key);
-BLOB_SERIALIZER(eth::block_hash);

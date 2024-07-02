@@ -27,15 +27,16 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 add_library(l2_tracker
-  rewards_contract.cpp
-  pool_contract.cpp
-  l2_tracker.cpp
-  )
+    contracts.cpp
+    l2_tracker.cpp
+    rewards_contract.cpp
+)
 
 target_link_libraries(l2_tracker
   PRIVATE
     common
     ethyl
     cryptonote_basic
+    oxen_bls
     logging
     extra)

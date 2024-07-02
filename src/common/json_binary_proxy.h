@@ -35,8 +35,6 @@ inline constexpr bool json_is_binary<eth::bls_signature> = true;
 template <>
 inline constexpr bool json_is_binary<eth::address> = true;
 template <>
-inline constexpr bool json_is_binary<eth::block_hash> = true;
-template <>
 inline constexpr bool json_is_binary<crypto::key_image> = true;
 template <>
 inline constexpr bool json_is_binary<rct::key> = true;

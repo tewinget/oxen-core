@@ -153,10 +153,12 @@ class Blockchain {
      * @param sqlite_db a raw, unmanaged pointer to the BlockchainSQLite object.  NOTE: the
      * Blockchain object takes over ownership of this pointer, if not nullptr.  Should not be
      * nullptr when operating as a regular oxen node.
+     * @param l2_tracker a pointer to the L2Tracker instance; this pointer is *not* managed by the
+     * Blockchain object, but must remain alive at least as long as the Blockchain object does.
+     * Should be nullptr if this node does not track L2 state.
      * @param offline true if running offline, else false
      * @param test_options test parameters
      * @param fixed_difficulty fixed difficulty for testing purposes; 0 means disabled
-     * @param ethereum_provider sync ethereum using this provider
      * @param get_checkpoints if set, will be called to get checkpoints data
      *
      * @return true on success, false if any initialization steps fail
@@ -166,10 +168,10 @@ class Blockchain {
             const network_type nettype,
             sqlite3* ons_db = nullptr,
             cryptonote::BlockchainSQLite* sqlite_db = nullptr,
+            eth::L2Tracker* l2_tracker = nullptr,
             bool offline = false,
             const cryptonote::test_options* test_options = nullptr,
             difficulty_type fixed_difficulty = 0,
-            const std::string& ethereum_provider = "",
             const GetCheckpointsCallback& get_checkpoints = nullptr);
 
     // Common initializer for test code
@@ -725,7 +727,7 @@ class Blockchain {
     bool check_tx_inputs(
             transaction& tx,
             tx_verification_context& tvc,
-            std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
+            eth::TransactionReviewSession* ethereum_transaction_review_session,
             crypto::hash& max_used_block_id,
             uint64_t& pmax_used_block_height,
             std::unordered_set<crypto::key_image>* key_image_conflicts = nullptr,
@@ -1187,8 +1189,6 @@ class Blockchain {
      */
     void flush_invalid_blocks();
 
-    void add_ethereum_transactions_to_tx_pool();
-
 #ifndef IN_UNIT_TESTS
   private:
 #endif
@@ -1311,9 +1311,7 @@ class Blockchain {
 
     checkpoints m_checkpoints;
 
-    // Ethereum L2 tracking object
-    std::shared_ptr<eth::L2Tracker> m_l2_tracker;
-
+    eth::L2Tracker* m_l2_tracker;
     network_type m_nettype;
     bool m_offline;
     difficulty_type m_fixed_difficulty;
@@ -1419,7 +1417,7 @@ class Blockchain {
     bool check_tx_inputs(
             transaction& tx,
             tx_verification_context& tvc,
-            std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
+            eth::TransactionReviewSession* ethereum_transaction_review_session = nullptr,
             uint64_t* pmax_used_block_height = nullptr,
             std::unordered_set<crypto::key_image>* key_image_conflicts = nullptr);
 

@@ -101,13 +101,6 @@ inline void serialize(
         [[maybe_unused]] const boost::serialization::version_type ver) {
     a& reinterpret_cast<char(&)[sizeof(crypto::hash8)]>(x);
 }
-template <class Archive>
-inline void serialize(
-        Archive& a,
-        eth::block_hash& x,
-        [[maybe_unused]] const boost::serialization::version_type ver) {
-    a& reinterpret_cast<char(&)[sizeof(eth::block_hash)]>(x);
-}
 
 template <class Archive>
 inline void serialize(
@@ -267,7 +260,6 @@ inline void serialize(
     if (ver < 20)
         return;
     a& b.l2_height;
-    a& b.l2_state;
 }
 
 template <class Archive>

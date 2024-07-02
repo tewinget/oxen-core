@@ -62,7 +62,7 @@ int main(int argc, char** argv)
   po::options_description desc_options("Command line options");
   const command_line::arg_descriptor<std::string> arg_data_dir = { "data-dir", "Data files directory", DEFAULT_DATA_DIR };
   command_line::add_arg(desc_options, arg_data_dir);
-  const command_line::arg_descriptor<int> arg_log_level = { "log-level", "Log level (0-4)", 1 };
+  const command_line::arg_descriptor<std::string> arg_log_level = { "log-level", "Log level (0-4)", "1" };
   command_line::add_arg(desc_options, arg_log_level);
 
   po::variables_map vm;

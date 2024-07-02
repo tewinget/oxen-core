@@ -155,13 +155,6 @@ static const command_line::arg_descriptor<std::string> arg_public_ip = {
         "storage server) are accessible. This IP address will be advertised to the "
         "network via the service node uptime proofs. Required if operating as a "
         "service node."};
-static const command_line::arg_descriptor<std::string> arg_ethereum_provider = {
-        "ethereum-provider",
-        "Specify a provider by URL(s) on which this service node will query the"
-        "Ethereum blockchain when tracking the rewards smart contract. A "
-        "provider is required if operating as a service node.\n"
-        "Multiple ethereum providers can be specified by comma delimiting the "
-        "URLs for example: '127.0.0.1:8545,127.0.0.1:8546'"};
 static const command_line::arg_descriptor<uint16_t> arg_storage_server_port = {
         "storage-server-port", "Deprecated option, ignored.", 0};
 static const command_line::arg_descriptor<uint16_t, false, true, 2> arg_quorumnet_port = {
@@ -184,6 +177,41 @@ static const command_line::arg_descriptor<bool> arg_omq_quorumnet_public{
         "Note that even without this option the quorumnet port can be used for RPC commands by "
         "--lmq-admin and --lmq-user pubkeys.",
         false};
+static const command_line::arg_descriptor<std::string> arg_l2_provider = {
+        "l2-provider",
+        "Specify one or more providers by URL to which this service node will query the Ethereum "
+        "L2 blockchain when tracking the rewards smart contract. Required if operating as a "
+        "service node. Multiple providers can be specified by comma delimiting the URLs for "
+        "example: 'http://127.0.0.1:8545,https://example.com/api'"};
+
+// Floating point duration, to which all integer durations are implicitly convertible
+using dseconds = std::chrono::duration<double>;
+
+static const command_line::arg_descriptor<double> arg_l2_refresh = {
+        "l2-refresh",
+        "Specify the time (in seconds) between refreshes of the Ethereum L2 provider current state",
+        dseconds{ETH_L2_DEFAULT_REFRESH}.count()};
+static const command_line::arg_descriptor<double> arg_l2_timeout = {
+        "l2-timeout",
+        "Specify the timeout (in seconds) for requests to the L2 provider current state; if "
+        "multiple providers are configured then after a timeout the next provider will be tried.",
+        dseconds{ETH_L2_DEFAULT_REQUEST_TIMEOUT}.count()};
+static const command_line::arg_descriptor<int> arg_l2_max_logs = {
+        "l2-max-logs",
+        "Specify the maximum number of logs we will request at once in a single request to the L2 "
+        "provider.  If more logs are needed than this at once then multiple requests will be used.",
+        ETH_L2_DEFAULT_MAX_LOGS};
+static const command_line::arg_descriptor<double> arg_l2_check_interval = {
+        "l2-check-interval",
+        "When multiple L2 providers are specified, this specifies how often (in seconds) all of "
+        "them should be checked to see if they are synced and, if not, switch to a backup "
+        "provider. Earlier L2 providers will be preferred when all providers are reasonably close",
+        dseconds{ETH_L2_DEFAULT_CHECK_INTERVAL}.count()};
+static const command_line::arg_descriptor<int> arg_l2_check_threshold = {
+        "l2-check-threshold",
+        "When multiple L2 providers are specified, this is the threshold (in number of blocks) "
+        "behind the best provider height before we consider a given provider out of sync",
+        ETH_L2_DEFAULT_CHECK_THRESHOLD};
 static const command_line::arg_descriptor<std::string> arg_block_notify = {
         "block-notify",
         "Run a program for each new block, '%s' will be replaced by the block hash",
@@ -317,7 +345,12 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_max_txpool_weight);
     command_line::add_arg(desc, arg_service_node);
     command_line::add_arg(desc, arg_public_ip);
-    command_line::add_arg(desc, arg_ethereum_provider);
+    command_line::add_arg(desc, arg_l2_provider);
+    command_line::add_arg(desc, arg_l2_refresh);
+    command_line::add_arg(desc, arg_l2_timeout);
+    command_line::add_arg(desc, arg_l2_max_logs);
+    command_line::add_arg(desc, arg_l2_check_interval);
+    command_line::add_arg(desc, arg_l2_check_threshold);
     command_line::add_arg(desc, arg_storage_server_port);
     command_line::add_arg(desc, arg_quorumnet_port);
 
@@ -404,11 +437,10 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
             args_okay = false;
         }
 
-        const std::string ethereum_provider = command_line::get_arg(vm, arg_ethereum_provider);
-        if (!ethereum_provider.size()) {
+        if (command_line::get_arg(vm, arg_l2_provider).empty()) {
             log::error(
                     logcat,
-                    "Please specify an ethereum provider from which the service node can access");
+                    "At least one ethereum L2 provider must be specified for a service node");
             args_okay = false;
         }
 
@@ -557,6 +589,11 @@ std::string core::get_status_string() const {
         }
     }
     return s;
+}
+
+template <typename Duration>
+static Duration as_duration(double seconds) {
+    return std::chrono::duration_cast<Duration>(dseconds(seconds));
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -783,16 +820,42 @@ bool core::init(
     init_oxenmq(vm);
     m_bls_aggregator = std::make_unique<eth::BLSAggregator>(*this);
 
-    const auto ethereum_provider = command_line::get_arg(vm, arg_ethereum_provider);
+    // FIXME: this is optional if we aren't a service node
+    m_l2_tracker = std::make_unique<eth::L2Tracker>(
+            *this,
+            as_duration<std::chrono::milliseconds>(command_line::get_arg(vm, arg_l2_refresh)));
+    m_l2_tracker->provider.setTimeout(as_duration<std::chrono::milliseconds>(
+            1000 * command_line::get_arg(vm, arg_l2_timeout)));
+    m_l2_tracker->GETLOGS_MAX_BLOCKS = command_line::get_arg(vm, arg_l2_max_logs);
+
+    const auto l2_provider = command_line::get_arg(vm, arg_l2_provider);
+    if (!l2_provider.empty()) {
+        auto provider_urls = tools::split_any(l2_provider, ", \t\n", /*trim=*/true);
+
+        try {
+            if (provider_urls.empty())
+                throw std::invalid_argument{"Ethereum L2 provider list is empty"};
+            for (size_t index = 0; index < provider_urls.size(); index++)
+                m_l2_tracker->provider.addClient(
+                        index == 0 ? "Primary L2 provider"s
+                                   : "Backup L2 provider #{}"_format(index),
+                        std::string{provider_urls[index]});
+        } catch (const std::exception& e) {
+            log::critical(
+                    logcat, "Invalid Ethereum L2 provider(s) '{}': {}", l2_provider, e.what());
+            return false;
+        }
+    }
+
     r = m_blockchain_storage.init(
             std::move(db),
             m_nettype,
             ons_db,
             sqliteDB.release(),
+            m_l2_tracker.get(),
             m_offline,
             regtest ? &regtest_test_options : test_options,
             command_line::get_arg(vm, arg_fixed_difficulty),
-            ethereum_provider,
             get_checkpoints);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
@@ -1442,11 +1505,6 @@ bool core::handle_parsed_txs(
     if (blink_rollback_height)
         *blink_rollback_height = 0;
     tx_pool_options tx_opts;
-    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
-    if (version >= cryptonote::feature::ETH_BLS) {
-        ethereum_transaction_review_session =
-                m_blockchain_storage.l2_tracker().initialize_mempool_review();
-    }
     for (size_t i = 0; i < parsed_txs.size(); i++) {
         auto& info = parsed_txs[i];
         if (!info.result) {
@@ -1475,7 +1533,6 @@ bool core::handle_parsed_txs(
                     info.tvc,
                     *local_opts,
                     version,
-                    ethereum_transaction_review_session,
                     blink_rollback_height)) {
             log::debug(logcat, "tx added: {}", info.tx_hash);
         } else {
@@ -2019,8 +2076,7 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> core::get_coinbase_tx_sum(
                         log::info(
                                 logcat,
                                 "Finishing cache build for get_coinbase_tx_sum in {} s",
-                                std::chrono::duration<double>{
-                                        std::chrono::steady_clock::now() - cache_build_started}
+                                dseconds{std::chrono::steady_clock::now() - cache_build_started}
                                         .count());
                     }
                     cache_to = 0;

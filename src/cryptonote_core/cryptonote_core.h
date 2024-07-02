@@ -732,6 +732,9 @@ class core : public i_miner_handler {
      */
     const Blockchain& get_blockchain_storage() const { return m_blockchain_storage; }
 
+    /// Returns a reference to the Ethereum L2 tracking object
+    eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
+
     /// @brief return a reference to the service node list
     const service_nodes::service_node_list& get_service_node_list() const {
         return m_service_node_list;
@@ -1248,6 +1251,8 @@ class core : public i_miner_handler {
 
     service_nodes::service_node_list m_service_node_list;
     service_nodes::quorum_cop m_quorum_cop;
+
+    std::unique_ptr<eth::L2Tracker> m_l2_tracker;
 
     std::shared_ptr<eth::BLSSigner> m_bls_signer;
     std::unique_ptr<eth::BLSAggregator> m_bls_aggregator;

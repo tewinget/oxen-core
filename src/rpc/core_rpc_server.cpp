@@ -1485,7 +1485,6 @@ void core_rpc_server::fill_block_header_response(
                               cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra))
                     : tools::hex_guts(blk.service_node_winner_key);
     response.coinbase_payouts = get_block_reward(blk);
-    response.l2_state = tools::hex_guts(blk.l2_state);
     response.l2_height = blk.l2_height;
     if (blk.miner_tx.vout.size() > 0)
         response.miner_tx_hash = tools::hex_guts(cryptonote::get_transaction_hash(blk.miner_tx));

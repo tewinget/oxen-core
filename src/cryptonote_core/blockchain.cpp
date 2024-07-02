@@ -505,10 +505,10 @@ bool Blockchain::init(
         const network_type nettype,
         sqlite3* ons_db,
         cryptonote::BlockchainSQLite* sqlite_db,
+        eth::L2Tracker* l2_tracker,
         bool offline,
         const cryptonote::test_options* test_options,
         difficulty_type fixed_difficulty,
-        const std::string& ethereum_provider,
         const GetCheckpointsCallback& get_checkpoints /* = nullptr*/)
 
 {
@@ -543,41 +543,7 @@ bool Blockchain::init(
     if (!m_checkpoints.init(m_nettype, m_db.get()))
         throw std::runtime_error("Failed to initialize checkpoints");
 
-    m_l2_tracker                          = std::make_shared<eth::L2Tracker>(m_nettype);
-    m_l2_tracker->provider.connectTimeout = 2000ms;
-    if (ethereum_provider.size()) {
-        std::string_view delimiter = ",";
-        std::vector<std::string_view> provider_urls = tools::split(ethereum_provider, delimiter, /*trim*/ true);
-
-        auto error_buffer = fmt::memory_buffer();
-        fmt::format_to(std::back_inserter(error_buffer), "Failed to add URL '{}' as an Ethereum provider.", ethereum_provider);
-
-        bool error_in_urls = false;
-        if (provider_urls.size() == 0) {
-            fmt::format_to(std::back_inserter(error_buffer),
-                           " There were no URLs produced after splitting by '{}'.",
-                           delimiter);
-            error_in_urls = true;
-        } else {
-            fmt::format_to(std::back_inserter(error_buffer), " The items that failed were:\n", ethereum_provider);
-            // NOTE: Prepare an error message incase we encounter some
-            for (size_t index = 0; index < provider_urls.size(); index++) {
-                std::string_view url = provider_urls[index];
-                if (!m_l2_tracker->provider.addClient(fmt::format("Eth Client #{}", index), std::string(url))) {
-                    error_in_urls = true;
-                    fmt::format_to(std::back_inserter(error_buffer), "  - '{}'\n", url);
-                }
-            }
-        }
-
-        // NOTE: Handle errors
-        if (error_in_urls || m_l2_tracker->provider.clients.empty()) {
-            log::error(logcat, "{}", fmt::to_string(error_buffer));
-            return false;
-        }
-
-        m_l2_tracker->start();
-    }
+    m_l2_tracker = l2_tracker;
 
     m_offline = offline;
     m_fixed_difficulty = fixed_difficulty;
@@ -872,10 +838,6 @@ block Blockchain::pop_block_from_blockchain(bool pop_batching_rewards = true) {
 
     // return transactions from popped block to the tx_pool
     size_t pruned = 0;
-    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
-    if (popped_block.major_version >= cryptonote::feature::ETH_BLS) {
-        ethereum_transaction_review_session = m_l2_tracker->initialize_mempool_review();
-    }
     for (transaction& tx : popped_txs) {
         if (tx.pruned) {
             ++pruned;
@@ -891,12 +853,7 @@ block Blockchain::pop_block_from_blockchain(bool pop_batching_rewards = true) {
             // that might not be always true. Unlikely though, and always relaying
             // these again might cause a spike of traffic as many nodes re-relay
             // all the transactions in a popped block when a reorg happens.
-            bool r = m_tx_pool.add_tx(
-                    tx,
-                    tvc,
-                    tx_pool_options::from_block(),
-                    version,
-                    ethereum_transaction_review_session);
+            bool r = m_tx_pool.add_tx(tx, tvc, tx_pool_options::from_block(), version);
             if (!r) {
                 log::error(logcat, "Error returning transaction to tx_pool");
             }
@@ -1592,11 +1549,6 @@ bool Blockchain::validate_miner_transaction(
         base_reward = money_in_use - reward_parts.miner_fee;
     }
 
-    if (version >= cryptonote::feature::ETH_BLS && b.l2_height < m_l2_tracker->get_last_l2_height()) {
-        log::error(logcat, "block l2 height needs to be above the last blocks l2 height, l2_height: {} last_height: {}", b.l2_height, m_l2_tracker->get_last_l2_height());
-        return false;
-    }
-
     if (version < feature::ETH_BLS) {
         if (b.reward >
             reward_parts.base_miner + reward_parts.miner_fee + reward_parts.service_node_total) {
@@ -1612,20 +1564,22 @@ bool Blockchain::validate_miner_transaction(
             return false;
         }
     } else {
+
+        /* FIXME - can't do this if we always trust the quorum
+         * FIXME 2 - but we also need to secure/confirm this amount
+         */
+
         // NOTE: In SENT era, if provider is not configured- we trust the Service Node quorums to
         // query the smart contract for the reward amount. Non-service nodes can configure the
         // provider if they wish to synchronise the network with extra security.
-        if (m_l2_tracker->provider_has_clients()) {
-            const auto pool_block_reward =
-                    m_l2_tracker->get_pool_block_reward(b.timestamp, b.l2_height);
-            if (b.reward != pool_block_reward) {
-                log::error(
-                        logcat,
-                        "block reward to be batched is incorrect. Block reward is {}, should be {}",
-                        print_money(b.reward),
-                        print_money(pool_block_reward));
-                return false;
-            }
+        const auto pool_block_reward = m_l2_tracker->get_reward_rate(b.l2_height);
+        if (b.reward != pool_block_reward) {
+            log::error(
+                    logcat,
+                    "block reward rate is incorrect: expected {}, got {}",
+                    print_money(pool_block_reward),
+                    print_money(b.reward));
+            return false;
         }
     }
 
@@ -1720,7 +1674,7 @@ bool Blockchain::create_block_template_internal(
     uint64_t already_generated_coins;
     uint64_t pool_cookie;
 
-    auto lock = tools::unique_locks(m_tx_pool, *this);
+    auto lock = tools::shared_locks(m_tx_pool, *this, *m_l2_tracker);
     if (m_btc_valid && !from_block) {
         // The pool cookie is atomic. The lack of locking is OK, as if it changes
         // just as we compare it, we'll just use a slightly old template, but
@@ -1834,8 +1788,11 @@ bool Blockchain::create_block_template_internal(
     size_t txs_weight;
     uint64_t fee;
 
-    if (hf_version >= cryptonote::feature::ETH_BLS)
-        std::tie(b.l2_height, b.l2_state) = m_l2_tracker->latest_state();
+    std::optional<std::pair<uint64_t, uint64_t>> l2_range;
+    if (hf_version >= cryptonote::feature::ETH_BLS) {
+        b.l2_height = m_l2_tracker->get_safe_height();
+        l2_range.emplace(m_l2_tracker->get_confirmed_height() + 1, b.l2_height);
+    }
 
     // Add transactions in mempool to block
     if (!m_tx_pool.fill_block_template(
@@ -1846,7 +1803,8 @@ bool Blockchain::create_block_template_internal(
                 fee,
                 expected_reward,
                 b.major_version,
-                height)) {
+                height,
+                std::move(l2_range))) {
         return false;
     }
     pool_cookie = m_tx_pool.cookie();
@@ -1962,7 +1920,7 @@ bool Blockchain::create_block_template_internal(
             b.service_node_winner_key = crypto::null<crypto::public_key>;
 
         if (hf_version >= cryptonote::feature::ETH_BLS) {
-            block_rewards = m_l2_tracker->get_pool_block_reward(b.timestamp, b.l2_height);
+            block_rewards = m_l2_tracker->get_reward_rate(b.l2_height);
         }
 
         b.reward = block_rewards;
@@ -2012,85 +1970,18 @@ bool Blockchain::create_next_pulse_block_template(
     std::string nonce = {};
 
     bool result = create_block_template_internal(
-            b, NULL /*from_block*/, info, diffic, height, expected_reward, nonce);
+            b,
+            nullptr /*from_block*/,
+            info,
+            diffic,
+            height,
+            expected_reward,
+            nonce);
     b.pulse.round = round;
     b.pulse.validator_bitset = validator_bitset;
     return result;
 }
 
-void Blockchain::add_ethereum_transactions_to_tx_pool() {
-    auto hf_version = get_network_version();
-    if (hf_version < feature::ETH_BLS)
-        return;
-    std::vector<TransactionStateChangeVariant> eth_transactions =
-            m_l2_tracker->get_block_transactions();
-    tx_extra_field field;
-
-    for (const auto& tx_variant : eth_transactions) {
-        transaction tx;
-        tx.version = transaction_prefix::get_max_version_for_hf(hf_version);
-
-        std::visit(
-                [&](auto&& arg) {
-                    using T = std::decay_t<decltype(arg)>;
-                    if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
-                        tx.type = txtype::ethereum_new_service_node;
-                        std::vector<tx_extra_ethereum_contributor> contributors;
-                        for (const auto& contributor : arg.contributors)
-                            contributors.emplace_back(contributor.addr, contributor.amount);
-
-                        tx_extra_ethereum_new_service_node new_service_node = {
-                                0,
-                                arg.bls_pubkey,
-                                arg.eth_address,
-                                arg.sn_pubkey,
-                                arg.sn_signature,
-                                arg.fee,
-                                contributors};
-                        cryptonote::add_new_service_node_to_tx_extra(tx.extra, new_service_node);
-
-                    } else if constexpr (std::is_same_v<T, ServiceNodeLeaveRequestTx>) {
-                        tx.type = txtype::ethereum_service_node_leave_request;
-                        tx_extra_ethereum_service_node_leave_request leave_request = {
-                                0, arg.bls_pubkey};
-                        cryptonote::add_service_node_leave_request_to_tx_extra(
-                                tx.extra, leave_request);
-                    } else if constexpr (std::is_same_v<T, ServiceNodeExitTx>) {
-                        tx.type = txtype::ethereum_service_node_exit;
-                        tx_extra_ethereum_service_node_exit exit_data = {
-                                0, arg.eth_address, arg.amount, arg.bls_pubkey};
-                        cryptonote::add_service_node_exit_to_tx_extra(tx.extra, exit_data);
-                    } else if constexpr (std::is_same_v<T, ServiceNodeDeregisterTx>) {
-                        tx.type = txtype::ethereum_service_node_deregister;
-                        tx_extra_ethereum_service_node_deregister deregister = {0, arg.bls_pubkey};
-                        cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
-                    }
-                },
-                tx_variant);
-        const size_t tx_weight = get_transaction_weight(tx);
-        const crypto::hash tx_hash = get_transaction_hash(tx);
-        tx_verification_context tvc = {};
-
-        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session =
-                m_l2_tracker->initialize_mempool_review();
-        on_new_tx_from_block(tx);
-        // Add transaction to memory pool
-        if (!m_tx_pool.add_tx(
-                    tx,
-                    tx_hash,
-                    cryptonote::tx_to_blob(tx),
-                    tx_weight,
-                    tvc,
-                    tx_pool_options::new_tx(),
-                    hf_version,
-                    ethereum_transaction_review_session)) {
-            if (tvc.m_verifivation_failed)
-                log::error(log::Cat("verify"), "Transaction verification failed: {}", tx_hash);
-            else if (tvc.m_verifivation_impossible)
-                log::error(log::Cat("verify"), "Transaction verification impossible: {}", tx_hash);
-        }
-    }
-}
 //------------------------------------------------------------------
 // for an alternate chain, get the timestamps from the main chain to complete
 // the needed number of timestamps for the BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW.
@@ -3539,7 +3430,7 @@ void Blockchain::on_new_tx_from_block(const cryptonote::transaction& tx) {
 bool Blockchain::check_tx_inputs(
         transaction& tx,
         tx_verification_context& tvc,
-        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
+        eth::TransactionReviewSession* ethereum_transaction_review_session,
         crypto::hash& max_used_block_id,
         uint64_t& max_used_block_height,
         std::unordered_set<crypto::key_image>* key_image_conflicts,
@@ -3801,7 +3692,7 @@ bool Blockchain::expand_transaction_2(
 bool Blockchain::check_tx_inputs(
         transaction& tx,
         tx_verification_context& tvc,
-        std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session,
+        eth::TransactionReviewSession* ethereum_transaction_review_session,
         uint64_t* pmax_used_block_height,
         std::unordered_set<crypto::key_image>* key_image_conflicts) {
     log::trace(logcat, "Blockchain::{}", __func__);
@@ -4188,11 +4079,12 @@ bool Blockchain::check_tx_inputs(
             std::string fail_reason;
             if (!eth::validate_ethereum_new_service_node_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
-                !ethereum_transaction_review_session->processNewServiceNodeTx(
-                        entry.bls_pubkey,
-                        entry.eth_address,
-                        entry.service_node_pubkey,
-                        fail_reason)) {
+                (ethereum_transaction_review_session &&
+                 !ethereum_transaction_review_session->processNewServiceNodeTx(
+                         entry.bls_pubkey,
+                         entry.eth_address,
+                         entry.service_node_pubkey,
+                         fail_reason))) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum New Service Node TX reason: {}",
@@ -4205,8 +4097,9 @@ bool Blockchain::check_tx_inputs(
             std::string fail_reason;
             if (!eth::validate_ethereum_service_node_leave_request_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
-                !ethereum_transaction_review_session->processServiceNodeLeaveRequestTx(
-                        entry.bls_pubkey, fail_reason)) {
+                (ethereum_transaction_review_session &&
+                 !ethereum_transaction_review_session->processServiceNodeLeaveRequestTx(
+                         entry.bls_pubkey, fail_reason))) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum Service Node Leave Request TX reason: {}",
@@ -4219,8 +4112,9 @@ bool Blockchain::check_tx_inputs(
             std::string fail_reason;
             if (!eth::validate_ethereum_service_node_exit_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
-                !ethereum_transaction_review_session->processServiceNodeExitTx(
-                        entry.eth_address, entry.amount, entry.bls_pubkey, fail_reason)) {
+                (ethereum_transaction_review_session &&
+                 !ethereum_transaction_review_session->processServiceNodeExitTx(
+                         entry.eth_address, entry.amount, entry.bls_pubkey, fail_reason))) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum Service Node Exit TX reason: {}",
@@ -4233,8 +4127,9 @@ bool Blockchain::check_tx_inputs(
             std::string fail_reason;
             if (!eth::validate_ethereum_service_node_deregister_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
-                !ethereum_transaction_review_session->processServiceNodeDeregisterTx(
-                        entry.bls_pubkey, fail_reason)) {
+                (ethereum_transaction_review_session &&
+                 !ethereum_transaction_review_session->processServiceNodeDeregisterTx(
+                         entry.bls_pubkey, fail_reason))) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum Service Node Deregister TX reason: {}",
@@ -4727,10 +4622,6 @@ bool Blockchain::check_block_timestamp(const block& b, uint64_t& median_ts) cons
 //------------------------------------------------------------------
 void Blockchain::return_tx_to_pool(std::vector<std::pair<transaction, std::string>>& txs) {
     auto version = get_network_version();
-    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
-    if (version >= cryptonote::feature::ETH_BLS) {
-        ethereum_transaction_review_session = m_l2_tracker->initialize_mempool_review();
-    }
     for (auto& tx : txs) {
         cryptonote::tx_verification_context tvc{};
         // We assume that if they were in a block, the transactions are already
@@ -4747,8 +4638,7 @@ void Blockchain::return_tx_to_pool(std::vector<std::pair<transaction, std::strin
                     weight,
                     tvc,
                     tx_pool_options::from_block(),
-                    version,
-                    ethereum_transaction_review_session)) {
+                    version)) {
             log::error(
                     logcat,
                     "Failed to return taken transaction with hash: {} to tx_pool",
@@ -5078,10 +4968,9 @@ bool Blockchain::handle_block_to_main_chain(
     txs.reserve(bl.tx_hashes.size());
 
     auto hf_version = bl.major_version;
-    std::shared_ptr<eth::TransactionReviewSession> ethereum_transaction_review_session;
+    eth::TransactionReviewSession ethereum_transaction_review_session;
     if (hf_version >= cryptonote::feature::ETH_BLS) {
-        ethereum_transaction_review_session =
-                m_l2_tracker->initialize_transaction_review(bl.l2_height);
+        ethereum_transaction_review_session = m_l2_tracker->initialize_review(bl.l2_height);
     }
 
     for (const crypto::hash& tx_id : bl.tx_hashes) {
@@ -5161,7 +5050,7 @@ bool Blockchain::handle_block_to_main_chain(
         {
             // validate that transaction inputs and the keys spending them are correct.
             tx_verification_context tvc{};
-            if (!check_tx_inputs(tx, tvc, ethereum_transaction_review_session)) {
+            if (!check_tx_inputs(tx, tvc, &ethereum_transaction_review_session)) {
                 log::info(
                         logcat,
                         fg(fmt::terminal_color::red),
@@ -5217,7 +5106,7 @@ bool Blockchain::handle_block_to_main_chain(
         cumulative_block_weight += tx_weight;
     }
     if (hf_version >= cryptonote::feature::ETH_BLS &&
-        !ethereum_transaction_review_session->finalize_review()) {
+        !ethereum_transaction_review_session.finalize()) {
         log::info(
                 logcat,
                 fg(fmt::terminal_color::red),
@@ -5348,12 +5237,46 @@ bool Blockchain::handle_block_to_main_chain(
         bvc.m_verifivation_failed = true;
         return false;
     }
-    if (is_hard_fork_at_least(m_nettype, feature::ETH_BLS, bl.height) &&
-        !m_l2_tracker->check_state_in_history(bl.l2_height, bl.l2_state)) {
-        log::error(logcat, fg(fmt::terminal_color::red), "Failed to find state in l2 tracker.");
-        bvc.m_verifivation_failed = true;
-        return false;
+    if (is_hard_fork_at_least(m_nettype, feature::ETH_BLS, bl.height)) {
+
+        // FIXME -- I'm not convinced that these height checks are strictly needed, once we
+        // implement a confirmation-based approach rather than a hard L2 height transaction
+        // inclusion; at that point the height becomes more of an informative detail used for pulse
+        // quorum signoff but doesn't need to be a consensus rule beyond the pulse quorum.  It would
+        // be *weird* for the value to go down, but not impossible in the case of a major L2
+        // disruption.
+
+        if (m_l2_tracker->provider_has_clients()) {
+
+            if (auto max_known = m_l2_tracker->get_latest_height(); bl.l2_height > max_known) {
+                log::error(
+                        logcat,
+                        fg(fmt::terminal_color::red),
+                        "Block L2 height ({}) is too high (highest known L2 height: {}).  This "
+                        "could be a bad block, or we might not be synchronizing properly with the "
+                        "L2 provider.",
+                        bl.l2_height,
+                        max_known);
+                bvc.m_verifivation_failed = true;
+                return false;
+            }
+        }
+
+        // FIXME TODO XXX: the confirmed height isn't properly reset when popping blocks; we should
+        // really just be checking the l2_height value of the previous block rather than storing
+        // that inside the L2 tracker because this check doesn't require any L2 tracker state at all
+        // to verify.
+        if (auto prev_height = m_l2_tracker->get_confirmed_height(); bl.l2_height < prev_height) {
+            log::error(
+                    logcat,
+                    "Block L2 height ({}) cannot be less than the previous block's L2 height "
+                    "({})",
+                    bl.l2_height,
+                    prev_height);
+            return false;
+        }
     }
+
     if (!m_ons_db.add_block(bl, only_txs)) {
         log::info(logcat, fg(fmt::terminal_color::red), "Failed to add block to ONS DB.");
         bvc.m_verifivation_failed = true;
@@ -5372,8 +5295,6 @@ bool Blockchain::handle_block_to_main_chain(
             throw std::logic_error("Blockchain missing SQLite Database");
     }
 
-    if (hf_version >= cryptonote::feature::ETH_BLS)
-        m_l2_tracker->record_block_height_mapping(bl.height, bl.l2_height);
     block_add_info hook_data{bl, only_txs, checkpoint};
     for (const auto& hook : m_block_add_hooks) {
         try {
@@ -5455,6 +5376,9 @@ bool Blockchain::handle_block_to_main_chain(
                 tools::friendly_duration(vmt_elapsed),
                 tools::friendly_duration(addblock_elapsed));
     }
+
+    if (hf_version >= cryptonote::feature::ETH_BLS)
+        m_l2_tracker->set_confirmed_height(bl.l2_height);
 
     bvc.m_added_to_main_chain = true;
     ++m_sync_counter;

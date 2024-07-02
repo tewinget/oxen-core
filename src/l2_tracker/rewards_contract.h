@@ -5,8 +5,10 @@
 #include <unordered_set>
 #include <variant>
 
+#include "common/formattable.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
+#include "cryptonote_config.h"
 
 namespace eth {
 
@@ -23,28 +25,45 @@ struct Contributor {
     uint64_t amount;
 };
 
-struct NewServiceNodeTx {
+struct L2StateChange {};
+
+struct NewServiceNodeTx : L2StateChange {
     bls_public_key bls_pubkey;
     eth::address eth_address;
     crypto::public_key sn_pubkey;
     crypto::ed25519_signature sn_signature;
     uint64_t fee;
     std::vector<Contributor> contributors;
+
+    std::string to_string() const;
 };
 
-struct ServiceNodeLeaveRequestTx {
+struct ServiceNodeLeaveRequestTx : L2StateChange {
     bls_public_key bls_pubkey;
+
+    std::string to_string() const;
 };
 
-struct ServiceNodeDeregisterTx {
+struct ServiceNodeDeregisterTx : L2StateChange {
     bls_public_key bls_pubkey;
+
+    std::string to_string() const;
 };
 
-struct ServiceNodeExitTx {
+struct ServiceNodeExitTx : L2StateChange {
     eth::address eth_address;
     uint64_t amount;
     bls_public_key bls_pubkey;
+
+    std::string to_string() const;
 };
+
+template <std::derived_from<L2StateChange> Tx>
+constexpr std::string_view state_change_name() = delete;
+template <> inline constexpr std::string_view state_change_name<NewServiceNodeTx>() { return "new service node"sv; }
+template <> inline constexpr std::string_view state_change_name<ServiceNodeLeaveRequestTx>() { return "leave request"sv; }
+template <> inline constexpr std::string_view state_change_name<ServiceNodeExitTx>() { return "SN exit"sv; }
+template <> inline constexpr std::string_view state_change_name<ServiceNodeDeregisterTx>() { return "SN liquidation"sv; }
 
 using TransactionStateChangeVariant = std::variant<
         std::monostate,
@@ -53,13 +72,10 @@ using TransactionStateChangeVariant = std::variant<
         ServiceNodeDeregisterTx,
         ServiceNodeExitTx>;
 
-TransactionType getLogType(const ethyl::LogEntry& log);
 TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log);
-
-struct StateResponse {
-    uint64_t height;
-    crypto::hash block_hash;
-};
+inline bool is_state_change(const TransactionStateChangeVariant& v) {
+    return v.index() > 0;
+}
 
 struct ContractServiceNode {
     bool good;
@@ -76,12 +92,10 @@ struct ContractServiceNode {
 class RewardsContract {
   public:
     // Constructor
-    RewardsContract(const std::string& _contractAddress, ethyl::Provider& provider);
+    RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider);
 
-    StateResponse State();
-    StateResponse State(uint64_t height);
+    std::string_view address() { return contractAddress; }
 
-    std::vector<ethyl::LogEntry> Logs(uint64_t height);
     ContractServiceNode serviceNodes(
             uint64_t index, std::optional<uint64_t> blockNumber = std::nullopt);
     std::vector<uint64_t> getNonSigners(const std::unordered_set<bls_public_key>& bls_public_keys);
@@ -93,3 +107,6 @@ class RewardsContract {
 };
 
 }  // namespace eth
+
+template <std::derived_from<eth::L2StateChange> T>
+inline constexpr bool ::formattable::via_to_string<T> = true;

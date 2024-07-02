@@ -87,7 +87,6 @@ void to_json(nlohmann::json& j, const block_header_response& h) {
             {"tx_hashes", h.tx_hashes},
             {"service_node_winner", h.service_node_winner},
             {"l2_height", h.l2_height},
-            {"l2_state", h.l2_state},
     };
     if (h.pow_hash)
         j["pow_hash"] = *h.pow_hash;
@@ -120,7 +119,6 @@ void from_json(const nlohmann::json& j, block_header_response& h) {
     j.at("tx_hashes").get_to(h.tx_hashes);
     j.at("service_node_winner").get_to(h.service_node_winner);
     j.at("l2_height").get_to(h.l2_height);
-    j.at("l2_state").get_to(h.l2_state);
 };
 
 void to_json(nlohmann::json& j, const GET_QUORUM_STATE::quorum_t& q) {

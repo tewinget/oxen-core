@@ -1555,9 +1555,6 @@ namespace {
                                                                                   "block template "
                                                                                   "from block "
                                                                                   "producer"));
-            // Fill tx_pool with ethereum transactions before we build the block
-            blockchain.add_ethereum_transactions_to_tx_pool();
-
             if (context.prepare_for_round.participant == sn_type::producer)
                 return round_state::send_block_template;
             else

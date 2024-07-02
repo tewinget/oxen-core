@@ -112,7 +112,6 @@ block& block::operator=(const block& b) {
     service_node_winner_key = b.service_node_winner_key;
     reward = b.reward;
     l2_height = b.l2_height;
-    l2_state = b.l2_state;
     copy_hash(b);
     return *this;
 }
@@ -125,7 +124,6 @@ block& block::operator=(block&& b) {
     service_node_winner_key = std::move(b.service_node_winner_key);
     reward = std::move(b.reward);
     l2_height = std::move(b.l2_height);
-    l2_state = std::move(b.l2_state);
     copy_hash(b);
     return *this;
 }
