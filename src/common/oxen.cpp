@@ -426,18 +426,18 @@ double oxen::exp2(double x) {
 #pragma fenv_access(off)
 #endif
 
-double oxen::round(double x) {
-    /* 2^(DBL_MANT_DIG-1).  */
-    static const double TWO_MANT_DIG =
-            /* Assume DBL_MANT_DIG <= 5 * 31.
-               Use the identity
-               n = floor(n/5) + floor((n+1)/5) + ... + floor((n+4)/5).  */
-            (double)(1U << ((DBL_MANT_DIG - 1) / 5)) *
-            (double)(1U << ((DBL_MANT_DIG - 1 + 1) / 5)) *
-            (double)(1U << ((DBL_MANT_DIG - 1 + 2) / 5)) *
-            (double)(1U << ((DBL_MANT_DIG - 1 + 3) / 5)) *
-            (double)(1U << ((DBL_MANT_DIG - 1 + 4) / 5));
+/* 2^(DBL_MANT_DIG-1).  */
+static constexpr double TWO_MANT_DIG =
+        /* Assume DBL_MANT_DIG <= 5 * 31.
+           Use the identity
+           n = floor(n/5) + floor((n+1)/5) + ... + floor((n+4)/5).  */
+        (double)(1U << ((DBL_MANT_DIG - 1) / 5)) *
+        (double)(1U << ((DBL_MANT_DIG - 1 + 1) / 5)) *
+        (double)(1U << ((DBL_MANT_DIG - 1 + 2) / 5)) *
+        (double)(1U << ((DBL_MANT_DIG - 1 + 3) / 5)) *
+        (double)(1U << ((DBL_MANT_DIG - 1 + 4) / 5));
 
+double oxen::round(double x) {
     /* The use of 'volatile' guarantees that excess precision bits are dropped at
        each addition step and before the following comparison at the caller's
        site.  It is necessary on x86 systems where double-floats are not IEEE
@@ -454,15 +454,15 @@ double oxen::round(double x) {
         /* Avoid rounding errors for values near 2^k, where k >= DBL_MANT_DIG-1.  */
         else if (z < TWO_MANT_DIG) {
             /* Add 0.5 to the absolute value.  */
-            z += 0.5;
+            z = z + 0.5;
             y = z;
             /* Round to the next integer (nearest or up or down, doesn't
                matter).  */
-            z += TWO_MANT_DIG;
-            z -= TWO_MANT_DIG;
+            z = z + TWO_MANT_DIG;
+            z = z + TWO_MANT_DIG;
             /* Enforce rounding down.  */
             if (z > y)
-                z -= 1.0;
+                z = z - 1.0;
         }
     } else if (z < 0.0) {
         /* Avoid rounding error for x = -(0.5 - 2^(-DBL_MANT_DIG-1)).  */
@@ -471,15 +471,15 @@ double oxen::round(double x) {
         /* Avoid rounding errors for values near -2^k, where k >= DBL_MANT_DIG-1.  */
         else if (z > -TWO_MANT_DIG) {
             /* Add 0.5 to the absolute value.  */
-            z -= 0.5;
+            z = z - 0.5;
             y = z;
             /* Round to the next integer (nearest or up or down, doesn't
                matter).  */
-            z -= TWO_MANT_DIG;
-            z += TWO_MANT_DIG;
+            z = z - TWO_MANT_DIG;
+            z = z + TWO_MANT_DIG;
             /* Enforce rounding up.  */
             if (z < y)
-                z += 1.0;
+                z = z + 1.0;
         }
     }
     return z;
