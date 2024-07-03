@@ -200,18 +200,18 @@ static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8
     return result;
 }
 
-crypto::bls_signature BLSSigner::signMsg(std::span<const uint8_t> msg) const {
-    crypto::bls_signature result = signMsg(nettype, secretKey, msg);
+bls_signature BLSSigner::signMsg(std::span<const uint8_t> msg) const {
+    bls_signature result = signMsg(nettype, secretKey, msg);
     return result;
 }
 
-bool BLSSigner::verifyMsg(const crypto::bls_signature& signature, const crypto::bls_public_key &pubkey, std::span<const uint8_t> msg) const
+bool BLSSigner::verifyMsg(const bls_signature& signature, const bls_public_key &pubkey, std::span<const uint8_t> msg) const
 {
     bool result = verifyMsg(nettype, signature, pubkey, msg);
     return result;
 }
 
-crypto::bls_signature BLSSigner::signMsg(cryptonote::network_type nettype, const bls::SecretKey &key, std::span<const uint8_t> msg) {
+bls_signature BLSSigner::signMsg(cryptonote::network_type nettype, const bls::SecretKey &key, std::span<const uint8_t> msg) {
     // NOTE: This is herumi's 'blsSignHash' deconstructed to its primitive
     // function calls but instead of executing herumi's 'tryAndIncMapTo' which
     // maps a hash to a point we execute our own mapping function. herumi's
@@ -248,11 +248,11 @@ crypto::bls_signature BLSSigner::signMsg(cryptonote::network_type nettype, const
         static_assert(sizeof(g2) == sizeof(bls_result.getPtr()->v));
     }
 
-    crypto::bls_signature result = bls_utils::to_crypto_signature(bls_result);
+    bls_signature result = bls_utils::to_crypto_signature(bls_result);
     return result;
 }
 
-bool BLSSigner::verifyMsg(cryptonote::network_type nettype, const crypto::bls_signature& signature, const crypto::bls_public_key &pubkey, std::span<const uint8_t> msg)
+bool BLSSigner::verifyMsg(cryptonote::network_type nettype, const bls_signature& signature, const bls_public_key &pubkey, std::span<const uint8_t> msg)
 {
     bls::PublicKey bls_pubkey = bls_utils::from_crypto_pubkey(pubkey);
 
@@ -279,21 +279,11 @@ bool BLSSigner::verifyMsg(cryptonote::network_type nettype, const crypto::bls_si
     return result;
 }
 
-bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) const {
-    bls::Signature sig;
-    secretKey.signHash(sig, hash.data(), hash.size());
-    return sig;
-}
-
-bls_signature BLSSigner::signHash(const crypto::hash& hash) {
-    return bls_utils::to_crypto_signature(signHashSig(hash));
-}
-
 bls_signature BLSSigner::proofOfPossession(
-        const eth::address& sender, const crypto::public_key& serviceNodePubkey) {
+        const address& sender, const crypto::public_key& serviceNodePubkey) const {
     auto tag = buildTagHash(proofOfPossessionTag);
 
-    crypto::bls_public_key bls_pkey = getCryptoPubkey();
+    bls_public_key bls_pkey = getCryptoPubkey();
 
     // TODO(doyle): Currently the ServiceNodeRewards.sol contract does
     //
@@ -321,23 +311,23 @@ bls_signature BLSSigner::proofOfPossession(
     msg.insert(msg.end(), sender.begin(), sender.end());
     msg.insert(msg.end(), serviceNodePubkey.begin(), serviceNodePubkey.end());
 
-    crypto::bls_signature result = signMsg(msg);
+    bls_signature result = signMsg(msg);
     return result;
 }
 
-std::string BLSSigner::getPublicKeyHex() const {
+std::string BLSSigner::getPubkeyHex() const {
     auto pk = getCryptoPubkey();
     return oxenc::to_hex(pk.begin(), pk.end());
 }
 
-bls::PublicKey BLSSigner::getPublicKey() const {
+bls::PublicKey BLSSigner::getPubkey() const {
     bls::PublicKey publicKey;
     secretKey.getPublicKey(publicKey);
     return publicKey;
 }
 
-bls_public_key BLSSigner::getCryptoPubkey() {
-    return bls_utils::to_crypto_pubkey(getPublicKey());
+bls_public_key BLSSigner::getCryptoPubkey() const {
+    return bls_utils::to_crypto_pubkey(getPubkey());
 }
 
 bls_secret_key BLSSigner::getCryptoSeckey() {
