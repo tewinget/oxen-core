@@ -40,6 +40,7 @@ void set_additional_log_categories(log::Level& log_level) {
             log::set_level("service_nodes", log::Level::warn);
             log::set_level("txpool", log::Level::warn);
             log::set_level("construct_tx", log::Level::warn);
+            log::set_level("pulse", log::Level::warn);
             break;
         case log::Level::debug: break;
         case log::Level::trace: break;
