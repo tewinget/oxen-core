@@ -95,30 +95,12 @@ size_t transaction::get_signature_size(const txin_v& tx_in) {
     return 0;
 }
 
-block::block(const block& b) :
-        block_header(b),
-        miner_tx{b.miner_tx},
-        tx_hashes{b.tx_hashes},
-        signatures{b.signatures},
-        height{b.height},
-        service_node_winner_key{b.service_node_winner_key},
-        reward{b.reward},
-        l2_height{b.l2_height},
-        l2_state{b.l2_state} {
-    copy_hash(b);
+block::block(const block& b) {
+    *this = b;
 }
 
-block::block(block&& b) :
-        block_header(std::move(b)),
-        miner_tx{std::move(b.miner_tx)},
-        tx_hashes{std::move(b.tx_hashes)},
-        signatures{std::move(b.signatures)},
-        height{std::move(b.height)},
-        service_node_winner_key{std::move(b.service_node_winner_key)},
-        reward{std::move(b.reward)},
-        l2_height{std::move(b.l2_height)},
-        l2_state{std::move(b.l2_state)} {
-    copy_hash(b);
+block::block(block&& b) {
+    *this = std::move(b);
 }
 
 block& block::operator=(const block& b) {
