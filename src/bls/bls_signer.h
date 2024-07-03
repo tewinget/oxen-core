@@ -14,8 +14,8 @@
 #undef MCLBN_NO_AUTOLINK
 #pragma GCC diagnostic pop
 
-#include "common/fs.h"
 #include "crypto/base.h"
+#include "crypto/crypto.h"
 #include "cryptonote_config.h"
 
 #include <span>
@@ -23,26 +23,30 @@
 class BLSSigner {
   private:
     bls::SecretKey secretKey;
-    uint32_t chainID;
-    std::string contractAddress;
-
-    void initCurve();
+    cryptonote::network_type nettype;
 
   public:
-    BLSSigner(const cryptonote::network_type nettype, const fs::path& key_filepath);
+    // Constructs a BLSSigner; if the `key` is nullptr, a key is generated; otherwise the key is
+    // loaded from the given bls_secret_key data.
+    explicit BLSSigner(
+            const cryptonote::network_type nettype, const crypto::bls_secret_key* key = nullptr);
 
-    bls::Signature signHash(const crypto::bytes<32>& hash);
-    std::string proofOfPossession(
-            std::string_view senderEthAddress, std::string_view serviceNodePubkey);
+    bls::Signature signHashSig(const crypto::hash& hash);
+    crypto::bls_signature signHash(const crypto::hash& hash);
+    crypto::bls_signature proofOfPossession(
+            crypto::eth_address sender, const crypto::public_key& serviceNodePubkey);
     std::string getPublicKeyHex();
     bls::PublicKey getPublicKey();
 
-    static std::string buildTag(
-            std::string_view baseTag, uint32_t chainID, std::string_view contractAddress);
-    std::string buildTag(std::string_view baseTag);
+    // Gets the public key as our crypto::bls_public_key type
+    crypto::bls_public_key getCryptoPubkey();
+    // Gets the secret key as our crypto::bls_secret_key type
+    crypto::bls_secret_key getCryptoSeckey();
 
-    static crypto::bytes<32> hashHex(std::string_view hex);
-    static crypto::bytes<32> hashBytes(std::span<const unsigned char> bytes);
+    static std::string buildTagHex(std::string_view baseTag, cryptonote::network_type nettype);
+    static crypto::hash buildTagHash(std::string_view baseTag, cryptonote::network_type nettype);
+    std::string buildTagHex(std::string_view baseTag);
+    crypto::hash buildTagHash(std::string_view baseTag);
 
     static constexpr inline std::string_view proofOfPossessionTag = "BLS_SIG_TRYANDINCREMENT_POP";
     static constexpr inline std::string_view rewardTag = "BLS_SIG_TRYANDINCREMENT_REWARD";

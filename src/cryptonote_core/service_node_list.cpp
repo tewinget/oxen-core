@@ -36,6 +36,7 @@
 #include <chrono>
 #include <functional>
 
+#include "crypto/crypto.h"
 #include "cryptonote_config.h"
 #include "oxen_economy.h"
 #include "ringct/rctTypes.h"
@@ -45,7 +46,7 @@ extern "C" {
 }
 
 #include "blockchain.h"
-#include "common/hex.h"
+#include "bls/bls_utils.h"
 #include "common/i18n.h"
 #include "common/lock.h"
 #include "common/random.h"
@@ -68,6 +69,7 @@ extern "C" {
 #include "version.h"
 
 using cryptonote::hf;
+namespace feature = cryptonote::feature;
 
 namespace service_nodes {
 static auto logcat = log::Cat("service_nodes");
@@ -375,19 +377,16 @@ std::optional<registration_details> eth_reg_tx_extract_fields(
 
     registration_details reg{};
     reg.service_node_pubkey = registration.service_node_pubkey;
-    reg.bls_key = registration.bls_key;
+    reg.bls_pubkey = registration.bls_pubkey;
 
-    for (const auto& contributor : registration.contributors) {
-        auto& [addr, amount] = reg.eth_contributions.emplace_back();
-        addr = contributor.address;
-        amount = contributor.amount;
-    }
+    for (const auto& contributor : registration.contributors)
+        reg.eth_contributions.emplace_back(contributor.address, contributor.amount);
 
     reg.hf = static_cast<uint64_t>(hf_version);
     reg.uses_portions = false;
 
     reg.fee = registration.fee;
-    reg.signature = registration.signature;
+    reg.ed_signature = registration.signature;
 
     return reg;
 }
@@ -426,7 +425,7 @@ void validate_registration(
                                           : oxen::MAX_CONTRIBUTORS_V1;
 
     std::vector<uint64_t> extracted_amounts;
-    if (hf_version >= hf::hf20 && nettype != cryptonote::network_type::FAKECHAIN) {
+    if (hf_version >= feature::ETH_BLS && nettype != cryptonote::network_type::FAKECHAIN) {
         if (reg.eth_contributions.empty())
             throw invalid_registration{"No operator contribution given"};
         if (!reg.reserved.empty())
@@ -491,35 +490,39 @@ void validate_registration(
 }
 
 //---------------------------------------------------------------
-crypto::hash get_registration_hash(const registration_details& registration) {
-    std::string buffer;
+std::basic_string<unsigned char> get_registration_message_for_signing(
+        const registration_details& registration) {
+    std::basic_string<unsigned char> buffer;
     size_t size = sizeof(uint64_t) +  // fee
                   registration.reserved.size() * (sizeof(cryptonote::account_public_address) +
                                                   sizeof(uint64_t)) +  // addr+amount for each
                   sizeof(uint64_t);                                    // expiration timestamp
     buffer.reserve(size);
-    buffer += tools::view_guts(oxenc::host_to_little(registration.fee));
+    buffer += tools::view_guts<unsigned char>(oxenc::host_to_little(registration.fee));
     for (const auto& [addr, amount] : registration.reserved) {
-        buffer += tools::view_guts(addr);
-        buffer += tools::view_guts(oxenc::host_to_little(amount));
+        buffer += tools::view_guts<unsigned char>(addr);
+        buffer += tools::view_guts<unsigned char>(oxenc::host_to_little(amount));
     }
-    buffer += tools::view_guts(oxenc::host_to_little(registration.hf));
+    buffer += tools::view_guts<unsigned char>(oxenc::host_to_little(registration.hf));
     assert(buffer.size() == size);
-    return crypto::cn_fast_hash(buffer.data(), buffer.size());
+    return buffer;
+}
+
+crypto::hash get_registration_hash(const registration_details& registration) {
+    auto msg = get_registration_message_for_signing(registration);
+    return crypto::cn_fast_hash(msg.data(), msg.size());
 }
 
 void validate_registration_signature(const registration_details& registration) {
     auto hash = get_registration_hash(registration);
     if (!crypto::check_key(registration.service_node_pubkey))
-        throw invalid_registration{
-                "Service Node Key is not a valid public key (" +
-                tools::type_to_hex(registration.service_node_pubkey) + ")"};
+        throw invalid_registration{"Service Node Key is not a valid public key ({})"_format(
+                registration.service_node_pubkey)};
 
     if (!crypto::check_signature(hash, registration.service_node_pubkey, registration.signature))
         throw invalid_registration{
-                "Registration signature verification failed for pubkey/hash: " +
-                tools::type_to_hex(registration.service_node_pubkey) + "/" +
-                tools::type_to_hex(hash)};
+                "Registration signature verification failed for pubkey/hash: {}/{}"_format(
+                        registration.service_node_pubkey, hash)};
 }
 
 struct parsed_tx_contribution {
@@ -1071,7 +1074,7 @@ bool service_node_list::state_t::process_ethereum_deregister_tx(
         return false;
     }
 
-    crypto::public_key snode_key = sn_list->bls_public_key_lookup(dereg.bls_key);
+    crypto::public_key snode_key = sn_list->bls_public_key_lookup(dereg.bls_pubkey);
     auto iter = service_nodes_infos.find(snode_key);
     if (iter == service_nodes_infos.end()) {
         log::debug(
@@ -1184,7 +1187,7 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
                     return unlock.key_image == contribution.key_image;
                 });
         if (cit != contributor.locked_contributions.end()) {
-            if (hf_version >= hf::hf20) {
+            if (hf_version >= feature::ETH_BLS) {
                 if (cit->amount < small_contributor_amount_threshold &&
                     (block_height - node_info.registration_height) <
                             service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER) {
@@ -1251,7 +1254,7 @@ bool service_node_list::state_t::process_ethereum_unlock_tx(
         return false;
     }
 
-    crypto::public_key snode_key = sn_list->bls_public_key_lookup(unlock.bls_key);
+    crypto::public_key snode_key = sn_list->bls_public_key_lookup(unlock.bls_pubkey);
     auto it = service_nodes_infos.find(snode_key);
     if (it == service_nodes_infos.end())
         return false;
@@ -1277,7 +1280,7 @@ bool service_node_list::state_t::process_ethereum_unlock_tx(
 }
 
 //------------------------------------------------------------------
-// TODO oxen remove this whole function after HF20 has occurred
+// TODO oxen remove this whole function after HF21 has occurred
 bool service_node_list::state_t::is_premature_unlock(
         cryptonote::network_type nettype,
         cryptonote::hf hf_version,
@@ -1349,8 +1352,6 @@ bool is_registration_tx(
     }
 
     // check the operator contribution exists
-
-    cryptonote::account_public_address address;
 
     staking_components stake = {};
     if (!tx_get_staking_components_and_amounts(nettype, hf_version, tx, block_height, &stake)) {
@@ -1446,7 +1447,6 @@ bool is_registration_tx(
 
     for (auto it = reg.reserved.begin(); it != reg.reserved.end(); ++it) {
         auto& [addr, amount] = *it;
-        bool dupe = false;
         for (auto it2 = std::next(it); it2 != reg.reserved.end(); ++it2) {
             if (it2->first == addr) {
                 log::info(
@@ -1501,7 +1501,7 @@ validate_and_get_ethereum_registration(
 
     info->staking_requirement = staking_requirement;
     info->operator_ethereum_address = reg.eth_contributions[0].first;
-    info->bls_public_key = reg.bls_key;
+    info->bls_public_key = reg.bls_pubkey;
     info->portions_for_operator = staking_requirement;
     info->registration_height = block_height;
     info->registration_hf_version = hf_version;
@@ -1512,7 +1512,6 @@ validate_and_get_ethereum_registration(
 
     for (auto it = reg.eth_contributions.begin(); it != reg.eth_contributions.end(); ++it) {
         auto& [addr, amount] = *it;
-        bool dupe = false;
         for (auto it2 = std::next(it); it2 != reg.eth_contributions.end(); ++it2) {
             if (it2->first == addr) {
                 log::info(
@@ -1891,7 +1890,7 @@ static std::string dump_pulse_block_data(
                     cryptonote::get_block_hash(block),
                     !quorum                   ? "(invalid quorum)"
                     : quorum->workers.empty() ? "(invalid leader)"
-                                              : oxenc::to_hex(tools::view_guts(quorum->workers[0])),
+                                              : tools::hex_guts(quorum->workers[0]),
                     block.pulse.round,
                     validator_bitset.to_string());
     auto append = std::back_inserter(s);
@@ -2317,18 +2316,12 @@ void service_node_list::block_add(
         }
     }
     // Erase older entries in the recently expired nodes list
-    for (auto it = recently_expired_nodes.begin(); it != recently_expired_nodes.end(); )
-    {
-        if (it->second < height())
-            it = recently_expired_nodes.erase(it++);
-        else
-            ++it;
-    }
+    std::erase_if(
+            recently_expired_nodes, [h = height()](const auto& item) { return item.second < h; });
 }
 
 bool service_node_list::state_history_exists(uint64_t height) {
-    auto it = m_transient.state_history.find(height);
-    return it != m_transient.state_history.end();
+    return m_transient.state_history.count(height);
 }
 
 bool service_node_list::process_batching_rewards(const cryptonote::block& block) {
@@ -2357,49 +2350,6 @@ bool service_node_list::pop_batching_rewards_block(const cryptonote::block& bloc
         return false;
     }
     return m_blockchain.sqlite_db()->pop_block(block, m_state);
-}
-
-bool service_node_list::process_ethereum_address_notification_transactions(const cryptonote::network_type nettype, const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
-    if (block.major_version < cryptonote::feature::ETH_BLS)
-        return true;
-    uint64_t block_height = cryptonote::get_block_height(block);
-    for (const cryptonote::transaction& tx : txs) {
-        if (tx.type != cryptonote::txtype::ethereum_address_notification)
-            continue;
-
-        cryptonote::tx_extra_ethereum_address_notification entry = {};
-        std::string fail_reason;
-        if (!ethereum::validate_ethereum_address_notification_tx(
-                    block.major_version, block_height, tx, entry, &fail_reason)) {
-            log::error(
-                    logcat,
-                    "ETH TX: Failed to validate for tx={}. This should have failed validation "
-                    "earlier reason={}",
-                    get_transaction_hash(tx),
-                    fail_reason);
-            assert("Failed to validate ethereum transaction. Should already have failed "
-                   "validation prior" == nullptr);
-            return false;
-        }
-        cryptonote::address_parse_info addr_info;
-        if (!cryptonote::get_account_address_from_str(addr_info, nettype, entry.oxen_address))
-            throw std::invalid_argument{tr("Failed to parse address: ") + entry.oxen_address};
-        const auto active_service_nodes = m_state.active_service_nodes_infos();
-        for (const auto& [node_pubkey, node_info] : active_service_nodes) {
-            const auto active_service_node = m_state.service_nodes_infos.find(node_pubkey);
-            if (active_service_node == m_state.service_nodes_infos.end())
-                continue;
-            service_node_info& new_info = duplicate_info(active_service_node->second);
-            for (service_node_info::contributor_t& contributor : new_info.contributors) {
-                if (contributor.address == addr_info.address)
-                    contributor.ethereum_address = entry.eth_address;
-            }
-        }
-
-        return m_blockchain.sqlite_db()->update_sn_rewards_address(
-                entry.oxen_address, entry.eth_address);
-    }
-    return true;
 }
 
 static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {
@@ -2775,6 +2725,7 @@ void service_node_list::state_t::update_from_block(
     quorums = {};
     block_hash = cryptonote::get_block_hash(block);
     auto hf_version = block.major_version;
+    const auto& netconf = get_config(nettype);
 
     //
     // Generate Pulse Quorum before any SN changes are applied to the list because,
@@ -2842,11 +2793,11 @@ void service_node_list::state_t::update_from_block(
                         pubkey,
                         block_height);
 
-            need_swarm_update += i->second->is_active();
-
+            need_swarm_update = need_swarm_update || i->second->is_active();
             // NOTE: sn_list is not set in tests when we construct events to replay
             if (sn_list)
-                sn_list->recently_expired_nodes.insert({tools::type_to_hex(i->second->bls_public_key), block_height + i->second->recommission_credit});
+                sn_list->recently_expired_nodes.emplace(
+                        i->second->bls_public_key, block_height + netconf.ETH_EXIT_BUFFER);
             service_nodes_infos.erase(i);
         }
     }
@@ -3264,7 +3215,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     //
     // NOTE: Update the method we should use to verify the block if required
     //
-    if (block.major_version >= hf::hf20) {
+    if (block.major_version >= feature::ETH_BLS) {
         mode = verify_mode::arbitrum_rewards;
     } else if (block.major_version >= hf::hf19_reward_batching) {
         mode = verify_mode::batched_sn_rewards;
@@ -3298,8 +3249,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
             expected_vouts_size = batched_sn_payments.size();
         } break;
 
-        case verify_mode::pulse_block_leader_is_producer:
-            [[fallthrough]];
+        case verify_mode::pulse_block_leader_is_producer: [[fallthrough]];
 
         case verify_mode::pulse_different_block_producer: {
             auto info_it = m_state.service_nodes_infos.find(block_producer_key);
@@ -3340,9 +3290,9 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                         : mode == verify_mode::batched_sn_rewards             ? "batch reward"sv
                         : mode == verify_mode::pulse_block_leader_is_producer ? "pulse"sv
                         : mode == verify_mode::pulse_different_block_producer ? "pulse alt round"sv
-                        : mode == verify_mode::batched_sn_rewards             ? "batched sn rewards"sv
-                        : mode == verify_mode::arbitrum_rewards               ? "artbitrum rewards"sv
-                                                                              : "INTERNAL UNKNOWN ERROR",
+                        : mode == verify_mode::batched_sn_rewards ? "batched sn rewards"sv
+                        : mode == verify_mode::arbitrum_rewards   ? "artbitrum rewards"sv
+                                                                  : "INTERNAL UNKNOWN ERROR",
                         expected_vouts_size,
                         miner_tx.vout.size())};
 
@@ -3679,50 +3629,8 @@ bool service_node_list::store() {
     return true;
 }
 
-// TODO: remove after HF18, snode revision 1
-crypto::hash service_node_list::hash_uptime_proof(
-        const cryptonote::NOTIFY_UPTIME_PROOF::request& proof) const {
-    size_t buf_size;
-    crypto::hash result;
-
-    auto buf = tools::memcpy_le(
-            proof.pubkey,
-            proof.timestamp,
-            proof.public_ip,
-            proof.storage_https_port,
-            proof.pubkey_ed25519,
-            proof.qnet_port,
-            proof.storage_omq_port);
-    buf_size = buf.size();
-    crypto::cn_fast_hash(buf.data(), buf_size, result);
-    return result;
-}
-
-cryptonote::NOTIFY_UPTIME_PROOF::request service_node_list::generate_uptime_proof(
-        uint32_t public_ip,
-        uint16_t storage_https_port,
-        uint16_t storage_omq_port,
-        uint16_t quorumnet_port) const {
-    assert(m_service_node_keys);
-    const auto& keys = *m_service_node_keys;
-    cryptonote::NOTIFY_UPTIME_PROOF::request result = {};
-    result.snode_version = OXEN_VERSION;
-    result.timestamp = time(nullptr);
-    result.pubkey = keys.pub;
-    result.public_ip = public_ip;
-    result.storage_https_port = storage_https_port;
-    result.storage_omq_port = storage_omq_port;
-    result.qnet_port = quorumnet_port;
-    result.pubkey_ed25519 = keys.pub_ed25519;
-
-    crypto::hash hash = hash_uptime_proof(result);
-    crypto::generate_signature(hash, keys.pub, keys.key, result.sig);
-    crypto_sign_detached(
-            result.sig_ed25519.data(), NULL, hash.data(), hash.size(), keys.key_ed25519.data());
-    return result;
-}
-
 uptime_proof::Proof service_node_list::generate_uptime_proof(
+        hf hardfork,
         uint32_t public_ip,
         uint16_t storage_https_port,
         uint16_t storage_omq_port,
@@ -3730,14 +3638,15 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
         uint16_t quorumnet_port,
         std::array<uint16_t, 3> lokinet_version) const {
     const auto& keys = *m_service_node_keys;
-    return uptime_proof::Proof(
+    return uptime_proof::Proof{
+            hardfork,
             public_ip,
             storage_https_port,
             storage_omq_port,
             ss_version,
             quorumnet_port,
             lokinet_version,
-            keys);
+            keys};
 }
 
 template <typename T>
@@ -3753,7 +3662,7 @@ proof_info::proof_info() : proof(std::make_unique<uptime_proof::Proof>()){};
 
 void proof_info::store(const crypto::public_key& pubkey, cryptonote::Blockchain& blockchain) {
     if (!proof)
-        proof = std::unique_ptr<uptime_proof::Proof>(new uptime_proof::Proof());
+        proof = std::make_unique<uptime_proof::Proof>();
     std::unique_lock lock{blockchain};
     auto& db = blockchain.get_db();
     db.set_service_node_proof(pubkey, *this);
@@ -3789,49 +3698,7 @@ bool proof_info::update(
         public_ips[0] = {proof->public_ip, now};
 
     return update_db;
-};
-
-// TODO remove after HF18, snode revision 1
-bool proof_info::update(
-        uint64_t ts,
-        uint32_t ip,
-        uint16_t s_https_port,
-        uint16_t s_omq_port,
-        uint16_t q_port,
-        std::array<uint16_t, 3> ver,
-        const crypto::ed25519_public_key& pk_ed,
-        const crypto::x25519_public_key& pk_x2) {
-    bool update_db = false;
-    if (!proof)
-        proof = std::unique_ptr<uptime_proof::Proof>(new uptime_proof::Proof());
-    update_db |= update_val(timestamp, ts);
-    update_db |= update_val(proof->public_ip, ip);
-    update_db |= update_val(proof->storage_https_port, s_https_port);
-    update_db |= update_val(proof->storage_omq_port, s_omq_port);
-    update_db |= update_val(proof->qnet_port, q_port);
-    update_db |= update_val(proof->version, ver);
-    update_db |= update_val(proof->pubkey_ed25519, pk_ed);
-    effective_timestamp = timestamp;
-    pubkey_x25519 = pk_x2;
-
-    // Track an IP change (so that the obligations quorum can penalize for IP changes)
-    // We only keep the two most recent because all we really care about is whether it had more than
-    // one
-    //
-    // If we already know about the IP, update its timestamp:
-    auto now = std::time(nullptr);
-    if (public_ips[0].first && public_ips[0].first == proof->public_ip)
-        public_ips[0].second = now;
-    else if (public_ips[1].first && public_ips[1].first == proof->public_ip)
-        public_ips[1].second = now;
-    // Otherwise replace whichever IP has the older timestamp
-    else if (public_ips[0].second > public_ips[1].second)
-        public_ips[1] = {proof->public_ip, now};
-    else
-        public_ips[0] = {proof->public_ip, now};
-
-    return update_db;
-};
+}
 
 void proof_info::update_pubkey(const crypto::ed25519_public_key& pk) {
     if (pk == proof->pubkey_ed25519)
@@ -3848,183 +3715,7 @@ void proof_info::update_pubkey(const crypto::ed25519_public_key& pk) {
     }
 }
 
-// TODO remove after HF18, snode revision 1
 bool service_node_list::handle_uptime_proof(
-        cryptonote::NOTIFY_UPTIME_PROOF::request const& proof,
-        bool& my_uptime_proof_confirmation,
-        crypto::x25519_public_key& x25519_pkey) {
-    auto vers = get_network_version_revision(
-            m_blockchain.nettype(), m_blockchain.get_current_blockchain_height());
-    if (vers >= std::make_pair(hf::hf18, uint8_t{1})) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: Old format (non-bt) proofs are not acceptable "
-                "from v18+1 onwards",
-                proof.pubkey);
-        return false;
-    }
-
-    auto& netconf = get_config(m_blockchain.nettype());
-    auto now = std::chrono::system_clock::now();
-
-    // Validate proof version, timestamp range,
-    auto time_deviation = now - std::chrono::system_clock::from_time_t(proof.timestamp);
-    if (time_deviation > netconf.UPTIME_PROOF_TOLERANCE ||
-        time_deviation < -netconf.UPTIME_PROOF_TOLERANCE) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: timestamp is too far from now",
-                proof.pubkey);
-        return false;
-    }
-
-    for (auto const& min : MIN_UPTIME_PROOF_VERSIONS)
-        if (vers >= min.hardfork_revision && proof.snode_version < min.oxend) {
-            log::debug(
-                    logcat,
-                    "Rejecting uptime proof from {}: v{}+ oxend version is required for v{}.{}+ "
-                    "network proofs",
-                    proof.pubkey,
-                    tools::join(".", min.oxend),
-                    static_cast<int>(vers.first),
-                    vers.second);
-            return false;
-        }
-
-    if (!debug_allow_local_ips && !epee::net_utils::is_ip_public(proof.public_ip)) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: public_ip is not actually public",
-                proof.pubkey);
-        return false;
-    }
-
-    //
-    // Validate proof signature
-    //
-    crypto::hash hash = hash_uptime_proof(proof);
-
-    if (!crypto::check_signature(hash, proof.pubkey, proof.sig)) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: signature validation failed",
-                proof.pubkey);
-        return false;
-    }
-
-    crypto::x25519_public_key derived_x25519_pubkey{};
-    if (!proof.pubkey_ed25519) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: required ed25519 auxiliary pubkey {} not included "
-                "in proof",
-                proof.pubkey,
-                proof.pubkey_ed25519);
-        return false;
-    }
-
-    if (0 !=
-        crypto_sign_verify_detached(
-                proof.sig_ed25519.data(), hash.data(), hash.size(), proof.pubkey_ed25519.data())) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: ed25519 signature validation failed",
-                proof.pubkey);
-        return false;
-    }
-
-    if (0 != crypto_sign_ed25519_pk_to_curve25519(
-                     derived_x25519_pubkey.data(), proof.pubkey_ed25519.data()) ||
-        !derived_x25519_pubkey) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: invalid ed25519 pubkey included in proof (x25519 "
-                "derivation failed)",
-                proof.pubkey);
-        return false;
-    }
-
-    if (proof.qnet_port == 0) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: invalid quorumnet port in uptime proof",
-                proof.pubkey);
-        return false;
-    }
-
-    auto locks = tools::unique_locks(m_blockchain, m_sn_mutex, m_x25519_map_mutex);
-    auto it = m_state.service_nodes_infos.find(proof.pubkey);
-    if (it == m_state.service_nodes_infos.end()) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: no such service node is currently registered",
-                proof.pubkey);
-        return false;
-    }
-
-    auto& iproof = proofs[proof.pubkey];
-
-    if (now <= std::chrono::system_clock::from_time_t(iproof.timestamp) +
-                       std::chrono::seconds{netconf.UPTIME_PROOF_FREQUENCY} / 2) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: already received one uptime proof for this node "
-                "recently",
-                proof.pubkey);
-        return false;
-    }
-
-    if (m_service_node_keys && proof.pubkey == m_service_node_keys->pub) {
-        my_uptime_proof_confirmation = true;
-        log::info(
-                logcat,
-                "Received uptime-proof confirmation back from network for Service Node (yours): {}",
-                proof.pubkey);
-    } else {
-        my_uptime_proof_confirmation = false;
-        log::debug(logcat, "Accepted uptime proof from {}", proof.pubkey);
-
-        if (m_service_node_keys && proof.pubkey_ed25519 == m_service_node_keys->pub_ed25519)
-            log::info(
-                    logcat,
-                    fg(fmt::terminal_color::red),
-                    "Uptime proof from SN {} is not us, but is using our ed/x25519 keys; this is "
-                    "likely to lead to deregistration of one or both service nodes.",
-                    proof.pubkey);
-    }
-
-    auto old_x25519 = iproof.pubkey_x25519;
-    if (iproof.update(
-                std::chrono::system_clock::to_time_t(now),
-                proof.public_ip,
-                proof.storage_https_port,
-                proof.storage_omq_port,
-                proof.qnet_port,
-                proof.snode_version,
-                proof.pubkey_ed25519,
-                derived_x25519_pubkey))
-        iproof.store(proof.pubkey, m_blockchain);
-
-    if (now - x25519_map_last_pruned >= X25519_MAP_PRUNING_INTERVAL) {
-        time_t cutoff = std::chrono::system_clock::to_time_t(now - X25519_MAP_PRUNING_LAG);
-        std::erase_if(x25519_to_pub, [&cutoff](auto& x) { return x.second.second < cutoff; });
-        x25519_map_last_pruned = now;
-    }
-
-    if (old_x25519 && old_x25519 != derived_x25519_pubkey)
-        x25519_to_pub.erase(old_x25519);
-
-    if (derived_x25519_pubkey)
-        x25519_to_pub[derived_x25519_pubkey] = {
-                proof.pubkey, std::chrono::system_clock::to_time_t(now)};
-
-    if (derived_x25519_pubkey && (old_x25519 != derived_x25519_pubkey))
-        x25519_pkey = derived_x25519_pubkey;
-
-    return true;
-}
-
-bool service_node_list::handle_btencoded_uptime_proof(
         std::unique_ptr<uptime_proof::Proof> proof,
         bool& my_uptime_proof_confirmation,
         crypto::x25519_public_key& x25519_pkey) {
@@ -4091,17 +3782,18 @@ bool service_node_list::handle_btencoded_uptime_proof(
         return false;
     }
 
-    //
-    // Validate proof signature
-    //
-    crypto::hash hash = proof->hash_uptime_proof();
-
-    if (!crypto::check_signature(hash, proof->pubkey, proof->sig)) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: signature validation failed",
-                proof->pubkey);
-        return false;
+    if (vers.first >= feature::ETH_BLS) {
+        // Starting at the ETH_BLS hard fork we prohibit proofs with differing pubkey/ed25519
+        // pubkey; any mixed node registrations get updated as part of the HF transition.
+        if (tools::view_guts(proof->pubkey) != tools::view_guts(proof->pubkey_ed25519)) {
+            log::debug(
+                    logcat,
+                    "Rejecting uptime proof from {}: pubkey != pubkey_ed25519 is not allowed since "
+                    "HF{}",
+                    proof->pubkey,
+                    static_cast<uint8_t>(feature::ETH_BLS));
+            return false;
+        }
     }
 
     crypto::x25519_public_key derived_x25519_pubkey{};
@@ -4115,6 +3807,37 @@ bool service_node_list::handle_btencoded_uptime_proof(
         return false;
     }
 
+    if (0 != crypto_sign_ed25519_pk_to_curve25519(
+                     derived_x25519_pubkey.data(), proof->pubkey_ed25519.data()) ||
+        !derived_x25519_pubkey) {
+        log::debug(
+                logcat,
+                "Rejecting uptime proof from {}: invalid ed25519 pubkey included in proof (x25519 "
+                "derivation failed)",
+                proof->pubkey);
+        return false;
+    }
+
+    //
+    // Validate proof signature
+    //
+    assert(proof->proof_hash);  // This gets set during parsing of an incoming proof
+    const auto& hash = proof->proof_hash;
+
+    if (vers.first < feature::ETH_BLS) {
+        // pre-ETH_BLS includes a Monero-style (i.e. wrongly computed, though cryptographically
+        // equivalent) Ed25519 signature signed by `pubkey`.  (Post-ETH_BLS sends and uses only the
+        // proper Ed25519 signature, and requires the pubkeys be the same).
+        if (!crypto::check_signature(hash, proof->pubkey, proof->sig)) {
+            log::debug(
+                    logcat,
+                    "Rejecting uptime proof from {}: signature validation failed",
+                    proof->pubkey);
+            return false;
+        }
+    }
+
+    // Ed25519 signature verification
     if (0 != crypto_sign_verify_detached(
                      proof->sig_ed25519.data(),
                      hash.data(),
@@ -4127,15 +3850,26 @@ bool service_node_list::handle_btencoded_uptime_proof(
         return false;
     }
 
-    if (0 != crypto_sign_ed25519_pk_to_curve25519(
-                     derived_x25519_pubkey.data(), proof->pubkey_ed25519.data()) ||
-        !derived_x25519_pubkey) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: invalid ed25519 pubkey included in proof (x25519 "
-                "derivation failed)",
-                proof->pubkey);
-        return false;
+    // BLS pubkey and verification: these only get sent during the HF20 transition; for HF21+ the
+    // data will be stored in the SN registration data itself.
+    if (vers.first == hf::hf20_eth_transition) {
+        // BLS pubkey and signature verification
+        if (!proof->pubkey_bls || !proof->pop_bls) {
+            log::debug(
+                    logcat,
+                    "Rejecting uptime proof from {}: BLS pubkey and pop are required in HF20",
+                    proof->pubkey);
+            return false;
+        }
+
+        auto pop_hash = crypto::keccak(proof->pubkey_bls, proof->pubkey);
+        if (!bls_utils::verify(proof->pop_bls, pop_hash, proof->pubkey_bls)) {
+            log::debug(
+                    logcat,
+                    "Rejecting uptime proof from {}: BLS proof of possession verification failed",
+                    proof->pubkey);
+            return false;
+        }
     }
 
     if (proof->qnet_port == 0) {
@@ -4309,14 +4043,14 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
 }
 
 crypto::public_key service_node_list::bls_public_key_lookup(
-        const crypto::bls_public_key& bls_key) const {
+        const crypto::bls_public_key& bls_pubkey) const {
     bool found = false;
     crypto::public_key found_pk;
     {
         std::lock_guard lock{m_sn_mutex};
         for (auto it : m_state.service_nodes_infos) {
             const service_node_info* sn_info = it.second.get();
-            if (tools::view_guts(sn_info->bls_public_key) == tools::view_guts(bls_key)) {
+            if (tools::view_guts(sn_info->bls_public_key) == tools::view_guts(bls_pubkey)) {
                 found = true;
                 found_pk = it.first;
                 break;
@@ -4325,7 +4059,7 @@ crypto::public_key service_node_list::bls_public_key_lookup(
     }
 
     if (!found) {
-        log::error(logcat, "Could not find bls key: {}", tools::type_to_hex(bls_key));
+        log::error(logcat, "Could not find bls pubkey: {}", bls_pubkey);
         throw std::runtime_error("Could not find bls key");
     }
 
@@ -4359,8 +4093,8 @@ void service_node_list::record_timesync_status(crypto::public_key const& pubkey,
         proofs[pubkey].timesync_status.add({synced});
 }
 
-bool service_node_list::is_recently_expired(std::string_view node_bls_pubkey) const {
-    return recently_expired_nodes.find(std::string(node_bls_pubkey)) != recently_expired_nodes.end();
+bool service_node_list::is_recently_expired(const crypto::bls_public_key& node_bls_pubkey) const {
+    return recently_expired_nodes.count(node_bls_pubkey);
 }
 
 std::optional<bool> proof_info::reachable_stats::reachable(
@@ -4908,15 +4642,19 @@ bool make_registration_cmd(
 
     cmd.clear();
     if (make_friendly)
-        cmd += "{} ({}):\n\n"_format(
+        fmt::format_to(
+                std::back_inserter(cmd),
+                "{} ({}):\n\n",
                 tr("Run this command in the operator's wallet"),
                 cryptonote::get_account_address_as_str(nettype, false, reg.reserved[0].first));
 
-    cmd += "register_service_node {} {} {} {}"_format(
+    fmt::format_to(
+            std::back_inserter(cmd),
+            "register_service_node {} {} {:x} {:x}",
             tools::join(" ", args),
             reg.hf,
-            tools::type_to_hex(reg.service_node_pubkey),
-            tools::type_to_hex(reg.signature));
+            reg.service_node_pubkey,
+            reg.signature);
 
     return true;
 }

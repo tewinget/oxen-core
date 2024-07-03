@@ -51,8 +51,8 @@ void hash_process(union hash_state* state, const uint8_t* buf, size_t count) {
     keccak1600(buf, count, (uint8_t*)state);
 }
 
+// This is just 32-byte Keccak but gets a special name with "cn" and "fast" in it so that you feel
+// more special when using it and think that it's extra super fast.  Yay!
 void cn_fast_hash(const void* data, size_t length, unsigned char* hash) {
-    union hash_state state;
-    hash_process(&state, data, length);
-    memcpy(hash, &state, HASH_SIZE);
+    keccak(data, length, hash, HASH_SIZE);
 }

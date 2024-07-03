@@ -65,8 +65,6 @@ class BlockchainSQLite : public db::Database {
     // exist it will be created.
     bool add_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
     bool subtract_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
-    bool update_sn_rewards_address(
-            const std::string& oxen_address, const crypto::eth_address& eth_address);
 
   private:
     bool reward_handler(
@@ -81,8 +79,12 @@ class BlockchainSQLite : public db::Database {
 
   public:
     // get_accrued_earnings -> queries the database for the amount that has been accrued to
-    // `service_node_address` will return the atomic value in oxen that the service node is owed.
-    std::pair<uint64_t, uint64_t> get_accrued_earnings(const std::string& address);
+    // the Ethereum `address` will return the atomic value in oxen that the service node is owed.
+    std::pair<uint64_t, uint64_t> get_accrued_earnings(const crypto::eth_address& address);
+
+    // See `get_accrued_earnings`
+    std::pair<uint64_t, uint64_t> get_accrued_earnings(const account_public_address& address);
+
     // get_all_accrued_earnings -> queries the database for all the amount that has been accrued to
     // service nodes will return 2 vectors corresponding to the addresses and the atomic value in
     // oxen that the service nodes are owed.

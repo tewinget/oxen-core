@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include "common/hex.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic.h"
 #include "oxen_economy.h"
@@ -53,7 +52,6 @@ constexpr uint8_t TX_EXTRA_TAG_PADDING = 0x00, TX_EXTRA_TAG_PUBKEY = 0x01, TX_EX
                   TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS = 0x76, TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK = 0x77,
                   TX_EXTRA_TAG_SERVICE_NODE_STATE_CHANGE = 0x78, TX_EXTRA_TAG_BURN = 0x79,
                   TX_EXTRA_TAG_OXEN_NAME_SYSTEM = 0x7A,
-                  TX_EXTRA_TAG_ETHEREUM_ADDRESS_NOTIFICATION = 0x7B,
                   TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE = 0x7C,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_LEAVE_REQUEST = 0x7D,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER = 0x7E,
@@ -626,20 +624,6 @@ struct tx_extra_oxen_name_system {
     END_SERIALIZE()
 };
 
-struct tx_extra_ethereum_address_notification {
-    uint8_t version = 0;
-    crypto::eth_address eth_address;
-    std::string oxen_address;
-    crypto::signature signature;
-
-    BEGIN_SERIALIZE()
-    FIELD(version)
-    FIELD(eth_address);
-    FIELD(oxen_address);
-    FIELD(signature);
-    END_SERIALIZE()
-};
-
 struct tx_extra_ethereum_contributor {
     crypto::eth_address address;
     uint64_t amount;
@@ -656,16 +640,16 @@ struct tx_extra_ethereum_contributor {
 
 struct tx_extra_ethereum_new_service_node {
     uint8_t version = 0;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
     crypto::eth_address eth_address;
     crypto::public_key service_node_pubkey;
-    crypto::signature signature;
+    crypto::ed25519_signature signature;
     uint64_t fee;
     std::vector<tx_extra_ethereum_contributor> contributors;
 
     BEGIN_SERIALIZE()
     FIELD(version)
-    FIELD(bls_key)
+    FIELD(bls_pubkey)
     FIELD(eth_address)
     FIELD(service_node_pubkey)
     FIELD(signature)
@@ -676,11 +660,11 @@ struct tx_extra_ethereum_new_service_node {
 
 struct tx_extra_ethereum_service_node_leave_request {
     uint8_t version = 0;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
 
     BEGIN_SERIALIZE()
     FIELD(version)
-    FIELD(bls_key)
+    FIELD(bls_pubkey)
     END_SERIALIZE()
 };
 
@@ -688,23 +672,23 @@ struct tx_extra_ethereum_service_node_exit {
     uint8_t version = 0;
     crypto::eth_address eth_address;
     uint64_t amount;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
 
     BEGIN_SERIALIZE()
     FIELD(version)
     FIELD(eth_address)
     FIELD(amount)
-    FIELD(bls_key)
+    FIELD(bls_pubkey)
     END_SERIALIZE()
 };
 
 struct tx_extra_ethereum_service_node_deregister {
     uint8_t version = 0;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
 
     BEGIN_SERIALIZE()
     FIELD(version)
-    FIELD(bls_key)
+    FIELD(bls_pubkey)
     END_SERIALIZE()
 };
 
@@ -733,7 +717,6 @@ using tx_extra_field = std::variant<
         tx_extra_burn,
         tx_extra_merge_mining_tag,
         tx_extra_mysterious_minergate,
-        tx_extra_ethereum_address_notification,
         tx_extra_ethereum_new_service_node,
         tx_extra_ethereum_service_node_leave_request,
         tx_extra_ethereum_service_node_exit,
@@ -775,9 +758,6 @@ BINARY_VARIANT_TAG(
 BINARY_VARIANT_TAG(cryptonote::tx_extra_burn, cryptonote::TX_EXTRA_TAG_BURN);
 BINARY_VARIANT_TAG(
         cryptonote::tx_extra_oxen_name_system, cryptonote::TX_EXTRA_TAG_OXEN_NAME_SYSTEM);
-BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_address_notification,
-        cryptonote::TX_EXTRA_TAG_ETHEREUM_ADDRESS_NOTIFICATION);
 BINARY_VARIANT_TAG(
         cryptonote::tx_extra_ethereum_new_service_node,
         cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);

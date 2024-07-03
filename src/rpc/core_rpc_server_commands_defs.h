@@ -51,7 +51,6 @@
 #include <unordered_set>
 
 #include "checkpoints/checkpoints.h"
-#include "common/hex.h"
 #include "common/meta.h"
 #include "common/oxen.h"
 #include "common/varint.h"
@@ -172,7 +171,7 @@ struct GET_HEIGHT : PUBLIC, LEGACY, NO_ARGS {
 ///     for mempool transactions.
 ///   - `last_failed_block` -- the hash of the last block where this transaction was attempted to
 ///     be mined (but failed).
-///   - `max_used_height` -- the height of the last block where this transaction failed to be
+///   - `last_failed_height` -- the height of the last block where this transaction failed to be
 ///     acceptable for a block.
 ///   - `weight` -- the transaction "weight" which is the size of the transaction with padding
 ///     removed.  Only included for mempool transactions (for mined transactions the size and
@@ -2307,8 +2306,7 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
     static constexpr auto names() { return NAMES("bls_rewards_request"); }
 
     struct request_parameters {
-        std::string address;
-        std::string oxen_address;
+        crypto::eth_address address;
     } request;
 };
 
@@ -2319,12 +2317,12 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 ///
 /// Inputs:
 ///
-/// - `bls_key` -- this bls_key will be searched to see if the node can exit
+/// - `bls_pubkey` -- this bls_pubkey will be searched to see if the node can exit
 ///
 /// Outputs:
 ///
 /// - `status` -- generic RPC error code; "OK" means the request was successful.
-/// - `bls_key` -- The bls pubkey of the node requesting to exit
+/// - `bls_pubkey` -- The bls pubkey of the node requesting to exit
 /// - `signed_message` -- The message that has been signed by the network
 /// - `signature` -- BLS signature of the message
 /// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
@@ -2332,7 +2330,7 @@ struct BLS_EXIT_REQUEST : PUBLIC {
     static constexpr auto names() { return NAMES("bls_exit_request"); }
 
     struct request_parameters {
-        std::string bls_key;
+        crypto::bls_public_key bls_pubkey;
     } request;
 };
 
@@ -2343,12 +2341,12 @@ struct BLS_EXIT_REQUEST : PUBLIC {
 ///
 /// Inputs:
 ///
-/// - `bls_key` -- this bls_key will be searched to see if the node can be liquidated
+/// - `bls_pubkey` -- this bls_pubkey will be searched to see if the node can be liquidated
 ///
 /// Outputs:
 ///
 /// - `status` -- generic RPC error code; "OK" means the request was successful.
-/// - `bls_key` -- The bls pubkey of the node requested to be liquidated
+/// - `bls_pubkey` -- The bls pubkey of the node requested to be liquidated
 /// - `signed_message` -- The message that has been signed by the network
 /// - `signature` -- BLS signature of the message
 /// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
@@ -2356,22 +2354,8 @@ struct BLS_LIQUIDATION_REQUEST : PUBLIC {
     static constexpr auto names() { return NAMES("bls_liquidation_request"); }
 
     struct request_parameters {
-        std::string bls_key;
+        crypto::bls_public_key bls_pubkey;
     } request;
-};
-
-/// RPC: bls pubkey request
-///
-/// Sends a request out to get all the bls pubkeys from the network
-///
-/// Inputs: None
-///
-/// Outputs:
-///
-/// - `status` -- generic RPC error code; "OK" means the request was successful.
-/// - `pubkeys` -- The pubkeys for the whole network
-struct BLS_PUBKEYS : PUBLIC, NO_ARGS {
-    static constexpr auto names() { return NAMES("bls_pubkey_request"); }
 };
 
 /// RPC: bls registration request
@@ -2397,7 +2381,7 @@ struct BLS_REGISTRATION : RPC_COMMAND {
     static constexpr auto names() { return NAMES("bls_registration_request"); }
 
     struct request_parameters {
-        std::string address;
+        crypto::eth_address address;
     } request;
 };
 
@@ -2796,7 +2780,6 @@ using core_rpc_types = tools::type_list<
         BLS_REWARDS_REQUEST,
         BLS_EXIT_REQUEST,
         BLS_LIQUIDATION_REQUEST,
-        BLS_PUBKEYS,
         BLS_REGISTRATION,
         GET_SERVICE_NODE_REGISTRATION_CMD,
         GET_SERVICE_NODE_REGISTRATION_CMD_RAW,

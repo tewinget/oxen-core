@@ -66,7 +66,7 @@ EXPORT
 std::vector<std::string> PendingTransactionImpl::txid() const {
     std::vector<std::string> txid;
     for (const auto& pt : m_pending_tx)
-        txid.push_back(tools::type_to_hex(cryptonote::get_transaction_hash(pt.tx)));
+        txid.push_back(tools::hex_guts(cryptonote::get_transaction_hash(pt.tx)));
     return txid;
 }
 

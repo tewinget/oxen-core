@@ -44,7 +44,7 @@
 #include <variant>
 
 #include "common/command_line.h"
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/json_binary_proxy.h"
 #include "common/oxen.h"
 #include "common/random.h"
@@ -184,7 +184,7 @@ bool core_rpc_server::check_core_ready() {
     } while (0)
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_HEIGHT& get_height, rpc_context context) {
+void core_rpc_server::invoke(GET_HEIGHT& get_height, [[maybe_unused]] rpc_context context) {
     auto [height, hash] = m_core.get_blockchain_top();
 
     ++height;  // block height to chain height
@@ -192,7 +192,6 @@ void core_rpc_server::invoke(GET_HEIGHT& get_height, rpc_context context) {
     get_height.response["height"] = height;
     get_height.response_hex["hash"] = hash;
 
-    uint64_t immutable_height = 0;
     cryptonote::checkpoint_t checkpoint;
     if (m_core.get_blockchain_storage().get_db().get_immutable_checkpoint(
                 &checkpoint, height - 1)) {
@@ -201,7 +200,7 @@ void core_rpc_server::invoke(GET_HEIGHT& get_height, rpc_context context) {
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
+void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context context) {
 
     auto [top_height, top_hash] = m_core.get_blockchain_top();
 
@@ -306,7 +305,7 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
     info.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_NET_STATS& get_net_stats, rpc_context context) {
+void core_rpc_server::invoke(GET_NET_STATS& get_net_stats, [[maybe_unused]] rpc_context context) {
     get_net_stats.response["start_time"] = m_core.get_start_time();
     {
         std::lock_guard lock{
@@ -340,7 +339,7 @@ namespace {
 }  // namespace
 //------------------------------------------------------------------------------------------------------------------------------
 GET_BLOCKS_BIN::response core_rpc_server::invoke(
-        GET_BLOCKS_BIN::request&& req, rpc_context context) {
+        GET_BLOCKS_BIN::request&& req, [[maybe_unused]] rpc_context context) {
     GET_BLOCKS_BIN::response res{};
 
     std::vector<std::pair<
@@ -400,7 +399,7 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(
     return res;
 }
 GET_ALT_BLOCKS_HASHES_BIN::response core_rpc_server::invoke(
-        GET_ALT_BLOCKS_HASHES_BIN::request&& req, rpc_context context) {
+        GET_ALT_BLOCKS_HASHES_BIN::request&& req, [[maybe_unused]] rpc_context context) {
     GET_ALT_BLOCKS_HASHES_BIN::response res{};
 
     std::vector<block> blks;
@@ -413,7 +412,7 @@ GET_ALT_BLOCKS_HASHES_BIN::response core_rpc_server::invoke(
     res.blks_hashes.reserve(blks.size());
 
     for (auto const& blk : blks) {
-        res.blks_hashes.push_back(tools::type_to_hex(get_block_hash(blk)));
+        res.blks_hashes.push_back(tools::hex_guts(get_block_hash(blk)));
     }
 
     log::debug(logcat, "on_get_alt_blocks_hashes: {} blocks ", blks.size());
@@ -422,7 +421,7 @@ GET_ALT_BLOCKS_HASHES_BIN::response core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 GET_BLOCKS_BY_HEIGHT_BIN::response core_rpc_server::invoke(
-        GET_BLOCKS_BY_HEIGHT_BIN::request&& req, rpc_context context) {
+        GET_BLOCKS_BY_HEIGHT_BIN::request&& req, [[maybe_unused]] rpc_context context) {
     GET_BLOCKS_BY_HEIGHT_BIN::response res{};
 
     res.status = "Failed";
@@ -448,7 +447,7 @@ GET_BLOCKS_BY_HEIGHT_BIN::response core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 GET_HASHES_BIN::response core_rpc_server::invoke(
-        GET_HASHES_BIN::request&& req, rpc_context context) {
+        GET_HASHES_BIN::request&& req, [[maybe_unused]] rpc_context context) {
     GET_HASHES_BIN::response res{};
 
     res.start_height = req.start_height;
@@ -532,7 +531,7 @@ void core_rpc_server::invoke(GET_OUTPUTS& get_outputs, rpc_context context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response core_rpc_server::invoke(
-        GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::request&& req, rpc_context context) {
+        GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::request&& req, [[maybe_unused]] rpc_context context) {
     GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response res{};
 
     bool r = m_core.get_tx_outputs_gindexs(req.txid, res.o_indexes);
@@ -560,7 +559,7 @@ namespace {
         std::vector<std::string> hexes;
         hexes.reserve(v.size());
         for (auto& x : v)
-            hexes.push_back(tools::type_to_hex(x));
+            hexes.push_back(tools::hex_guts(x));
         return hexes;
     }
 
@@ -714,7 +713,7 @@ namespace {
                 parent[key] = get_account_address_as_str(
                         nettype, owner.wallet.is_subaddress, owner.wallet.address);
             else if (owner.type == ons::generic_owner_sig_type::ed25519)
-                json_binary_proxy{parent[key], json_binary_proxy::fmt::hex} = owner.ed25519;
+                json_binary_proxy{parent[key], format} = owner.ed25519;
         }
         void operator()(const tx_extra_oxen_name_system& x) {
             json ons{};
@@ -745,34 +744,30 @@ namespace {
             _load_owner(ons, "owner", x.owner);
             _load_owner(ons, "backup_owner", x.backup_owner);
         }
-        void operator()(const tx_extra_ethereum_address_notification& x) {
-            set("eth_address", tools::type_to_hex(x.eth_address));
-            set("signature", tools::view_guts(x.signature));
-        }
         void operator()(const tx_extra_ethereum_new_service_node& x) {
-            set("bls_key", tools::type_to_hex(x.bls_key));
-            set("eth_address", tools::type_to_hex(x.eth_address));
-            set("service_node_pubkey", tools::view_guts(x.service_node_pubkey));
-            set("signature", tools::view_guts(x.signature));
-            set("fee", tools::view_guts(x.fee));
+            set("bls_pubkey", x.bls_pubkey);
+            set("eth_address", x.eth_address);
+            set("service_node_pubkey", x.service_node_pubkey);
+            set("signature", x.signature);
+            set("fee", x.fee);
             auto contributors = json::array();
             for (auto& contributor : x.contributors) {
                 auto& c = contributors.emplace_back();
-                c["address"] = tools::type_to_hex(contributor.address);
+                json_binary_proxy{c["address"], format} = contributor.address;
                 c["amount"] = contributor.amount;
             }
             set("contributors", contributors);
         }
         void operator()(const tx_extra_ethereum_service_node_leave_request& x) {
-            set("bls_key", tools::type_to_hex(x.bls_key));
+            set("bls_pubkey", x.bls_pubkey);
         }
         void operator()(const tx_extra_ethereum_service_node_exit& x) {
-            set("eth_address", tools::type_to_hex(x.eth_address));
+            set("eth_address", x.eth_address);
             set("amount", x.amount);
-            set("bls_key", tools::type_to_hex(x.bls_key));
+            set("bls_pubkey", x.bls_pubkey);
         }
         void operator()(const tx_extra_ethereum_service_node_deregister& x) {
-            set("bls_key", tools::type_to_hex(x.bls_key));
+            set("bls_pubkey", x.bls_pubkey);
         }
 
         // Ignore these fields:
@@ -842,23 +837,14 @@ get_pool_txs_kis(cryptonote::core& core) {
     return {get_pool_txs_impl(core), core.get_pool().get_spent_key_images(true)};
 }
 
-/*
-static std::unordered_map<crypto::hash, tx_info> get_pool_txs(
-    cryptonote::core& core, std::function<void(const transaction&, tx_info&)> post_process = {}) {
-  auto locks = pool_locks(core);
-  return get_pool_txs_impl(core);
-}
-*/
-
-static tx_memory_pool::key_images_container get_pool_kis(
-        cryptonote::core& core,
-        std::function<void(const transaction&, tx_info&)> post_process = {}) {
+static tx_memory_pool::key_images_container get_pool_kis(cryptonote::core& core) {
     auto locks = pool_locks(core);
     return core.get_pool().get_spent_key_images(true);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context context) {
+void core_rpc_server::invoke(GET_TRANSACTIONS& get, [[maybe_unused]] rpc_context context) {
+    // NB: this also handles the deprecated GET_TRANSACTION_POOL
     std::unordered_set<crypto::hash> missed_txs;
     using split_tx = std::tuple<crypto::hash, std::string, crypto::hash, std::string>;
     std::vector<split_tx> txs;
@@ -943,7 +929,7 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context context) {
                 auto mki = get.response_hex["mempool_key_images"];
                 for (auto& [ki, txids] : pool_kis) {
                     // The *key* is also binary (hex for json):
-                    std::string key{get.is_bt() ? tools::view_guts(ki) : tools::type_to_hex(ki)};
+                    std::string key{get.is_bt() ? tools::view_guts(ki) : tools::hex_guts(ki)};
                     mki[key] = txids;
                 }
             }
@@ -1015,17 +1001,21 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context context) {
             e_bin["tx_extra_raw"] = std::string_view{
                     reinterpret_cast<const char*>(tx.extra.data()), tx.extra.size()};
 
-        // Clear it because we don't want/care about it in the RPC output (we already got it more
-        // usefully from the above).
-        tx.extra.clear();
-
         {
+            // Serialize *without* extra because we don't want/care about it in the RPC output (we
+            // already have all the extra info in more useful form from the other bits of this
+            // code).
+            std::vector<uint8_t> saved_extra;
+            std::swap(tx.extra, saved_extra);
+
             serialization::json_archiver ja{
                     get.is_bt() ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex};
 
             serialize(ja, tx);
             auto dumped = std::move(ja).json();
             e.update(dumped);
+
+            std::swap(saved_extra, tx.extra);
         }
 
         if (extra)
@@ -1080,13 +1070,11 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context context) {
             }
         }
 
-        {
-            service_nodes::staking_components sc;
-            if (service_nodes::tx_get_staking_components_and_amounts(
-                        nettype(), hf_version, tx, height, &sc) &&
-                sc.transferred > 0)
-                e["stake_amount"] = sc.transferred;
-        }
+        if (service_nodes::staking_components sc;
+            service_nodes::tx_get_staking_components_and_amounts(
+                    nettype(), hf_version, tx, height, &sc) &&
+            sc.transferred > 0)
+            e["stake_amount"] = sc.transferred;
 
         // output indices too if not in pool
         if (!in_pool) {
@@ -1108,7 +1096,7 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context context) {
     get.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(IS_KEY_IMAGE_SPENT& spent, rpc_context context) {
+void core_rpc_server::invoke(IS_KEY_IMAGE_SPENT& spent, [[maybe_unused]] rpc_context context) {
     spent.response["status"] = STATUS_FAILED;
 
     std::vector<bool> blockchain_spent;
@@ -1142,7 +1130,7 @@ static constexpr auto BLINK_TIMEOUT = "Blink quorum timeout"sv;
 static constexpr auto BLINK_REJECTED = "Transaction rejected by blink quorum"sv;
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SUBMIT_TRANSACTION& tx, rpc_context context) {
+void core_rpc_server::invoke(SUBMIT_TRANSACTION& tx, [[maybe_unused]] rpc_context context) {
     if (!check_core_ready()) {
         tx.response["status"] = STATUS_BUSY;
         return;
@@ -1205,10 +1193,9 @@ void core_rpc_server::invoke(SUBMIT_TRANSACTION& tx, rpc_context context) {
     m_core.get_protocol()->relay_transactions(r, fake_context);
 
     tx.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(START_MINING& start_mining, rpc_context context) {
+void core_rpc_server::invoke(START_MINING& start_mining, [[maybe_unused]] rpc_context context) {
     // CHECK_CORE_READY();
     if (!check_core_ready()) {
         start_mining.response["status"] = STATUS_BUSY;
@@ -1261,7 +1248,7 @@ void core_rpc_server::invoke(START_MINING& start_mining, rpc_context context) {
     start_mining.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(STOP_MINING& stop_mining, rpc_context context) {
+void core_rpc_server::invoke(STOP_MINING& stop_mining, [[maybe_unused]] rpc_context context) {
     cryptonote::miner& miner = m_core.get_miner();
     if (!miner.is_mining()) {
         stop_mining.response["status"] = "Mining never started";
@@ -1277,7 +1264,7 @@ void core_rpc_server::invoke(STOP_MINING& stop_mining, rpc_context context) {
     stop_mining.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(MINING_STATUS& mining_status, rpc_context context) {
+void core_rpc_server::invoke(MINING_STATUS& mining_status, [[maybe_unused]] rpc_context context) {
     const miner& lMiner = m_core.get_miner();
     mining_status.response["active"] = lMiner.is_mining();
     mining_status.response["block_target"] = tools::to_seconds(TARGET_BLOCK_TIME);
@@ -1304,7 +1291,7 @@ void core_rpc_server::invoke(MINING_STATUS& mining_status, rpc_context context) 
     mining_status.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SAVE_BC& save_bc, rpc_context context) {
+void core_rpc_server::invoke(SAVE_BC& save_bc, [[maybe_unused]] rpc_context context) {
     if (!m_core.get_blockchain_storage().store_blockchain()) {
         save_bc.response["status"] = "Error while storing blockchain";
         log::warning(logcat, "{}", save_bc.response["status"].get<std::string_view>());
@@ -1325,7 +1312,7 @@ static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_PEER_LIST& pl, rpc_context context) {
+void core_rpc_server::invoke(GET_PEER_LIST& pl, [[maybe_unused]] rpc_context context) {
     std::vector<nodetool::peerlist_entry> white_list, gray_list;
     if (pl.request.public_only)
         m_p2p.get_public_peerlist(gray_list, white_list);
@@ -1346,7 +1333,7 @@ void core_rpc_server::invoke(GET_PEER_LIST& pl, rpc_context context) {
     pl.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, rpc_context context) {
+void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, [[maybe_unused]] rpc_context context) {
     if (set_log_level.request.level < 0 || set_log_level.request.level > 4) {
         set_log_level.response["status"] = "Error: log level not valid";
         return;
@@ -1357,7 +1344,8 @@ void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, rpc_context context) 
     set_log_level.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SET_LOG_CATEGORIES& set_log_categories, rpc_context context) {
+void core_rpc_server::invoke(
+        SET_LOG_CATEGORIES& set_log_categories, [[maybe_unused]] rpc_context context) {
     oxen::logging::process_categories_string(set_log_categories.request.categories.c_str());
     set_log_categories.response["status"] = STATUS_OK;
 }
@@ -1382,7 +1370,8 @@ void core_rpc_server::invoke(
     get_transaction_pool_hashes.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_TRANSACTION_POOL_STATS& stats, rpc_context context) {
+void core_rpc_server::invoke(
+        GET_TRANSACTION_POOL_STATS& stats, [[maybe_unused]] rpc_context context) {
     auto txpool = m_core.get_pool().get_transaction_stats(stats.request.include_unrelayed);
     json pool_stats{
             {"bytes_total", txpool.bytes_total},
@@ -1407,7 +1396,7 @@ void core_rpc_server::invoke(GET_TRANSACTION_POOL_STATS& stats, rpc_context cont
     stats.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(STOP_DAEMON& stop_daemon, rpc_context context) {
+void core_rpc_server::invoke(STOP_DAEMON& stop_daemon, [[maybe_unused]] rpc_context context) {
     m_p2p.send_stop_signal();
     stop_daemon.response["status"] = STATUS_OK;
 }
@@ -1416,7 +1405,7 @@ void core_rpc_server::invoke(STOP_DAEMON& stop_daemon, rpc_context context) {
 // Oxen
 //
 GET_OUTPUT_BLACKLIST_BIN::response core_rpc_server::invoke(
-        GET_OUTPUT_BLACKLIST_BIN::request&& req, rpc_context context) {
+        GET_OUTPUT_BLACKLIST_BIN::request&& req, [[maybe_unused]] rpc_context context) {
     GET_OUTPUT_BLACKLIST_BIN::response res{};
 
     try {
@@ -1430,12 +1419,12 @@ GET_OUTPUT_BLACKLIST_BIN::response core_rpc_server::invoke(
     return res;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_BLOCK_COUNT& get, rpc_context context) {
+void core_rpc_server::invoke(GET_BLOCK_COUNT& get, [[maybe_unused]] rpc_context context) {
     get.response["count"] = m_core.get_current_blockchain_height();
     get.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_BLOCK_HASH& get, rpc_context context) {
+void core_rpc_server::invoke(GET_BLOCK_HASH& get, [[maybe_unused]] rpc_context context) {
     auto curr_height = m_core.get_current_blockchain_height();
     for (auto h : get.request.heights) {
         if (h >= curr_height)
@@ -1465,15 +1454,17 @@ void core_rpc_server::fill_block_header_response(
         block_header_response& response,
         bool fill_pow_hash,
         bool get_tx_hashes) {
+    // FIXME: this isn't setting binary values properly; this whole `block_header_response` thing
+    // should be deleted and this should set json values directly.
     response.major_version = static_cast<uint8_t>(blk.major_version);
     response.minor_version = blk.minor_version;
     response.timestamp = blk.timestamp;
-    response.prev_hash = tools::type_to_hex(blk.prev_id);
+    response.prev_hash = tools::hex_guts(blk.prev_id);
     response.nonce = blk.nonce;
     response.orphan_status = orphan_status;
     response.height = height;
     response.depth = m_core.get_current_blockchain_height() - height - 1;
-    response.hash = tools::type_to_hex(hash);
+    response.hash = tools::hex_guts(hash);
     response.difficulty = m_core.get_blockchain_storage().block_difficulty(height);
     response.cumulative_difficulty =
             m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(height);
@@ -1483,24 +1474,24 @@ void core_rpc_server::fill_block_header_response(
             m_core.get_blockchain_storage().get_db().get_block_weight(height);
     response.num_txes = blk.tx_hashes.size();
     if (fill_pow_hash)
-        response.pow_hash = tools::type_to_hex(get_block_longhash_w_blockchain(
+        response.pow_hash = tools::hex_guts(get_block_longhash_w_blockchain(
                 m_core.get_nettype(), &m_core.get_blockchain_storage(), blk, height, 0));
     response.long_term_weight =
             m_core.get_blockchain_storage().get_db().get_block_long_term_weight(height);
     response.service_node_winner =
-            tools::type_to_hex(blk.service_node_winner_key) == ""
-                    ? tools::type_to_hex(
+            tools::hex_guts(blk.service_node_winner_key) == ""
+                    ? tools::hex_guts(
                               cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra))
-                    : tools::type_to_hex(blk.service_node_winner_key);
+                    : tools::hex_guts(blk.service_node_winner_key);
     response.coinbase_payouts = get_block_reward(blk);
-    response.l2_state = tools::type_to_hex(blk.l2_state);
+    response.l2_state = tools::hex_guts(blk.l2_state);
     response.l2_height = blk.l2_height;
     if (blk.miner_tx.vout.size() > 0)
-        response.miner_tx_hash = tools::type_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
+        response.miner_tx_hash = tools::hex_guts(cryptonote::get_transaction_hash(blk.miner_tx));
     if (get_tx_hashes) {
         response.tx_hashes.reserve(blk.tx_hashes.size());
         for (const auto& tx_hash : blk.tx_hashes)
-            response.tx_hashes.push_back(tools::type_to_hex(tx_hash));
+            response.tx_hashes.push_back(tools::hex_guts(tx_hash));
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -1528,7 +1519,6 @@ void core_rpc_server::invoke(GET_LAST_BLOCK_HEADER& get_last_block_header, rpc_c
     nlohmann::json header_as_json = header;
     get_last_block_header.response["block_header"] = header_as_json;
     get_last_block_header.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 
@@ -1537,7 +1527,7 @@ void core_rpc_server::invoke(
     auto get = [this, &get_block_header_by_hash, admin = context.admin](
                        const std::string& hash, block_header_response& block_header) {
         crypto::hash block_hash;
-        if (!tools::hex_to_type(hash, block_hash))
+        if (!tools::try_load_from_hex_guts(hash, block_hash))
             throw rpc_error{
                     ERROR_WRONG_PARAM,
                     "Failed to parse hex representation of block hash. Hex = " + hash + '.'};
@@ -1576,7 +1566,6 @@ void core_rpc_server::invoke(
 
     get_block_header_by_hash.response["block_headers"] = block_headers;
     get_block_header_by_hash.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -1616,7 +1605,6 @@ void core_rpc_server::invoke(
     }
     get_block_headers_range.response["headers"] = headers;
     get_block_headers_range.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -1655,7 +1643,6 @@ void core_rpc_server::invoke(
 
     get_block_header_by_height.response["status"] = STATUS_OK;
     get_block_header_by_height.response["block_headers"] = headers;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
@@ -1664,7 +1651,7 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
     bool orphan = false;
     crypto::hash block_hash;
     if (!get_block.request.hash.empty()) {
-        if (!tools::hex_to_type(get_block.request.hash, block_hash))
+        if (!tools::try_load_from_hex_guts(get_block.request.hash, block_hash))
             throw rpc_error{
                     ERROR_WRONG_PARAM,
                     "Failed to parse hex representation of block hash. Hex = " +
@@ -1707,18 +1694,10 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
             get_block.request.fill_pow_hash && context.admin,
             false /*tx hashes*/);
     get_block.response["block_header"] = header;
-    std::vector<std::string> tx_hashes;
-    tx_hashes.reserve(blk.tx_hashes.size());
-    std::transform(
-            blk.tx_hashes.begin(),
-            blk.tx_hashes.end(),
-            std::back_inserter(tx_hashes),
-            [](const auto& x) { return tools::type_to_hex(x); });
-    get_block.response["tx_hashes"] = std::move(tx_hashes);
-    get_block.response["blob"] = oxenc::to_hex(t_serializable_object_to_blob(blk));
+    get_block.response_hex["tx_hashes"] = blk.tx_hashes;
+    get_block.response_hex["blob"] = t_serializable_object_to_blob(blk);
     get_block.response["json"] = obj_to_json_str(blk);
     get_block.response["status"] = STATUS_OK;
-    return;
 }
 
 static json json_connection_info(const connection_info& ci) {
@@ -1756,7 +1735,8 @@ static json json_connection_info(const connection_info& ci) {
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_CONNECTIONS& get_connections, rpc_context context) {
+void core_rpc_server::invoke(
+        GET_CONNECTIONS& get_connections, [[maybe_unused]] rpc_context context) {
     auto& c = get_connections.response["connections"];
     c = json::array();
     for (auto& ci : m_p2p.get_payload_object().get_connections())
@@ -1764,7 +1744,7 @@ void core_rpc_server::invoke(GET_CONNECTIONS& get_connections, rpc_context conte
     get_connections.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, rpc_context context) {
+void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, [[maybe_unused]] rpc_context context) {
     const auto& blockchain = m_core.get_blockchain_storage();
     auto version = hfinfo.request.version > 0 ? static_cast<hf>(hfinfo.request.version)
                  : hfinfo.request.height > 0 ? blockchain.get_network_version(hfinfo.request.height)
@@ -1779,7 +1759,7 @@ void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, rpc_context context) {
     hfinfo.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_BANS& get_bans, rpc_context context) {
+void core_rpc_server::invoke(GET_BANS& get_bans, [[maybe_unused]] rpc_context context) {
     auto now = time(nullptr);
     std::map<std::string, time_t> blocked_hosts = m_p2p.get_blocked_hosts();
     for (std::map<std::string, time_t>::const_iterator i = blocked_hosts.begin();
@@ -1807,10 +1787,9 @@ void core_rpc_server::invoke(GET_BANS& get_bans, rpc_context context) {
     }
 
     get_bans.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BANNED& banned, rpc_context context) {
+void core_rpc_server::invoke(BANNED& banned, [[maybe_unused]] rpc_context context) {
     auto na_parsed = net::get_network_address(banned.request.address, 0);
     if (!na_parsed)
         throw rpc_error{ERROR_WRONG_PARAM, "Unsupported host type"};
@@ -1828,7 +1807,7 @@ void core_rpc_server::invoke(BANNED& banned, rpc_context context) {
     banned.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SET_BANS& set_bans, rpc_context context) {
+void core_rpc_server::invoke(SET_BANS& set_bans, [[maybe_unused]] rpc_context context) {
     epee::net_utils::network_address na;
     // try subnet first
     auto ns_parsed = net::get_ipv4_subnet_address(set_bans.request.host);
@@ -1852,10 +1831,10 @@ void core_rpc_server::invoke(SET_BANS& set_bans, rpc_context context) {
         m_p2p.unblock_host(na);
 
     set_bans.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(FLUSH_TRANSACTION_POOL& flush_transaction_pool, rpc_context context) {
+void core_rpc_server::invoke(
+        FLUSH_TRANSACTION_POOL& flush_transaction_pool, [[maybe_unused]] rpc_context context) {
     bool failed = false;
     std::vector<crypto::hash> txids;
     if (flush_transaction_pool.request.txids.empty()) {
@@ -1867,7 +1846,7 @@ void core_rpc_server::invoke(FLUSH_TRANSACTION_POOL& flush_transaction_pool, rpc
     } else {
         for (const auto& txid_hex : flush_transaction_pool.request.txids) {
             std::string txid_data;
-            if (!tools::hex_to_type(txid_hex, txids.emplace_back())) {
+            if (!tools::try_load_from_hex_guts(txid_hex, txids.emplace_back())) {
                 failed = true;
                 txids.pop_back();
             }
@@ -1917,15 +1896,14 @@ void core_rpc_server::invoke(GET_OUTPUT_HISTOGRAM& get_output_histogram, rpc_con
 
     get_output_histogram.response["histogram"] = response_histogram;
     get_output_histogram.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_VERSION& version, rpc_context context) {
+void core_rpc_server::invoke(GET_VERSION& version, [[maybe_unused]] rpc_context context) {
     version.response["version"] = pack_version(VERSION);
     version.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, rpc_context context) {
+void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, [[maybe_unused]] rpc_context context) {
     auto [top_height, top_hash] = m_core.get_blockchain_top();
     sns.response["height"] = top_height;
     sns.response_hex["block_hash"] = top_hash;
@@ -1959,7 +1937,8 @@ void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, rpc_context context) 
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_COINBASE_TX_SUM& get_coinbase_tx_sum, rpc_context context) {
+void core_rpc_server::invoke(
+        GET_COINBASE_TX_SUM& get_coinbase_tx_sum, [[maybe_unused]] rpc_context context) {
     if (auto sums = m_core.get_coinbase_tx_sum(
                 get_coinbase_tx_sum.request.height, get_coinbase_tx_sum.request.count)) {
         std::tie(
@@ -1973,7 +1952,8 @@ void core_rpc_server::invoke(GET_COINBASE_TX_SUM& get_coinbase_tx_sum, rpc_conte
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_FEE_ESTIMATE& get_fee_estimate, rpc_context context) {
+void core_rpc_server::invoke(
+        GET_FEE_ESTIMATE& get_fee_estimate, [[maybe_unused]] rpc_context context) {
     auto fees = m_core.get_blockchain_storage().get_dynamic_base_fee_estimate(
             get_fee_estimate.request.grace_blocks);
     get_fee_estimate.response["fee_per_byte"] = fees.first;
@@ -1987,14 +1967,15 @@ void core_rpc_server::invoke(GET_FEE_ESTIMATE& get_fee_estimate, rpc_context con
     get_fee_estimate.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_context context) {
+void core_rpc_server::invoke(
+        GET_ALTERNATE_CHAINS& get_alternate_chains, [[maybe_unused]] rpc_context context) {
     try {
         std::vector<GET_ALTERNATE_CHAINS::chain_info> chains;
         std::vector<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>>
                 alt_chains = m_core.get_blockchain_storage().get_alternative_chains();
         for (const auto& i : alt_chains) {
             chains.push_back(GET_ALTERNATE_CHAINS::chain_info{
-                    tools::type_to_hex(get_block_hash(i.first.bl)),
+                    tools::hex_guts(get_block_hash(i.first.bl)),
                     i.first.height,
                     i.second.size(),
                     i.first.cumulative_difficulty,
@@ -2002,7 +1983,7 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_con
                     std::string()});
             chains.back().block_hashes.reserve(i.second.size());
             for (const crypto::hash& block_id : i.second)
-                chains.back().block_hashes.push_back(tools::type_to_hex(block_id));
+                chains.back().block_hashes.push_back(tools::hex_guts(block_id));
             if (i.first.height < i.second.size()) {
                 get_alternate_chains.response["status"] =
                         "Error finding alternate chain attachment point";
@@ -2019,24 +2000,23 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_con
                 return;
             }
             chains.back().main_chain_parent_block =
-                    tools::type_to_hex(get_block_hash(main_chain_parent_block));
+                    tools::hex_guts(get_block_hash(main_chain_parent_block));
         }
         get_alternate_chains.response["chains"] = chains;
         get_alternate_chains.response["status"] = STATUS_OK;
     } catch (...) {
         get_alternate_chains.response["status"] = "Error retrieving alternate chains";
     }
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_LIMIT& limit, rpc_context context) {
+void core_rpc_server::invoke(GET_LIMIT& limit, [[maybe_unused]] rpc_context context) {
     limit.response = {
             {"limit_down", epee::net_utils::connection_basic::get_rate_down_limit()},
             {"limit_up", epee::net_utils::connection_basic::get_rate_up_limit()},
             {"status", STATUS_OK}};
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SET_LIMIT& limit, rpc_context context) {
+void core_rpc_server::invoke(SET_LIMIT& limit, [[maybe_unused]] rpc_context context) {
     // -1 = reset to default
     //  0 = do not modify
     if (limit.request.limit_down != 0)
@@ -2054,30 +2034,30 @@ void core_rpc_server::invoke(SET_LIMIT& limit, rpc_context context) {
             {"status", STATUS_OK}};
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(OUT_PEERS& out_peers, rpc_context context) {
+void core_rpc_server::invoke(OUT_PEERS& out_peers, [[maybe_unused]] rpc_context context) {
     if (out_peers.request.set)
         m_p2p.change_max_out_public_peers(out_peers.request.out_peers);
     out_peers.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(IN_PEERS& in_peers, rpc_context context) {
+void core_rpc_server::invoke(IN_PEERS& in_peers, [[maybe_unused]] rpc_context context) {
     if (in_peers.request.set)
         m_p2p.change_max_in_public_peers(in_peers.request.in_peers);
     in_peers.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(POP_BLOCKS& pop_blocks, rpc_context context) {
+void core_rpc_server::invoke(POP_BLOCKS& pop_blocks, [[maybe_unused]] rpc_context context) {
     m_core.get_blockchain_storage().pop_blocks(pop_blocks.request.nblocks);
 
     pop_blocks.response["height"] = m_core.get_current_blockchain_height();
     pop_blocks.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(RELAY_TX& relay_tx, rpc_context context) {
+void core_rpc_server::invoke(RELAY_TX& relay_tx, [[maybe_unused]] rpc_context context) {
     std::string status = "";
     for (const auto& txid_hex : relay_tx.request.txids) {
         crypto::hash txid;
-        if (!tools::hex_to_type(txid_hex, txid)) {
+        if (!tools::try_load_from_hex_guts(txid_hex, txid)) {
             if (!status.empty())
                 status += ", ";
             status += "invalid transaction id: " + txid_hex;
@@ -2102,10 +2082,9 @@ void core_rpc_server::invoke(RELAY_TX& relay_tx, rpc_context context) {
         status = STATUS_OK;
 
     relay_tx.response["status"] = status;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SYNC_INFO& sync, rpc_context context) {
+void core_rpc_server::invoke(SYNC_INFO& sync, [[maybe_unused]] rpc_context context) {
     auto [top_height, top_hash] = m_core.get_blockchain_top();
     sync.response["height"] = top_height + 1;  // turn top block height into blockchain height
     if (auto target_height = m_core.get_target_blockchain_height(); target_height > top_height + 1)
@@ -2126,7 +2105,7 @@ void core_rpc_server::invoke(SYNC_INFO& sync, rpc_context context) {
         spans.push_back(
                 json{{"start_block_height", span.start_block_height},
                      {"nblocks", span.nblocks},
-                     {"connection_id", tools::type_to_hex(span.connection_id)},
+                     {"connection_id", tools::hex_guts(span.connection_id)},
                      {"rate", std::lround(span.rate)},
                      {"speed", speed},
                      {"size", span.size}});
@@ -2247,7 +2226,7 @@ namespace detail {
 
 //------------------------------------------------------------------------------------------------------------------------------
 GET_OUTPUT_DISTRIBUTION::response core_rpc_server::invoke(
-        GET_OUTPUT_DISTRIBUTION::request&& req, rpc_context context, bool binary) {
+        GET_OUTPUT_DISTRIBUTION::request&& req, [[maybe_unused]] rpc_context context, bool binary) {
     GET_OUTPUT_DISTRIBUTION::response res{};
     try {
         // 0 is placeholder for the whole chain
@@ -2297,7 +2276,8 @@ GET_OUTPUT_DISTRIBUTION_BIN::response core_rpc_server::invoke(
     return invoke(std::move(static_cast<GET_OUTPUT_DISTRIBUTION::request&>(req)), context, true);
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(PRUNE_BLOCKCHAIN& prune_blockchain, rpc_context context) {
+void core_rpc_server::invoke(
+        PRUNE_BLOCKCHAIN& prune_blockchain, [[maybe_unused]] rpc_context context) {
     try {
         if (!(prune_blockchain.request.check ? m_core.check_blockchain_pruning()
                                              : m_core.prune_blockchain()))
@@ -2450,7 +2430,6 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
 
     get_quorum_state.response["quorums"] = quorums;
     get_quorum_state.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(FLUSH_CACHE& flush_cache, rpc_context context) {
@@ -2484,11 +2463,11 @@ void core_rpc_server::invoke(
 
     get_service_node_registration_cmd_raw.response["registration_cmd"] = registration_cmd;
     get_service_node_registration_cmd_raw.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
-        GET_SERVICE_NODE_REGISTRATION_CMD& get_service_node_registration_cmd, rpc_context context) {
+        GET_SERVICE_NODE_REGISTRATION_CMD& get_service_node_registration_cmd,
+        [[maybe_unused]] rpc_context context) {
     if (!m_core.service_node())
         throw rpc_error{
                 ERROR_WRONG_PARAM,
@@ -2540,7 +2519,6 @@ void core_rpc_server::invoke(
 
     get_service_node_registration_cmd.response["registration_cmd"] = registration_cmd;
     get_service_node_registration_cmd.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -2550,87 +2528,78 @@ void core_rpc_server::invoke(
 
     get_service_node_blacklisted_key_images.response["status"] = STATUS_OK;
     get_service_node_blacklisted_key_images.response["blacklist"] = blacklist;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_context context) {
-    const BLSRewardsResponse bls_withdrawal_signature_response =
-            m_core.bls_rewards_request(bls_rewards_request.request.address, bls_rewards_request.request.oxen_address);
+void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_context) {
+    const auto bls_withdrawal_signature_response =
+            m_core.bls_rewards_request(bls_rewards_request.request.address);
     bls_rewards_request.response["status"] = STATUS_OK;
-    bls_rewards_request.response["address"] = bls_withdrawal_signature_response.address;
+    bls_rewards_request.response_hex["address"] = bls_withdrawal_signature_response.address;
     bls_rewards_request.response["amount"] = bls_withdrawal_signature_response.amount;
     bls_rewards_request.response["height"] = bls_withdrawal_signature_response.height;
-    bls_rewards_request.response["signed_message"] =
-            bls_withdrawal_signature_response.signed_message;
-    bls_rewards_request.response["signature"] = bls_withdrawal_signature_response.signature;
-    bls_rewards_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
-    return;
+    bls_rewards_request.response_hex["signed_hash"] = bls_withdrawal_signature_response.signed_hash;
+    bls_rewards_request.response_hex["signature"] = bls_withdrawal_signature_response.signature;
+    bls_rewards_request.response["non_signer_indices"] =
+            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+                    bls_withdrawal_signature_response.signers_bls_pubkeys.begin(),
+                    bls_withdrawal_signature_response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_EXIT_REQUEST& bls_withdrawal_request, rpc_context context) {
-    const aggregateExitResponse bls_withdrawal_signature_response =
-            m_core.aggregate_exit_request(bls_withdrawal_request.request.bls_key);
-    bls_withdrawal_request.response["status"] = STATUS_OK;
-    bls_withdrawal_request.response["bls_key"] = bls_withdrawal_signature_response.bls_key;
-    bls_withdrawal_request.response["signed_message"] =
-            bls_withdrawal_signature_response.signed_message;
-    bls_withdrawal_request.response["signature"] = bls_withdrawal_signature_response.signature;
-    bls_withdrawal_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
-    return;
+void core_rpc_server::invoke(BLS_EXIT_REQUEST& exit, rpc_context) {
+    const auto exit_sig = m_core.aggregate_exit_request(exit.request.bls_pubkey);
+    exit.response["status"] = STATUS_OK;
+    exit.response_hex["bls_pubkey"] = exit_sig.exit_pubkey;
+    exit.response_hex["signed_hash"] = exit_sig.signed_hash;
+    exit.response_hex["signature"] = exit_sig.signature;
+    exit.response["non_signer_indices"] =
+            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+                    exit_sig.signers_bls_pubkeys.begin(), exit_sig.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& bls_withdrawal_request, rpc_context context) {
-    const aggregateExitResponse bls_withdrawal_signature_response =
-            m_core.aggregate_liquidation_request(bls_withdrawal_request.request.bls_key);
-    bls_withdrawal_request.response["status"] = STATUS_OK;
-    bls_withdrawal_request.response["bls_key"] = bls_withdrawal_signature_response.bls_key;
-    bls_withdrawal_request.response["signed_message"] =
-            bls_withdrawal_signature_response.signed_message;
-    bls_withdrawal_request.response["signature"] = bls_withdrawal_signature_response.signature;
-    bls_withdrawal_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
-    return;
+void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& liquidate, rpc_context) {
+    const auto liquidate_sig = m_core.aggregate_liquidation_request(liquidate.request.bls_pubkey);
+    liquidate.response["status"] = STATUS_OK;
+    liquidate.response_hex["bls_pubkey"] = liquidate_sig.exit_pubkey;
+    liquidate.response_hex["signed_hash"] = liquidate_sig.signed_hash;
+    liquidate.response_hex["signature"] = liquidate_sig.signature;
+    liquidate.response["non_signer_indices"] =
+            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+                    liquidate_sig.signers_bls_pubkeys.begin(),
+                    liquidate_sig.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_PUBKEYS& bls_pubkey_request, rpc_context context) {
-    const std::vector<std::pair<std::string, uint64_t>> nodes = m_core.get_bls_pubkeys();
-    bls_pubkey_request.response["status"] = STATUS_OK;
-    bls_pubkey_request.response["nodes"] = nodes;
-    return;
-}
-//------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REGISTRATION& bls_registration_request, rpc_context context) {
-    const blsRegistrationResponse bls_registration =
-            m_core.bls_registration(bls_registration_request.request.address);
+void core_rpc_server::invoke(BLS_REGISTRATION& bls_registration_request, rpc_context) {
+    const auto bls_registration = m_core.bls_registration(bls_registration_request.request.address);
     bls_registration_request.response["status"] = STATUS_OK;
-    bls_registration_request.response["address"] = bls_registration.address;
-    bls_registration_request.response["bls_pubkey"] = bls_registration.bls_pubkey;
-    bls_registration_request.response["proof_of_possession"] = bls_registration.proof_of_possession;
-    bls_registration_request.response["service_node_pubkey"] = bls_registration.service_node_pubkey;
-    bls_registration_request.response["service_node_signature"] =
-            bls_registration.service_node_signature;
-    return;
+    bls_registration_request.response_hex["address"] = bls_registration.address;
+    bls_registration_request.response_hex["bls_pubkey"] = bls_registration.bls_pubkey;
+    bls_registration_request.response_hex["proof_of_possession"] =
+            bls_registration.proof_of_possession;
+    bls_registration_request.response_hex["service_node_pubkey"] = bls_registration.sn_pubkey;
+    bls_registration_request.response_hex["service_node_signature"] = bls_registration.ed_signature;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_SERVICE_KEYS& get_service_keys, rpc_context context) {
+void core_rpc_server::invoke(
+        GET_SERVICE_KEYS& get_service_keys, [[maybe_unused]] rpc_context context) {
     const auto& keys = m_core.get_service_keys();
     if (keys.pub)
-        get_service_keys.response["service_node_pubkey"] = tools::type_to_hex(keys.pub);
-    get_service_keys.response["service_node_ed25519_pubkey"] = tools::type_to_hex(keys.pub_ed25519);
-    get_service_keys.response["service_node_x25519_pubkey"] = tools::type_to_hex(keys.pub_x25519);
+        get_service_keys.response_hex["service_node_pubkey"] = keys.pub;
+    get_service_keys.response_hex["service_node_ed25519_pubkey"] = keys.pub_ed25519;
+    get_service_keys.response_hex["service_node_x25519_pubkey"] = keys.pub_x25519;
     get_service_keys.response["status"] = STATUS_OK;
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_SERVICE_PRIVKEYS& get_service_privkeys, rpc_context context) {
+void core_rpc_server::invoke(
+        GET_SERVICE_PRIVKEYS& get_service_privkeys, [[maybe_unused]] rpc_context context) {
     const auto& keys = m_core.get_service_keys();
     if (keys.key)
-        get_service_privkeys.response["service_node_privkey"] = tools::type_to_hex(keys.key);
-    get_service_privkeys.response["service_node_ed25519_privkey"] =
-            tools::type_to_hex(keys.key_ed25519);
-    get_service_privkeys.response["service_node_x25519_privkey"] =
-            tools::type_to_hex(keys.key_x25519);
+        get_service_privkeys.response_hex["service_node_privkey"] =
+                tools::view_guts<std::byte>(keys.key);
+    get_service_privkeys.response_hex["service_node_ed25519_privkey"] =
+            tools::view_guts<std::byte>(keys.key_ed25519);
+    get_service_privkeys.response_hex["service_node_x25519_privkey"] =
+            tools::view_guts<std::byte>(keys.key_x25519);
     get_service_privkeys.response["status"] = STATUS_OK;
-    return;
 }
 
 static time_t reachable_to_time_t(
@@ -2674,8 +2643,17 @@ void core_rpc_server::fill_sn_response_entry(
     json_binary_proxy binary{entry, binary_format};
 
     const auto& info = *sn_info.info;
-    const std::string bls_pubkey = info.bls_public_key ? tools::type_to_hex(info.bls_public_key) : "";
     set_if_requested(reqed, binary, "service_node_pubkey", sn_info.pubkey);
+    if (info.bls_public_key) {
+        set_if_requested(reqed, binary, "pubkey_bls", info.bls_public_key);
+        set_if_requested(
+                reqed,
+                entry,
+                "is_removable",
+                m_core.is_node_removable(info.bls_public_key),
+                "is_liquidatable",
+                m_core.is_node_liquidatable(info.bls_public_key));
+    }
     set_if_requested(
             reqed,
             entry,
@@ -2707,23 +2685,20 @@ void core_rpc_server::fill_sn_response_entry(
             info.portions_for_operator,
             "operator_fee",
             microportion(info.portions_for_operator),
-            "operator_address",
-            info.operator_ethereum_address
-                    ? tools::type_to_hex(info.operator_ethereum_address)
-                    : cryptonote::get_account_address_as_str(
-                              m_core.get_nettype(), false /*subaddress*/, info.operator_address),
             "swarm_id",
             info.swarm_id,
             "swarm",
             "{:x}"_format(info.swarm_id),
-            "bls_key",
-            bls_pubkey,
-            "is_removable",
-            m_core.is_node_removable(bls_pubkey),
-            "is_liquidatable",
-            m_core.is_node_liquidatable(bls_pubkey),
             "registration_hf_version",
             info.registration_hf_version);
+
+    if (requested(reqed, "operator_address")) {
+        if (info.operator_ethereum_address)
+            binary["operator_address"] = info.operator_ethereum_address;
+        else
+            entry["operator_address"] = cryptonote::get_account_address_as_str(
+                    m_core.get_nettype(), false /*subaddress*/, info.operator_address);
+    }
 
     if (requested(reqed, "total_reserved") && info.total_reserved != info.total_contributed)
         entry["total_reserved"] = info.total_reserved;
@@ -2784,6 +2759,8 @@ void core_rpc_server::fill_sn_response_entry(
                     m_core.get_service_keys().pub_ed25519,
                     "pubkey_x25519",
                     m_core.get_service_keys().pub_x25519);
+            if (!info.bls_public_key)
+                set_if_requested(reqed, binary, "pubkey_bls", m_core.get_service_keys().pub_bls);
         } else {
             if (proof.proof->public_ip != 0)
                 set_if_requested(
@@ -2811,6 +2788,9 @@ void core_rpc_server::fill_sn_response_entry(
                         proof.proof->pubkey_ed25519,
                         "pubkey_x25519",
                         proof.pubkey_x25519);
+            // During HF20 the BLS pubkey isn't in info, but is in the proof:
+            if (!info.bls_public_key && proof.proof->pubkey_bls)
+                set_if_requested(reqed, binary, "pubkey_bls", proof.proof->pubkey_bls);
         }
 
         auto system_now = std::chrono::system_clock::now();
@@ -2886,14 +2866,12 @@ void core_rpc_server::fill_sn_response_entry(
         bool want_locked_c = requested(reqed, "locked_contributions");
         auto& contributors = (entry["contributors"] = json::array());
         for (const auto& contributor : info.contributors) {
-            auto& c = contributors.emplace_back(json{
-                    {"amount", contributor.amount},
-                    {"address",
-                     contributor.ethereum_address ? tools::type_to_hex(contributor.ethereum_address)
-                                                  : cryptonote::get_account_address_as_str(
-                                                            m_core.get_nettype(),
-                                                            false /*subaddress*/,
-                                                            contributor.address)}});
+            auto& c = contributors.emplace_back(json{{"amount", contributor.amount}});
+            if (contributor.ethereum_address)
+                json_binary_proxy{c["address"], binary_format} = contributor.ethereum_address;
+            else
+                c["address"] = cryptonote::get_account_address_as_str(
+                        m_core.get_nettype(), false /*subaddress*/, contributor.address);
             if (contributor.reserved != contributor.amount)
                 c["reserved"] = contributor.reserved;
             if (want_locked_c) {
@@ -2910,7 +2888,7 @@ void core_rpc_server::fill_sn_response_entry(
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context context) {
+void core_rpc_server::invoke(GET_SERVICE_NODES& sns, [[maybe_unused]] rpc_context context) {
     auto& req = sns.request;
     sns.response["status"] = STATUS_OK;
     auto [top_height, top_hash] = m_core.get_blockchain_top();
@@ -3002,7 +2980,7 @@ namespace {
             std::chrono::seconds lifetime,
             Success success) {
         std::string status{};
-        std::string our_ed25519_pubkey = tools::type_to_hex(core.get_service_keys().pub_ed25519);
+        std::string our_ed25519_pubkey = tools::hex_guts(core.get_service_keys().pub_ed25519);
         if (!error.empty()) {
             status = fmt::format("Error: {}", error);
             log::error(
@@ -3039,7 +3017,8 @@ namespace {
 }  // namespace
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(STORAGE_SERVER_PING& storage_server_ping, rpc_context context) {
+void core_rpc_server::invoke(
+        STORAGE_SERVER_PING& storage_server_ping, [[maybe_unused]] rpc_context context) {
     m_core.ss_version = storage_server_ping.request.version;
     storage_server_ping.response["status"] = handle_ping(
             m_core,
@@ -3058,7 +3037,7 @@ void core_rpc_server::invoke(STORAGE_SERVER_PING& storage_server_ping, rpc_conte
             });
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, rpc_context context) {
+void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, [[maybe_unused]] rpc_context context) {
     m_core.lokinet_version = lokinet_ping.request.version;
     lokinet_ping.response["status"] = handle_ping(
             m_core,
@@ -3076,7 +3055,7 @@ void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, rpc_context context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
-        GET_STAKING_REQUIREMENT& get_staking_requirement, rpc_context context) {
+        GET_STAKING_REQUIREMENT& get_staking_requirement, [[maybe_unused]] rpc_context context) {
     get_staking_requirement.response["height"] = get_staking_requirement.request.height > 0
                                                        ? get_staking_requirement.request.height
                                                        : m_core.get_current_blockchain_height();
@@ -3129,11 +3108,10 @@ void core_rpc_server::invoke(GET_CHECKPOINTS& get_checkpoints, rpc_context conte
                             : db.get_checkpoints_range(*start, *end, GET_CHECKPOINTS::MAX_COUNT);
 
     get_checkpoints.response["checkpoints"] = std::move(checkpoints);
-
-    return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_context context) {
+void core_rpc_server::invoke(
+        GET_SN_STATE_CHANGES& get_sn_state_changes, [[maybe_unused]] rpc_context context) {
     using blob_t = std::string;
     using block_pair_t = std::pair<blob_t, block>;
     std::vector<block_pair_t> blocks;
@@ -3219,9 +3197,10 @@ void core_rpc_server::invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_con
     get_sn_state_changes.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(REPORT_PEER_STATUS& report_peer_status, rpc_context context) {
+void core_rpc_server::invoke(
+        REPORT_PEER_STATUS& report_peer_status, [[maybe_unused]] rpc_context context) {
     crypto::public_key pubkey;
-    if (!tools::hex_to_type(report_peer_status.request.pubkey, pubkey)) {
+    if (!tools::try_load_from_hex_guts(report_peer_status.request.pubkey, pubkey)) {
         log::error(logcat, "Could not parse public key: {}", report_peer_status.request.pubkey);
         throw rpc_error{ERROR_WRONG_PARAM, "Could not parse public key"};
     }
@@ -3245,13 +3224,14 @@ void core_rpc_server::invoke(REPORT_PEER_STATUS& report_peer_status, rpc_context
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
-        TEST_TRIGGER_P2P_RESYNC& test_trigger_p2p_resync, rpc_context context) {
+        TEST_TRIGGER_P2P_RESYNC& test_trigger_p2p_resync, [[maybe_unused]] rpc_context context) {
     m_p2p.reset_peer_handshake_timer();
     test_trigger_p2p_resync.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
-        TEST_TRIGGER_UPTIME_PROOF& test_trigger_uptime_proof, rpc_context context) {
+        TEST_TRIGGER_UPTIME_PROOF& test_trigger_uptime_proof,
+        [[maybe_unused]] rpc_context context) {
     if (m_core.get_nettype() != cryptonote::network_type::MAINNET)
         m_core.submit_uptime_proof();
 
@@ -3271,8 +3251,6 @@ void core_rpc_server::invoke(ONS_NAMES_TO_OWNERS& ons_names_to_owners, rpc_conte
     }
 
     std::optional<uint64_t> height = m_core.get_current_blockchain_height();
-    auto hf_version = get_network_version(nettype(), *height);
-
     std::vector<ons::mapping_type> types;
     types.clear();
     if (types.capacity() < ons_names_to_owners.request.type.size())
@@ -3287,14 +3265,16 @@ void core_rpc_server::invoke(ONS_NAMES_TO_OWNERS& ons_names_to_owners, rpc_conte
     }
     ons_names_to_owners.response["type"] = ons_names_to_owners.request.type;
 
+    auto binary_format =
+            ons_names_to_owners.is_bt() ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex;
+
     ons::name_system_db& db = m_core.get_blockchain_storage().name_system_db();
     for (size_t request_index = 0; request_index < ons_names_to_owners.request.name_hash.size();
          request_index++) {
         const auto& request = ons_names_to_owners.request.name_hash[request_index];
         // This also takes 32 raw bytes, but that is undocumented (because it is painful to pass
         // through json).
-        auto name_hash = ons::name_hash_input_to_base64(
-                ons_names_to_owners.request.name_hash[request_index]);
+        auto name_hash = ons::name_hash_input_to_base64(request);
         if (!name_hash)
             throw rpc_error{
                     ERROR_WRONG_PARAM,
@@ -3309,11 +3289,13 @@ void core_rpc_server::invoke(ONS_NAMES_TO_OWNERS& ons_names_to_owners, rpc_conte
             elem["owner"] = record[type_index].owner.to_string(nettype());
             if (record[type_index].backup_owner)
                 elem["backup_owner"] = record[type_index].backup_owner.to_string(nettype());
-            elem["encrypted_value"] = oxenc::to_hex(record[type_index].encrypted_value.to_view());
+
+            json_binary_proxy elem_hex{elem, binary_format};
+            elem_hex["encrypted_value"] = record[type_index].encrypted_value.to_view();
             if (record[0].expiration_height)
                 elem["expiration_height"] = *(record[type_index].expiration_height);
             elem["update_height"] = record[type_index].update_height;
-            elem["txid"] = tools::type_to_hex(record[type_index].txid);
+            elem_hex["txid"] = record[type_index].txid;
         }
     }
 
@@ -3376,19 +3358,21 @@ void core_rpc_server::invoke(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_conte
             entry.owner = record.owner.to_string(nettype());
         if (record.backup_owner)
             entry.backup_owner = record.backup_owner.to_string(nettype());
+        // FIXME: binary proxy
         entry.encrypted_value = oxenc::to_hex(record.encrypted_value.to_view());
         entry.update_height = record.update_height;
         entry.expiration_height = record.expiration_height;
-        entry.txid = tools::type_to_hex(record.txid);
+        // FIXME: binary proxy
+        entry.txid = tools::hex_guts(record.txid);
     }
 
+    // FIXME: this seems broken; how can this vector of some random struct magically become json?
     ons_owners_to_names.response["entries"] = entries;
     ons_owners_to_names.response["status"] = STATUS_OK;
-    return;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(ONS_RESOLVE& resolve, rpc_context context) {
+void core_rpc_server::invoke(ONS_RESOLVE& resolve, [[maybe_unused]] rpc_context context) {
     auto& req = resolve.request;
     if (req.type < 0 || req.type >= tools::enum_count<ons::mapping_type>)
         throw rpc_error{
@@ -3416,19 +3400,25 @@ void core_rpc_server::invoke(ONS_RESOLVE& resolve, rpc_context context) {
 }
 
 void core_rpc_server::invoke(
-        GET_ACCRUED_BATCHED_EARNINGS& get_accrued_batched_earnings, rpc_context context) {
+        GET_ACCRUED_BATCHED_EARNINGS& get_accrued_batched_earnings,
+        [[maybe_unused]] rpc_context context) {
     auto& blockchain = m_core.get_blockchain_storage();
     bool at_least_one_succeeded = false;
 
     auto& balances = get_accrued_batched_earnings.response["balances"];
     balances = json::object();
     auto& req = get_accrued_batched_earnings.request;
+    auto net = nettype();
     if (req.addresses.size() > 0) {
         for (const auto& address : req.addresses) {
             uint64_t amount = 0;
-            if (cryptonote::is_valid_address(address, nettype())) {
-                const auto [batch_db_height, amount] = blockchain.sqlite_db()->get_accrued_earnings(address);
-                (void)batch_db_height;
+
+            // FIXME: eth address!
+
+            if (address_parse_info parse_info{};
+                get_account_address_from_str(parse_info, net, address)) {
+                std::tie(std::ignore, amount) =
+                        blockchain.sqlite_db()->get_accrued_earnings(parse_info.address);
                 at_least_one_succeeded = true;
             }
             balances[address] = amount;

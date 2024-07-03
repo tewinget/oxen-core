@@ -43,7 +43,7 @@
 
 #include "blockchain_db/blockchain_db.h"
 #include "common/boost_serialization_helper.h"
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/lock.h"
 #include "common/median.h"
 #include "common/meta.h"
@@ -1588,7 +1588,7 @@ bool Blockchain::validate_miner_transaction(
         return false;
     }
 
-    if (version <= hf::hf19_reward_batching) {
+    if (version < feature::ETH_BLS) {
         if (b.reward >
             reward_parts.base_miner + reward_parts.miner_fee + reward_parts.service_node_total) {
             log::error(
@@ -2026,20 +2026,16 @@ void Blockchain::add_ethereum_transactions_to_tx_pool() {
                     using T = std::decay_t<decltype(arg)>;
                     if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
                         tx.type = txtype::ethereum_new_service_node;
-                        crypto::public_key service_node_pubkey = {};
-                        tools::hex_to_type(arg.service_node_pubkey, service_node_pubkey);
-                        crypto::signature signature = {};
-                        tools::hex_to_type(arg.signature, signature);
                         std::vector<tx_extra_ethereum_contributor> contributors;
                         for (const auto& contributor : arg.contributors)
                             contributors.emplace_back(contributor.addr, contributor.amount);
 
                         tx_extra_ethereum_new_service_node new_service_node = {
                                 0,
-                                arg.bls_key,
+                                arg.bls_pubkey,
                                 arg.eth_address,
-                                service_node_pubkey,
-                                signature,
+                                arg.sn_pubkey,
+                                arg.sn_signature,
                                 arg.fee,
                                 contributors};
                         cryptonote::add_new_service_node_to_tx_extra(tx.extra, new_service_node);
@@ -2047,17 +2043,17 @@ void Blockchain::add_ethereum_transactions_to_tx_pool() {
                     } else if constexpr (std::is_same_v<T, ServiceNodeLeaveRequestTx>) {
                         tx.type = txtype::ethereum_service_node_leave_request;
                         tx_extra_ethereum_service_node_leave_request leave_request = {
-                                0, arg.bls_key};
+                                0, arg.bls_pubkey};
                         cryptonote::add_service_node_leave_request_to_tx_extra(
                                 tx.extra, leave_request);
                     } else if constexpr (std::is_same_v<T, ServiceNodeExitTx>) {
                         tx.type = txtype::ethereum_service_node_exit;
                         tx_extra_ethereum_service_node_exit exit_data = {
-                                0, arg.eth_address, arg.amount, arg.bls_key};
+                                0, arg.eth_address, arg.amount, arg.bls_pubkey};
                         cryptonote::add_service_node_exit_to_tx_extra(tx.extra, exit_data);
                     } else if constexpr (std::is_same_v<T, ServiceNodeDeregisterTx>) {
                         tx.type = txtype::ethereum_service_node_deregister;
-                        tx_extra_ethereum_service_node_deregister deregister = {0, arg.bls_key};
+                        tx_extra_ethereum_service_node_deregister deregister = {0, arg.bls_pubkey};
                         cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
                     }
                 },
@@ -2393,7 +2389,7 @@ bool Blockchain::handle_alternative_block(
                             log::Cat("verify"),
                             "Block with id: {} (as alternative) refers to unparsable transaction "
                             "hash {}.",
-                            tools::type_to_hex(id),
+                            id,
                             txid);
                     bvc.m_verifivation_failed = true;
                     return false;
@@ -3894,7 +3890,7 @@ bool Blockchain::check_tx_inputs(
                     log::error(
                             log::Cat("verify"),
                             "Key image already spent in blockchain: {}",
-                            tools::type_to_hex(in_to_key.k_image));
+                            in_to_key.k_image);
                     if (key_image_conflicts)
                         key_image_conflicts->insert(in_to_key.k_image);
                     else {
@@ -3942,7 +3938,7 @@ bool Blockchain::check_tx_inputs(
                         log::error(
                                 log::Cat("verify"),
                                 "Key image: {} is blacklisted by the service node network",
-                                tools::type_to_hex(entry.key_image));
+                                entry.key_image);
                         tvc.m_key_image_blacklisted = true;
                         return false;
                     }
@@ -3953,7 +3949,7 @@ bool Blockchain::check_tx_inputs(
                     log::error(
                             log::Cat("verify"),
                             "Key image: {} is locked in a stake until height: {}",
-                            tools::type_to_hex(in_to_key.k_image),
+                            in_to_key.k_image,
                             unlock_height);
                     tvc.m_key_image_locked_by_snode = true;
                     return false;
@@ -4159,19 +4155,6 @@ bool Blockchain::check_tx_inputs(
             }
         }
 
-        if (tx.type == txtype::ethereum_address_notification) {
-            cryptonote::tx_extra_ethereum_address_notification entry = {};
-            std::string fail_reason;
-            if (!ethereum::validate_ethereum_address_notification_tx(
-                        hf_version, get_current_blockchain_height(), tx, entry, &fail_reason)) {
-                log::error(
-                        log::Cat("verify"),
-                        "Failed to validate Ethereum Address Notification TX reason: {}",
-                        fail_reason);
-                tvc.m_verbose_error = std::move(fail_reason);
-                return false;
-            }
-        }
     } else {
         CHECK_AND_ASSERT_MES(
                 tx.vin.size() == 0,
@@ -4193,9 +4176,9 @@ bool Blockchain::check_tx_inputs(
             if (!ethereum::validate_ethereum_new_service_node_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processNewServiceNodeTx(
-                        entry.bls_key,
+                        entry.bls_pubkey,
                         entry.eth_address,
-                        tools::type_to_hex(entry.service_node_pubkey),
+                        entry.service_node_pubkey,
                         fail_reason)) {
                 log::error(
                         log::Cat("verify"),
@@ -4210,7 +4193,7 @@ bool Blockchain::check_tx_inputs(
             if (!ethereum::validate_ethereum_service_node_leave_request_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processServiceNodeLeaveRequestTx(
-                        entry.bls_key, fail_reason)) {
+                        entry.bls_pubkey, fail_reason)) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum Service Node Leave Request TX reason: {}",
@@ -4224,7 +4207,7 @@ bool Blockchain::check_tx_inputs(
             if (!ethereum::validate_ethereum_service_node_exit_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processServiceNodeExitTx(
-                        entry.eth_address, entry.amount, entry.bls_key, fail_reason)) {
+                        entry.eth_address, entry.amount, entry.bls_pubkey, fail_reason)) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum Service Node Exit TX reason: {}",
@@ -4238,7 +4221,7 @@ bool Blockchain::check_tx_inputs(
             if (!ethereum::validate_ethereum_service_node_deregister_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 !ethereum_transaction_review_session->processServiceNodeDeregisterTx(
-                        entry.bls_key, fail_reason)) {
+                        entry.bls_pubkey, fail_reason)) {
                 log::error(
                         log::Cat("verify"),
                         "Failed to validate Ethereum Service Node Deregister TX reason: {}",
@@ -4318,7 +4301,7 @@ bool Blockchain::check_tx_inputs(
                 log::error(
                         log::Cat("verify"),
                         "Requested key image: {} to unlock is not locked",
-                        tools::type_to_hex(unlock.key_image));
+                        unlock.key_image);
                 tvc.m_invalid_input = true;
                 return false;
             }
@@ -5250,7 +5233,7 @@ bool Blockchain::handle_block_to_main_chain(
                 logcat,
                 fg(fmt::terminal_color::red),
                 "Block {} with id: {} has incorrect miner transaction",
-                (chain_height - 1),
+                chain_height,
                 id);
         bvc.m_verifivation_failed = true;
         return_tx_to_pool(txs);
@@ -5368,11 +5351,6 @@ bool Blockchain::handle_block_to_main_chain(
         // paid to the service nodes into the batching database
         if (!m_service_node_list.process_batching_rewards(bl)) {
             log::error(logcat, "Failed to add block to batch rewards DB.");
-            bvc.m_verifivation_failed = true;
-            return false;
-        }
-        if (!m_service_node_list.process_ethereum_address_notification_transactions(m_nettype, bl, only_txs)) {
-            log::info(logcat, fg(fmt::terminal_color::red), "Failed to add ethereum transactions");
             bvc.m_verifivation_failed = true;
             return false;
         }
@@ -6482,11 +6460,9 @@ void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get
             log::info(
                     logcat, "Precomputed blocks hash: {}, expected {}", hash, EXPECTED_SHA256_HASH);
 
-            crypto::hash expected_hash;
-            if (!tools::hex_to_type(EXPECTED_SHA256_HASH, expected_hash)) {
-                log::error(logcat, "Failed to parse expected block hashes hash");
-                return;
-            }
+            assert(EXPECTED_SHA256_HASH.size() == 2 * sizeof(crypto::hash) &&
+                   oxenc::is_hex(EXPECTED_SHA256_HASH));
+            auto expected_hash = tools::make_from_hex_guts<crypto::hash>(EXPECTED_SHA256_HASH);
 
             if (hash != expected_hash) {
                 log::error(logcat, "Block hash data does not match expected hash");

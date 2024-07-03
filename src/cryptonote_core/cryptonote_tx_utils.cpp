@@ -35,7 +35,6 @@
 
 #include "blockchain.h"
 #include "common/apply_permutation.h"
-#include "common/hex.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -116,7 +115,7 @@ bool get_deterministic_output_key(
             false,
             "failed to generate_key_derivation({}, {})",
             address.m_view_public_key,
-            type_to_hex(tx_key.sec));
+            tools::hex_guts(tx_key.sec));
 
     r = crypto::derive_public_key(derivation, output_index, address.m_spend_public_key, output_key);
     CHECK_AND_ASSERT_MES(
@@ -173,7 +172,7 @@ bool height_has_governance_output(network_type nettype, hf hard_fork_version, ui
     if (height == 0)
         return false;
 
-    if (hard_fork_version >= hf::hf20)
+    if (hard_fork_version >= feature::ETH_BLS)
         return false;
 
     if (hard_fork_version <= hf::hf9_service_nodes || hard_fork_version >= hf::hf19_reward_batching)
@@ -865,8 +864,8 @@ bool construct_tx_with_tx_key(
                     "{}!\nderived_key: {}\nreal output_public_key: {}",
                     idx,
                     src_entr.real_output,
-                    tools::type_to_hex(in_ephemeral.pub),
-                    tools::type_to_hex(src_entr.outputs[src_entr.real_output].second.dest));
+                    in_ephemeral.pub,
+                    tools::hex_guts(src_entr.outputs[src_entr.real_output].second.dest));
             log::error(globallogcat, "amount {}, rct {}", src_entr.amount, src_entr.rct);
             log::error(
                     globallogcat,

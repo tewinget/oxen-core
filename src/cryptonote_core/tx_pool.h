@@ -790,7 +790,7 @@ class tx_memory_pool {
 
     // TODO: this time should be a named constant somewhere, not hard-coded
     //! interval on which to check for stale/"stuck" transactions
-    tools::periodic_task m_remove_stuck_tx_interval{30s};
+    tools::periodic_task m_remove_stuck_tx_interval{"stale tx cleanup", 30s};
 
     // TODO: look into doing this better
     //!< container for transactions organized by fee per size and receive time

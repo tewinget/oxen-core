@@ -180,7 +180,7 @@ inline const std::filesystem::path DATA_DIRNAME{
 #ifdef _WIN32
         u8"oxen"  // Buried in some windows filesystem maze location
 #else
-        u8".oxen"      // ~/.oxen
+        u8".oxen"  // ~/.oxen
 #endif
 };
 inline const std::filesystem::path CONF_FILENAME{u8"oxen.conf"};
@@ -212,7 +212,8 @@ enum class hf : uint8_t {
     hf17,
     hf18,
     hf19_reward_batching,
-    hf20,
+    hf20_eth_transition,  // Temp period: registrations disabled, BLS pubkeys in proofs
+    hf21_eth,             // Full transition: registrations from ETH
 
     _next,
     none = 0
@@ -227,8 +228,8 @@ constexpr auto hf_prev(hf x) {
 }
 
 // This is here to make sure the numeric value of the top hf enum value is correct (i.e.
-// hf20 == 20 numerically); bump this when adding a new hf.
-static_assert(static_cast<uint8_t>(hf_max) == 20);
+// hf21_sent == 21 numerically); bump this when adding a new hf.
+static_assert(static_cast<uint8_t>(hf_max) == 21);
 
 // Constants for which hardfork activates various features:
 namespace feature {
@@ -247,7 +248,8 @@ namespace feature {
     constexpr auto PULSE = hf::hf16_pulse;
     constexpr auto CLSAG = hf::hf16_pulse;
     constexpr auto PROOF_BTENC = hf::hf18;
-    constexpr auto ETH_BLS = hf::hf20;
+    constexpr auto ETH_TRANSITION = hf::hf20_eth_transition;
+    constexpr auto ETH_BLS = hf::hf21_eth;
 }  // namespace feature
 
 enum class network_type : uint8_t { MAINNET = 0, TESTNET, DEVNET, FAKECHAIN, UNDEFINED = 255 };
@@ -414,11 +416,19 @@ namespace config {
     // batching and SNL will save the state every STORE_LONG_TERM_STATE_INTERVAL blocks
     inline constexpr uint64_t STORE_LONG_TERM_STATE_INTERVAL = 10000;
 
-    // Details of the ethereum smart contract managing rewards and chain its kept on
-    inline constexpr uint32_t ETHEREUM_CHAIN_ID = 421614;
-    inline constexpr std::string_view ETHEREUM_REWARDS_CONTRACT = "0xC75A34c31C2b8780a20AfCD75473Ac0Ad82352B6";
-    inline constexpr std::string_view ETHEREUM_POOL_CONTRACT = "0x821340A591C10492d7F494285BABFcc2645396a3";
+    /// (HF21+) Number of blocks after a registration expires (i.e. regular unlocks, *not* deregs)
+    /// during which the node is protected from liquidation-with-penalty.  Regular exits can still
+    /// be submitted to remove it from the ETH pubkey list, but *not* penalizing liquidation (which
+    /// also remove it but award a penalty reward to the liquidator).
+    inline constexpr uint64_t ETH_EXIT_BUFFER = 7 * cryptonote::BLOCKS_PER_DAY;
 
+    // Details of the ethereum smart contract managing rewards and chain its kept on
+    // TODO: To be set for mainnet during TGE
+    inline constexpr uint32_t ETHEREUM_CHAIN_ID = -1;
+    inline constexpr std::string_view ETHEREUM_REWARDS_CONTRACT =
+            "0x0000000000000000000000000000000000000000";
+    inline constexpr std::string_view ETHEREUM_POOL_CONTRACT =
+            "0x0000000000000000000000000000000000000000";
 
     namespace testnet {
         inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 339767;
@@ -467,6 +477,15 @@ namespace config {
         inline constexpr auto UPTIME_PROOF_VALIDITY = 21min;
         inline constexpr uint64_t BATCHING_INTERVAL = 20;
         inline constexpr uint64_t SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 4;
+        // Much shorter than mainnet so that you can test this more easily.
+        inline constexpr uint64_t ETH_EXIT_BUFFER = 1 * cryptonote::BLOCKS_PER_HOUR;
+
+        // FIXME!
+        inline constexpr uint32_t ETHEREUM_CHAIN_ID = -1;
+        inline constexpr auto ETHEREUM_REWARDS_CONTRACT =
+                "0x0000000000000000000000000000000000000000"sv;
+        inline constexpr auto ETHEREUM_POOL_CONTRACT =
+                "0x0000000000000000000000000000000000000000"sv;
     }  // namespace testnet
 
     namespace devnet {
@@ -512,6 +531,9 @@ namespace config {
 
         inline constexpr auto UPTIME_PROOF_STARTUP_DELAY = 5s;
 
+        // Much shorter than mainnet so that you can test this more easily.
+        inline constexpr uint64_t ETH_EXIT_BUFFER = 1 * cryptonote::BLOCKS_PER_HOUR;
+
 #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
         // NOTE: A local-devnet involves launching typically a local Ethereum
         // blockchain via Hardhat, Ganache or Foundry's Anvil for example.
@@ -531,15 +553,16 @@ namespace config {
         // configuration type.
 
         inline constexpr uint32_t ETHEREUM_CHAIN_ID = 31337;
-        inline constexpr std::string_view ETHEREUM_REWARDS_CONTRACT =
-                "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707";
-        inline constexpr std::string_view ETHEREUM_POOL_CONTRACT =
-                "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
+        inline constexpr auto ETHEREUM_REWARDS_CONTRACT =
+                "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv;
+        inline constexpr auto ETHEREUM_POOL_CONTRACT =
+                "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv;
 #else
-        inline constexpr uint32_t ETHEREUM_CHAIN_ID = config::ETHEREUM_CHAIN_ID;
-        inline constexpr std::string_view ETHEREUM_REWARDS_CONTRACT =
-                config::ETHEREUM_REWARDS_CONTRACT;
-        inline constexpr std::string_view ETHEREUM_POOL_CONTRACT = config::ETHEREUM_POOL_CONTRACT;
+        inline constexpr uint32_t ETHEREUM_CHAIN_ID = 421614;
+        inline constexpr auto ETHEREUM_REWARDS_CONTRACT =
+                "0xC75A34c31C2b8780a20AfCD75473Ac0Ad82352B6"sv;
+        inline constexpr auto ETHEREUM_POOL_CONTRACT =
+                "0x821340A591C10492d7F494285BABFcc2645396a3"sv;
 #endif
     }  // namespace devnet
 
@@ -585,6 +608,8 @@ struct network_config {
 
     uint64_t STORE_LONG_TERM_STATE_INTERVAL;
 
+    uint64_t ETH_EXIT_BUFFER;
+
     uint32_t ETHEREUM_CHAIN_ID;
     std::string_view ETHEREUM_REWARDS_CONTRACT;
     std::string_view ETHEREUM_POOL_CONTRACT;
@@ -624,6 +649,7 @@ inline constexpr network_config mainnet_config{
         config::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
         config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         config::STORE_LONG_TERM_STATE_INTERVAL,
+        config::ETH_EXIT_BUFFER,
         config::ETHEREUM_CHAIN_ID,
         config::ETHEREUM_REWARDS_CONTRACT,
         config::ETHEREUM_POOL_CONTRACT,
@@ -655,9 +681,10 @@ inline constexpr network_config testnet_config{
         config::testnet::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
         config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         config::STORE_LONG_TERM_STATE_INTERVAL,
-        config::ETHEREUM_CHAIN_ID,
-        config::ETHEREUM_REWARDS_CONTRACT,
-        config::ETHEREUM_POOL_CONTRACT,
+        config::testnet::ETH_EXIT_BUFFER,
+        config::testnet::ETHEREUM_CHAIN_ID,
+        config::testnet::ETHEREUM_REWARDS_CONTRACT,
+        config::testnet::ETHEREUM_POOL_CONTRACT,
 };
 inline constexpr network_config devnet_config{
         network_type::DEVNET,
@@ -686,6 +713,7 @@ inline constexpr network_config devnet_config{
         config::testnet::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
         config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         config::STORE_LONG_TERM_STATE_INTERVAL,
+        config::devnet::ETH_EXIT_BUFFER,
         config::devnet::ETHEREUM_CHAIN_ID,
         config::devnet::ETHEREUM_REWARDS_CONTRACT,
         config::devnet::ETHEREUM_POOL_CONTRACT,
@@ -717,6 +745,7 @@ inline constexpr network_config fakenet_config{
         config::testnet::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
         config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         config::STORE_LONG_TERM_STATE_INTERVAL,
+        config::testnet::ETH_EXIT_BUFFER,
         config::ETHEREUM_CHAIN_ID,
         config::ETHEREUM_REWARDS_CONTRACT,
         config::ETHEREUM_POOL_CONTRACT,

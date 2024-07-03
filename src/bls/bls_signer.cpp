@@ -4,128 +4,84 @@
 #include <fmt/core.h>
 #include <oxenc/hex.h>
 
+#include <bls/bls.hpp>
 #include <ethyl/utils.hpp>
+#include <mcl/op.hpp>
 
 #include "bls_utils.h"
-#include "common/file.h"
-#include "common/string_util.h"
+#include "common/bigint.h"
+#include "common/guts.h"
+#include "common/oxen.h"
+#include "crypto/crypto.h"
+#include "crypto/hash.h"
+#include "cryptonote_config.h"
 #include "logging/oxen_logger.h"
 
 static auto logcat = oxen::log::Cat("bls_signer");
 
-BLSSigner::BLSSigner(const cryptonote::network_type nettype, const fs::path& key_filepath) {
-    initCurve();
-    const auto config = get_config(nettype);
-    chainID = config.ETHEREUM_CHAIN_ID;
-    contractAddress = config.ETHEREUM_REWARDS_CONTRACT;
+BLSSigner::BLSSigner(const cryptonote::network_type nettype, const crypto::bls_secret_key* key) :
+        nettype{nettype} {
+    bls_utils::init();
 
-    // NOTE: ioMode is taken from bls::SecretKey operator<< implementation
-    int blsIoMode = 16 | bls::IoPrefix;
-    if (fs::exists(key_filepath)) {
-        oxen::log::info(logcat, "Loading bls key from: {}", key_filepath.string());
-
+    if (key) {
+        // This interface to load a key from an existing chunk of memory by having to first copy it
+        // into a std::string is just terrible.
         std::string key_bytes;
-        bool r = tools::slurp_file(key_filepath, key_bytes);
-        secretKey.setStr(key_bytes, blsIoMode);
-        memwipe(key_bytes.data(), key_bytes.size());
-        if (!r)
-            throw std::runtime_error(
-                    fmt::format("Failed to read BLS key at: {}", key_filepath.string()));
+        OXEN_DEFER {
+            memwipe(key_bytes.data(), key_bytes.size());
+        };
+        key_bytes.reserve(sizeof(crypto::bls_secret_key));
+        key_bytes.append(reinterpret_cast<const char*>(key->data()), key->size());
+        secretKey.setStr(key_bytes, mcl::IoSerialize | mcl::IoBigEndian);
     } else {
         // This init function generates a secret key calling blsSecretKeySetByCSPRNG
         secretKey.init();
-        oxen::log::info(logcat, "No bls key found, saving new key to: {}", key_filepath.string());
-
-        bool r = tools::dump_file(key_filepath, secretKey.getStr(blsIoMode));
-        if (!r)
-            throw std::runtime_error(
-                    fmt::format("Failed to write BLS key to: {}", key_filepath.string()));
     }
 }
 
-void BLSSigner::initCurve() {
-    // Initialize parameters for BN256 curve, this has a different name in our library
-    bls::init(mclBn_CurveSNARK1);
-    // Try and Inc method for hashing to the curve
-    mclBn_setMapToMode(MCL_MAP_TO_MODE_TRY_AND_INC);
-    // Our generator point was created using the old hash to curve method, redo it again using Try
-    // and Inc method
-    mcl::bn::G1 gen;
-    bool b;
-    mcl::bn::mapToG1(&b, gen, 1);
-
-    blsPublicKey publicKey;
-    static_assert(
-            sizeof(publicKey.v) == sizeof(gen),
-            "We memcpy into a C structure hence sizes must be the same");
-    std::memcpy(&publicKey.v, &gen, sizeof(gen));
-
-    blsSetGeneratorOfPublicKey(&publicKey);
+crypto::hash BLSSigner::buildTagHash(std::string_view baseTag, cryptonote::network_type nettype) {
+    const auto config = get_config(nettype);
+    return crypto::keccak(
+            baseTag,
+            tools::encode_integer_be<32>(config.ETHEREUM_CHAIN_ID),
+            ethyl::utils::fromHexString(config.ETHEREUM_REWARDS_CONTRACT));
 }
 
-std::string BLSSigner::buildTag(
-        std::string_view baseTag, uint32_t chainID, std::string_view contractAddress) {
-    std::string_view hexPrefix = "0x";
-    std::string_view contractAddressOutput = ethyl::utils::trimPrefix(contractAddress, hexPrefix);
-    std::string baseTagHex = oxenc::to_hex(baseTag);
-    std::string chainIDHex =
-            ethyl::utils::padTo32Bytes(ethyl::utils::decimalToHex(chainID), ethyl::utils::PaddingDirection::LEFT);
-
-    std::string concatenatedTag;
-    concatenatedTag.reserve(
-            hexPrefix.size() + baseTagHex.size() + chainIDHex.size() +
-            contractAddressOutput.size());
-    concatenatedTag.append(hexPrefix);
-    concatenatedTag.append(baseTagHex);
-    concatenatedTag.append(chainIDHex);
-    concatenatedTag.append(contractAddressOutput);
-
-    std::array<unsigned char, 32> hash = ethyl::utils::hashHex(concatenatedTag);
-    std::string result = oxenc::to_hex(hash.begin(), hash.end());
-    return result;
+crypto::hash BLSSigner::buildTagHash(std::string_view baseTag) {
+    return buildTagHash(baseTag, nettype);
 }
 
-std::string BLSSigner::buildTag(std::string_view baseTag) {
-    return buildTag(baseTag, chainID, contractAddress);
+std::string BLSSigner::buildTagHex(std::string_view baseTag, cryptonote::network_type nettype) {
+    return tools::hex_guts(buildTagHash(baseTag, nettype));
 }
 
-bls::Signature BLSSigner::signHash(const crypto::bytes<32>& hash) {
+std::string BLSSigner::buildTagHex(std::string_view baseTag) {
+    return buildTagHex(baseTag, nettype);
+}
+
+bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) {
     bls::Signature sig;
     secretKey.signHash(sig, hash.data(), hash.size());
     return sig;
 }
 
-std::string BLSSigner::proofOfPossession(
-        std::string_view senderEthAddress, std::string_view serviceNodePubkey) {
-    std::string fullTag = buildTag(proofOfPossessionTag, chainID, contractAddress);
-    std::string_view hexPrefix = "0x";
-    std::string_view senderAddressOutput = ethyl::utils::trimPrefix(senderEthAddress, hexPrefix);
+crypto::bls_signature BLSSigner::signHash(const crypto::hash& hash) {
+    return bls_utils::to_crypto_signature(signHashSig(hash));
+}
 
-    // TODO(doyle): padTo32Bytes should take a string_view
-    std::string publicKeyHex = getPublicKeyHex();
-    std::string serviceNodePubkeyHex =
-            ethyl::utils::padTo32Bytes(std::string(serviceNodePubkey), ethyl::utils::PaddingDirection::LEFT);
+crypto::bls_signature BLSSigner::proofOfPossession(
+        crypto::eth_address sender, const crypto::public_key& serviceNodePubkey) {
+    auto tag = buildTagHash(proofOfPossessionTag);
+    auto hash = crypto::keccak(tag, getCryptoPubkey(), sender, serviceNodePubkey);
 
-    std::string message;
-    message.reserve(
-            hexPrefix.size() + fullTag.size() + publicKeyHex.size() + senderAddressOutput.size() +
-            serviceNodePubkeyHex.size());
-    message.append(hexPrefix);
-    message.append(fullTag);
-    message.append(publicKeyHex);
-    message.append(senderAddressOutput);
-    message.append(serviceNodePubkeyHex);
-
-    const crypto::bytes<32> hash = BLSSigner::hashHex(message);  // Get the hash of the publickey
     bls::Signature sig;
     secretKey.signHash(sig, hash.data(), hash.size());
-    return bls_utils::SignatureToHex(sig);
+    return bls_utils::to_crypto_signature(sig);
 }
 
 std::string BLSSigner::getPublicKeyHex() {
-    bls::PublicKey publicKey;
-    secretKey.getPublicKey(publicKey);
-    return bls_utils::PublicKeyToHex(publicKey);
+    auto pk = getCryptoPubkey();
+    return oxenc::to_hex(pk.begin(), pk.end());
 }
 
 bls::PublicKey BLSSigner::getPublicKey() {
@@ -134,14 +90,16 @@ bls::PublicKey BLSSigner::getPublicKey() {
     return publicKey;
 }
 
-crypto::bytes<32> BLSSigner::hashHex(std::string_view hex) {
-    crypto::bytes<32> result = {};
-    result.data_ = ethyl::utils::hashHex(hex);
-    return result;
+crypto::bls_public_key BLSSigner::getCryptoPubkey() {
+    return bls_utils::to_crypto_pubkey(getPublicKey());
 }
 
-crypto::bytes<32> BLSSigner::hashBytes(std::span<const unsigned char> bytes) {
-    crypto::bytes<32> result = {};
-    result.data_ = ethyl::utils::hashBytes(bytes);
-    return result;
+crypto::bls_secret_key BLSSigner::getCryptoSeckey() {
+    std::string sec_key = secretKey.getStr(mcl::IoSerialize | mcl::IoBigEndian);
+    assert(sec_key.size() == sizeof(crypto::bls_secret_key));
+
+    crypto::bls_secret_key csk;
+    std::memcpy(csk.data(), sec_key.data(), sizeof(csk));
+    memwipe(sec_key.data(), sec_key.size());
+    return csk;
 }

@@ -33,6 +33,7 @@ add_executable(unit_tests
   blockchain_db.cpp
   block_queue.cpp
   block_reward.cpp
+  bls.cpp
   bulletproofs.cpp
   chacha.cpp
   checkpoints.cpp

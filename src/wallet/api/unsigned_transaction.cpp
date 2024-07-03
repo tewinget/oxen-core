@@ -101,14 +101,14 @@ bool UnsignedTransactionImpl::checkLoadedTx(
                     if (!payment_id_string.empty())
                         payment_id_string += ", ";
                     payment_id_string =
-                            std::string("encrypted payment ID ") + tools::type_to_hex(payment_id8);
+                            std::string("encrypted payment ID ") + tools::hex_guts(payment_id8);
                     has_encrypted_payment_id = true;
                 } else if (cryptonote::get_payment_id_from_tx_extra_nonce(
                                    extra_nonce.nonce, payment_id)) {
                     if (!payment_id_string.empty())
                         payment_id_string += ", ";
                     payment_id_string =
-                            std::string("unencrypted payment ID ") + tools::type_to_hex(payment_id);
+                            std::string("unencrypted payment ID ") + tools::hex_guts(payment_id);
                 }
             }
         }
@@ -127,7 +127,7 @@ bool UnsignedTransactionImpl::checkLoadedTx(
                 address = get_account_integrated_address_as_str(nettype, entry.addr, payment_id8);
                 address += std::string(
                         " (" + standard_address + " with encrypted payment id " +
-                        tools::type_to_hex(payment_id8) + ")");
+                        tools::hex_guts(payment_id8) + ")");
             } else
                 address = standard_address;
             auto i = dests.find(entry.addr);
@@ -268,7 +268,7 @@ std::vector<std::string> UnsignedTransactionImpl::paymentId() const {
             }
         }
         if (payment_id)
-            result.push_back(tools::type_to_hex(payment_id));
+            result.push_back(tools::hex_guts(payment_id));
         else
             result.push_back("");
     }

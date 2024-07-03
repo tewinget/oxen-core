@@ -1,5 +1,6 @@
 #pragma once
 #include <fmt/format.h>
+#include <oxenc/common.h>
 
 #include <charconv>
 #include <chrono>
@@ -8,8 +9,6 @@
 #include <iterator>
 #include <string_view>
 #include <vector>
-
-#include "basic_char.h"
 
 namespace tools {
 
@@ -127,26 +126,49 @@ bool parse_int(const std::string_view str, T& value, int base = 10) {
 std::string lowercase_ascii_string(std::string_view src);
 
 // Converts between basic_string_view<T> for different 1-byte T values
-template <basic_char To, basic_char From>
+template <oxenc::basic_char To, oxenc::basic_char From>
 std::basic_string_view<To> convert_sv(std::basic_string_view<From> from) {
     return {reinterpret_cast<const To*>(from.data()), from.size()};
 }
 // Same as above, but converting from a string rather than view.
-template <basic_char To, basic_char From>
+template <oxenc::basic_char To, oxenc::basic_char From>
 std::basic_string_view<To> convert_sv(const std::basic_string<From>& from) {
     return {reinterpret_cast<const To*>(from.data()), from.size()};
 }
 
 // Same as above, but makes a copy into a basic_string
-template <basic_char To, basic_char From>
+template <oxenc::basic_char To, oxenc::basic_char From>
 std::basic_string<To> convert_str(std::basic_string_view<From> from) {
     return {reinterpret_cast<const To*>(from.data()), from.size()};
 }
 // Same as above, but converting from a string rather than view.
-template <basic_char To, basic_char From>
+template <oxenc::basic_char To, oxenc::basic_char From>
 std::basic_string<To> convert_str(const std::basic_string<From>& from) {
     return {reinterpret_cast<const To*>(from.data()), from.size()};
 }
+
+namespace detail {
+    template <size_t N>
+    struct usv_literal {
+        consteval usv_literal(const char (&s)[N]) {
+            for (size_t i = 0; i < N; i++)
+                str[i] = static_cast<unsigned char>(s[i]);
+        }
+        unsigned char str[N];  // we keep the null on the end, in case you pass .data() to a C func
+        using size = std::integral_constant<size_t, N - 1>;
+    };
+}  // namespace detail
+
+namespace literals {
+    // unsigned char string literals
+    inline std::basic_string<unsigned char> operator""_us(const char* str, size_t len) noexcept {
+        return {reinterpret_cast<const unsigned char*>(str), len};
+    }
+    template <detail::usv_literal UStr>
+    constexpr std::basic_string_view<unsigned char> operator""_usv() {
+        return {UStr.str, decltype(UStr)::size::value};
+    }
+}  // namespace literals
 
 /// Converts a duration into a human friendlier string, such as "3d7d47m12s" or "347µs"
 std::string friendly_duration(std::chrono::nanoseconds dur);

@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <chrono>
 
+#include "common/guts.h"
 #include "common/string_util.h"
 #include "oxen_economy.h"
 #ifdef _WIN32
@@ -710,7 +711,7 @@ bool simple_wallet::viewkey(
         std::cout << '\n';
     }
     std::cout << "public: "
-              << tools::type_to_hex(
+              << tools::hex_guts(
                          m_wallet->get_account().get_keys().m_account_address.m_view_public_key)
               << std::endl;
 
@@ -746,7 +747,7 @@ bool simple_wallet::spendkey(
         std::cout << '\n';
     }
     std::cout << "public: "
-              << tools::type_to_hex(
+              << tools::hex_guts(
                          m_wallet->get_account().get_keys().m_account_address.m_spend_public_key)
               << std::endl;
 
@@ -1423,7 +1424,7 @@ bool simple_wallet::sign_multisig_main(
         for (const auto& txid : txids) {
             if (!txids_as_text.empty())
                 txids_as_text += (", ");
-            txids_as_text += tools::type_to_hex(txid);
+            txids_as_text += tools::hex_guts(txid);
         }
         success_msg_writer(true) << tr("Transaction successfully signed to file ") << filename
                                  << ", txid " << txids_as_text;
@@ -1565,8 +1566,7 @@ bool simple_wallet::export_raw_multisig(const std::vector<std::string>& args) {
         std::string filenames;
         for (auto& ptx : txs.m_ptx) {
             const crypto::hash txid = cryptonote::get_transaction_hash(ptx.tx);
-            const fs::path fn =
-                    tools::utf8_path("raw_multisig_oxen_tx_" + tools::type_to_hex(txid));
+            const fs::path fn = tools::utf8_path("raw_multisig_oxen_tx_" + tools::hex_guts(txid));
             if (!filenames.empty())
                 filenames += ", ";
             filenames += "{}"_format(fn);
@@ -1595,12 +1595,12 @@ bool simple_wallet::print_ring(const std::vector<std::string>& args) {
         return true;
     }
 
-    if (!tools::hex_to_type(args[0], key_image)) {
+    if (!tools::try_load_from_hex_guts(args[0], key_image)) {
         fail_msg_writer() << tr("Invalid key image");
         return true;
     }
     // this one will always work, they're all 32 byte hex
-    if (!tools::hex_to_type(args[0], txid)) {
+    if (!tools::try_load_from_hex_guts(args[0], txid)) {
         fail_msg_writer() << tr("Invalid txid");
         return true;
     }
@@ -1620,7 +1620,7 @@ bool simple_wallet::print_ring(const std::vector<std::string>& args) {
             for (const auto& x : ring.second)
                 str << x << " ";
             // do NOT translate this "absolute" below, the lin can be used as input to set_ring
-            success_msg_writer() << tools::type_to_hex(ring.first) << " absolute " << str.str();
+            success_msg_writer() << tools::hex_guts(ring.first) << " absolute " << str.str();
         }
     } catch (const std::exception& e) {
         fail_msg_writer() << tr("Failed to get key image ring: ") << e.what();
@@ -1667,7 +1667,8 @@ bool simple_wallet::set_ring(const std::vector<std::string>& args) {
                 key_image_str[64] = 0;
                 type_str[8] = 0;
                 crypto::key_image key_image;
-                if (read_after_key_image == 0 || !tools::hex_to_type(key_image_str, key_image)) {
+                if (read_after_key_image == 0 ||
+                    !tools::try_load_from_hex_guts(std::string_view{key_image_str}, key_image)) {
                     fail_msg_writer() << tr("Invalid key image: ") << str;
                     continue;
                 }
@@ -1735,7 +1736,7 @@ bool simple_wallet::set_ring(const std::vector<std::string>& args) {
         return true;
     }
 
-    if (!tools::hex_to_type(args[0], key_image)) {
+    if (!tools::try_load_from_hex_guts(args[0], key_image)) {
         fail_msg_writer() << tr("Invalid key image");
         return true;
     }
@@ -1798,7 +1799,7 @@ bool simple_wallet::unset_ring(const std::vector<std::string>& args) {
 
     key_images.resize(args.size());
     for (size_t i = 0; i < args.size(); ++i) {
-        if (!tools::hex_to_type(args[i], key_images[i])) {
+        if (!tools::try_load_from_hex_guts(args[i], key_images[i])) {
             fail_msg_writer() << tr("Invalid key image or txid");
             return true;
         }
@@ -1946,7 +1947,7 @@ bool simple_wallet::freeze_thaw(const std::vector<std::string>& args, bool freez
         return true;
     }
     crypto::key_image ki;
-    if (!tools::hex_to_type(args[0], ki)) {
+    if (!tools::try_load_from_hex_guts(args[0], ki)) {
         fail_msg_writer() << tr("failed to parse key image");
         return true;
     }
@@ -1983,7 +1984,7 @@ bool simple_wallet::frozen(const std::vector<std::string>& args) {
         }
     } else {
         crypto::key_image ki;
-        if (!tools::hex_to_type(args[0], ki)) {
+        if (!tools::try_load_from_hex_guts(args[0], ki)) {
             fail_msg_writer() << tr("failed to parse key image");
             return true;
         }
@@ -4947,7 +4948,7 @@ void simple_wallet::on_money_received(
     if (unlock_time && !cryptonote::is_coinbase(tx))
         message_writer() << tr("NOTE: This transaction is locked, see details with: "
                                "show_transfer ") +
-                                    tools::type_to_hex(txid);
+                                    tools::hex_guts(txid);
     if (m_auto_refresh_refreshing)
         m_cmd_binder.print_prompt();
     else
@@ -5374,10 +5375,10 @@ bool simple_wallet::show_incoming_transfers(const std::vector<std::string>& args
             }
             std::string extra_string;
             if (verbose)
-                extra_string += "{:68}{:68}"_format(
+                extra_string += "{:x}    {:68}"_format(
                         td.get_public_key(),
-                        (td.m_key_image_known     ? tools::type_to_hex(td.m_key_image)
-                         : td.m_key_image_partial ? tools::type_to_hex(td.m_key_image) + "/p"
+                        (td.m_key_image_known     ? tools::hex_guts(td.m_key_image)
+                         : td.m_key_image_partial ? tools::hex_guts(td.m_key_image) + "/p"
                                                   : std::string(64, '?')));
             if (uses) {
                 std::vector<uint64_t> heights;
@@ -5393,7 +5394,7 @@ bool simple_wallet::show_incoming_transfers(const std::vector<std::string>& args
                                 "\n    " + line.second;
             }
             message_writer(td.m_spent ? fmt::terminal_color::magenta : fmt::terminal_color::green)
-                    << "{:21}{:8}{:12}{:8}{:16d}{:68s}{:16d}{}"_format(
+                    << "{:21}{:8}{:12}{:8}{:16d}{:x}    {:16d}{}"_format(
                                print_money(td.amount()),
                                td.m_spent ? tr("T") : tr("F"),
                                tr(m_wallet->frozen(td)                 ? "[frozen]"
@@ -5461,8 +5462,8 @@ bool simple_wallet::show_payments(const std::vector<std::string>& args) {
                 }
                 success_msg_writer(true) << fmt::format(
                         payment_format,
-                        payment_id,
-                        pd.m_tx_hash,
+                        tools::hex_guts(payment_id),
+                        tools::hex_guts(pd.m_tx_hash),
                         pd.m_block_height,
                         print_money(pd.m_amount),
                         pd.m_unlock_time,
@@ -5654,7 +5655,7 @@ bool simple_wallet::process_ring_members(
 
             if (verbose)
                 ostr << boost::format(tr("\nInput %llu/%llu (%s): amount=%s")) % (i + 1) %
-                                tx.vin.size() % tools::type_to_hex(in_key.k_image) %
+                                tx.vin.size() % tools::hex_guts(in_key.k_image) %
                                 print_money(source.amount);
 
             // convert relative offsets of ring member keys into absolute offsets (indices)
@@ -6012,7 +6013,7 @@ bool simple_wallet::transfer_main(
     if (!local_args.empty()) {
         std::string payment_id_str = local_args.back();
         crypto::hash payment_id;
-        if (tools::hex_to_type(payment_id_str, payment_id))
+        if (tools::try_load_from_hex_guts(payment_id_str, payment_id))
             return long_payment_id_failure(false);
     }
 
@@ -6256,7 +6257,7 @@ bool simple_wallet::stake(const std::vector<std::string>& args_) {
             return true;
         }
 
-        if (!tools::hex_to_type(local_args[0], service_node_key)) {
+        if (!tools::try_load_from_hex_guts(local_args[0], service_node_key)) {
             fail_msg_writer() << tr("failed to parse service node pubkey");
             return true;
         }
@@ -6344,7 +6345,7 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string>& args_) 
     }
 
     crypto::public_key snode_key;
-    if (!tools::hex_to_type(args_[0], snode_key)) {
+    if (!tools::try_load_from_hex_guts(args_[0], snode_key)) {
         fail_msg_writer() << tr("failed to parse service node pubkey: ") << args_[0];
         return true;
     }
@@ -6614,7 +6615,8 @@ bool simple_wallet::query_locked_stakes(bool print_details, bool print_key_image
                     blacklisted.begin(),
                     blacklisted.end(),
                     [this](const auto& black) {
-                        if (crypto::key_image ki; tools::hex_to_type(black.key_image, ki))
+                        if (crypto::key_image ki;
+                            tools::try_load_from_hex_guts(black.key_image, ki))
                             return !m_wallet->contains_key_image(ki);
                         fail_msg_writer() << "Failed to parse key image hex: " << black.key_image;
                         return true;
@@ -7087,7 +7089,7 @@ bool simple_wallet::ons_make_update_mapping_signature(std::vector<std::string> a
                 signature_binary,
                 m_current_subaddress_account,
                 &reason))
-        success_msg_writer() << "signature=" << tools::type_to_hex(signature_binary.ed25519);
+        success_msg_writer() << "signature=" << tools::hex_guts(signature_binary.ed25519);
     else
         fail_msg_writer() << reason;
 
@@ -7592,7 +7594,7 @@ bool simple_wallet::sweep_main(
     if (local_args.size() >= 2) {
         std::string payment_id_str = local_args.back();
 
-        if (crypto::hash payment_id; tools::hex_to_type(payment_id_str, payment_id))
+        if (crypto::hash payment_id; tools::try_load_from_hex_guts(payment_id_str, payment_id))
             return long_payment_id_failure(true);
 
         if (local_args.size() == 3) {
@@ -7695,7 +7697,7 @@ bool simple_wallet::sweep_single(const std::vector<std::string>& args_) {
     }
 
     crypto::key_image ki;
-    if (!tools::hex_to_type(local_args[0], ki)) {
+    if (!tools::try_load_from_hex_guts(local_args[0], ki)) {
         fail_msg_writer() << tr("failed to parse key image");
         return true;
     }
@@ -7811,15 +7813,15 @@ bool simple_wallet::accept_loaded_tx(
                     if (is_dummy) {
                         payment_id_string += std::string("dummy encrypted payment ID");
                     } else {
-                        payment_id_string += std::string("encrypted payment ID ") +
-                                             tools::type_to_hex(payment_id8);
+                        payment_id_string +=
+                                std::string("encrypted payment ID ") + tools::hex_guts(payment_id8);
                         has_encrypted_payment_id = true;
                     }
                 } else if (get_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id)) {
                     if (!payment_id_string.empty())
                         payment_id_string += ", ";
                     payment_id_string +=
-                            std::string("unencrypted payment ID ") + tools::type_to_hex(payment_id);
+                            std::string("unencrypted payment ID ") + tools::hex_guts(payment_id);
                     payment_id_string += " (OBSOLETE)";
                 }
             }
@@ -7841,7 +7843,7 @@ bool simple_wallet::accept_loaded_tx(
                         m_wallet->nettype(), entry.addr, payment_id8);
                 address += std::string(
                         " (" + standard_address + " with encrypted payment id " +
-                        tools::type_to_hex(payment_id8) + ")");
+                        tools::hex_guts(payment_id8) + ")");
             } else
                 address = standard_address;
             auto i = dests.find(entry.addr);
@@ -7990,7 +7992,7 @@ bool simple_wallet::sign_transfer(const std::vector<std::string>& args_) {
     for (const auto& t : ptx) {
         if (!txids_as_text.empty())
             txids_as_text += (", ");
-        txids_as_text += tools::type_to_hex(get_transaction_hash(t.tx));
+        txids_as_text += tools::hex_guts(get_transaction_hash(t.tx));
     }
     success_msg_writer(true) << tr("Transaction successfully signed to file ") << "signed_oxen_tx"
                              << ", txid " << txids_as_text;
@@ -8054,7 +8056,7 @@ bool simple_wallet::get_tx_key(const std::vector<std::string>& args_) {
     }
 
     crypto::hash txid;
-    if (!tools::hex_to_type(local_args[0], txid)) {
+    if (!tools::try_load_from_hex_guts(local_args[0], txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
@@ -8067,9 +8069,9 @@ bool simple_wallet::get_tx_key(const std::vector<std::string>& args_) {
     bool found_tx_key = m_wallet->get_tx_key(txid, tx_key, additional_tx_keys);
     if (found_tx_key) {
         std::ostringstream oss;
-        oss << tools::type_to_hex(tx_key);
+        oss << tools::hex_guts(tx_key);
         for (size_t i = 0; i < additional_tx_keys.size(); ++i)
-            oss << tools::type_to_hex(additional_tx_keys[i]);
+            oss << tools::hex_guts(additional_tx_keys[i]);
         success_msg_writer() << tr("Tx key: ") << oss.str();
         return true;
     } else {
@@ -8087,7 +8089,7 @@ bool simple_wallet::set_tx_key(const std::vector<std::string>& args_) {
     }
 
     crypto::hash txid;
-    if (!tools::hex_to_type(local_args[0], txid)) {
+    if (!tools::try_load_from_hex_guts(local_args[0], txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
@@ -8095,7 +8097,7 @@ bool simple_wallet::set_tx_key(const std::vector<std::string>& args_) {
     crypto::secret_key tx_key;
     std::vector<crypto::secret_key> additional_tx_keys;
     try {
-        if (!tools::hex_to_type(local_args[1].substr(0, 64), tx_key)) {
+        if (!tools::try_load_from_hex_guts(local_args[1].substr(0, 64), tx_key)) {
             fail_msg_writer() << tr("failed to parse tx_key");
             return true;
         }
@@ -8104,7 +8106,8 @@ bool simple_wallet::set_tx_key(const std::vector<std::string>& args_) {
             if (local_args[1].empty())
                 break;
             additional_tx_keys.resize(additional_tx_keys.size() + 1);
-            if (!tools::hex_to_type(local_args[1].substr(0, 64), additional_tx_keys.back())) {
+            if (!tools::try_load_from_hex_guts(
+                        local_args[1].substr(0, 64), additional_tx_keys.back())) {
                 fail_msg_writer() << tr("failed to parse tx_key");
                 return true;
             }
@@ -8132,7 +8135,7 @@ bool simple_wallet::get_tx_proof(const std::vector<std::string>& args) {
     }
 
     crypto::hash txid;
-    if (!tools::hex_to_type(args[0], txid)) {
+    if (!tools::try_load_from_hex_guts(args[0], txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
@@ -8175,21 +8178,22 @@ bool simple_wallet::check_tx_key(const std::vector<std::string>& args_) {
         return true;
     }
     crypto::hash txid;
-    if (!tools::hex_to_type(local_args[0], txid)) {
+    if (!tools::try_load_from_hex_guts(local_args[0], txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
 
     crypto::secret_key tx_key;
     std::vector<crypto::secret_key> additional_tx_keys;
-    if (!tools::hex_to_type(local_args[1].substr(0, 64), tx_key)) {
+    if (!tools::try_load_from_hex_guts(local_args[1].substr(0, 64), tx_key)) {
         fail_msg_writer() << tr("failed to parse tx key");
         return true;
     }
     local_args[1] = local_args[1].substr(64);
     while (!local_args[1].empty()) {
         additional_tx_keys.resize(additional_tx_keys.size() + 1);
-        if (!tools::hex_to_type(local_args[1].substr(0, 64), additional_tx_keys.back())) {
+        if (!tools::try_load_from_hex_guts(
+                    local_args[1].substr(0, 64), additional_tx_keys.back())) {
             fail_msg_writer() << tr("failed to parse tx key");
             return true;
         }
@@ -8249,7 +8253,7 @@ bool simple_wallet::check_tx_proof(const std::vector<std::string>& args) {
 
     // parse txid
     crypto::hash txid;
-    if (!tools::hex_to_type(args[0], txid)) {
+    if (!tools::try_load_from_hex_guts(args[0], txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
@@ -8332,7 +8336,7 @@ bool simple_wallet::get_spend_proof(const std::vector<std::string>& args) {
     }
 
     crypto::hash txid;
-    if (!tools::hex_to_type(args[0], txid)) {
+    if (!tools::try_load_from_hex_guts(args[0], txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
@@ -8363,7 +8367,7 @@ bool simple_wallet::check_spend_proof(const std::vector<std::string>& args) {
     }
 
     crypto::hash txid;
-    if (!tools::hex_to_type(args[0], txid)) {
+    if (!tools::try_load_from_hex_guts(args[0], txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
@@ -8641,7 +8645,7 @@ bool simple_wallet::show_transfers(const std::vector<std::string>& args_) {
                                                                 : "no") %
                                          tools::get_human_readable_timestamp(transfer.timestamp) %
                                          print_money(transfer.amount) %
-                                         tools::type_to_hex(transfer.hash) % transfer.payment_id %
+                                         tools::hex_guts(transfer.hash) % transfer.payment_id %
                                          print_money(transfer.fee) % destinations %
                                          tools::join(", ", subaddr_minors) % transfer.note;
     }
@@ -9324,7 +9328,7 @@ bool simple_wallet::print_integrated_address(
         device_show_integrated(payment_id);
         return true;
     }
-    if (tools::hex_to_type(local_args.back(), payment_id)) {
+    if (tools::try_load_from_hex_guts(local_args.back(), payment_id)) {
         if (m_current_subaddress_account != 0) {
             fail_msg_writer() << tr("Integrated addresses can only be created for account 0");
             return true;
@@ -9341,7 +9345,7 @@ bool simple_wallet::print_integrated_address(
                                                          "%s")) %
                                                 get_account_address_as_str(
                                                         m_wallet->nettype(), false, info.address) %
-                                                tools::type_to_hex(info.payment_id);
+                                                tools::hex_guts(info.payment_id);
                 device_show_integrated(info.payment_id);
             } else {
                 success_msg_writer()
@@ -9416,7 +9420,7 @@ bool simple_wallet::set_tx_note(const std::vector<std::string>& args) {
     }
 
     crypto::hash txid;
-    if (!tools::hex_to_type(args.front(), txid)) {
+    if (!tools::try_load_from_hex_guts(args.front(), txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
@@ -9439,7 +9443,7 @@ bool simple_wallet::get_tx_note(const std::vector<std::string>& args) {
     }
 
     crypto::hash txid;
-    if (!tools::hex_to_type(args.front(), txid)) {
+    if (!tools::try_load_from_hex_guts(args.front(), txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
@@ -9868,7 +9872,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string>& args) {
     }
 
     crypto::hash txid;
-    if (!tools::hex_to_type(args.front(), txid)) {
+    if (!tools::try_load_from_hex_guts(args.front(), txid)) {
         fail_msg_writer() << tr("failed to parse txid");
         return true;
     }
@@ -9883,7 +9887,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string>& args) {
          ++i) {
         const tools::wallet2::payment_details& pd = i->second;
         if (pd.m_tx_hash == txid) {
-            std::string payment_id = tools::type_to_hex(i->first);
+            std::string payment_id = tools::hex_guts(i->first);
             if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
                 payment_id = payment_id.substr(0, 16);
             success_msg_writer() << "Incoming transaction found";
@@ -9960,7 +9964,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string>& args) {
                 dests += d.address(m_wallet->nettype(), pd.m_payment_id) + ": " +
                          print_money(d.amount);
             }
-            std::string payment_id = tools::type_to_hex(i->second.m_payment_id);
+            std::string payment_id = tools::hex_guts(i->second.m_payment_id);
             if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
                 payment_id = payment_id.substr(0, 16);
             success_msg_writer() << "Outgoing transaction found";
@@ -10010,7 +10014,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string>& args) {
              ++i) {
             const tools::wallet2::payment_details& pd = i->second.m_pd;
             if (pd.m_tx_hash == txid) {
-                std::string payment_id = tools::type_to_hex(i->first);
+                std::string payment_id = tools::hex_guts(i->first);
                 if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
                     payment_id = payment_id.substr(0, 16);
                 success_msg_writer() << "Unconfirmed incoming transaction found in the txpool";
@@ -10042,7 +10046,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string>& args) {
             const tools::wallet2::unconfirmed_transfer_details& pd = i->second;
             uint64_t amount = pd.m_amount_in;
             uint64_t fee = amount - pd.m_amount_out;
-            std::string payment_id = tools::type_to_hex(i->second.m_payment_id);
+            std::string payment_id = tools::hex_guts(i->second.m_payment_id);
             if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
                 payment_id = payment_id.substr(0, 16);
             bool is_failed = pd.m_state == tools::wallet2::unconfirmed_transfer_details::failed;
@@ -10099,7 +10103,7 @@ void simple_wallet::commit_or_save(
 
             msg_buf += "{}"_format(filename);
             msg_buf += tr(", txid <");
-            msg_buf += tools::type_to_hex(txid);
+            msg_buf += tools::hex_guts(txid);
             msg_buf += ">";
 
             if (success)
@@ -10109,7 +10113,7 @@ void simple_wallet::commit_or_save(
         } else {
             m_wallet->commit_tx(ptx, blink);
             msg_buf += tr("Transaction successfully submitted, transaction <");
-            msg_buf += tools::type_to_hex(txid);
+            msg_buf += tools::hex_guts(txid);
             msg_buf += ">\n";
             msg_buf += tr("You can check its status by using the `show_transfers` command.");
             success_msg_writer(true) << msg_buf;

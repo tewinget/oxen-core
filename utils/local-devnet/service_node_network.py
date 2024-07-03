@@ -137,8 +137,6 @@ class SNNetwork:
         with open(configfile, 'w') as filetowrite:
             filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
-        self.sns[0].get_staking_requirement()
-
         # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
         # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
         # SN (at height 40, which is the earliest we can submit them without getting an occasional
@@ -221,7 +219,10 @@ class SNNetwork:
         ethereum_add_bls_args = self.ethsns[0].get_ethereum_registration_args(self.servicenodecontract.hardhatAccountAddress())
         vprint("Submitted registration on ethereum for service node with pubkey: {}".format(self.ethsns[0].sn_key()))
         result = self.servicenodecontract.addBLSPublicKey(ethereum_add_bls_args)
-        vprint("added node: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
+
+        contract_num_sn = self.servicenodecontract.numberServiceNodes()
+        vprint("added node: number of service nodes in contract {}".format(contract_num_sn))
+        assert self.servicenodecontract.numberServiceNodes() == 13, f"Expected 13 service nodes, received {contract_num_sn}"
 
         # Exit Node
         # exit = self.ethsns[0].get_exit_request(ethereum_add_bls_args["bls_pubkey"])
@@ -243,17 +244,17 @@ class SNNetwork:
         # vprint("liquidated node: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
 
         # Sleep and let pulse quorum do work
-        sleep_time = 30
+        sleep_time = 40
         vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
         time.sleep(sleep_time)
         vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
 
         # Claim rewards for Address
         hardhatAccount = self.servicenodecontract.hardhatAccountAddress()
-        rewards        = self.ethsns[0].get_bls_rewards(hardhatAccount, self.mike.address())
+        rewards        = self.ethsns[0].get_bls_rewards(hardhatAccount)
+        vprint(rewards)
         rewardsAccount = rewards["result"]["address"]
         assert rewardsAccount.lower() == hardhatAccount.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhatAccount.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
-        vprint(rewards)
 
         vprint("Contract rewards before updating has ['available', 'claimed'] respectively: ",
                self.servicenodecontract.recipients(hardhatAccount),

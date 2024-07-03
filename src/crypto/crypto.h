@@ -108,10 +108,18 @@ struct eth_address : bytes<20, true, uint32_t> {
     explicit operator bool() const { return data_ != null<eth_address>.data_; }
 };
 
-struct bls_public_key : bytes<64, true, uint32_t> {
+struct bls_public_key : bytes<64, true> {
     // Returns true if non-null, i.e. not all 0.
     explicit operator bool() const { return data_ != null<bls_public_key>.data_; }
 };
+
+struct bls_signature : bytes<128, true> {
+    // Returns true if non-null, i.e. not 0.
+    explicit operator bool() const { return data_ != null<bls_signature>.data_; }
+};
+
+struct bls_secret_key_ : bytes<32> {};
+using bls_secret_key = epee::mlocked<tools::scrubbed<bls_secret_key_>>;
 
 void hash_to_scalar(const void* data, size_t length, ec_scalar& res);
 ec_scalar hash_to_scalar(const void* data, size_t length);
@@ -156,6 +164,17 @@ template <std::integral T>
 T rand_range(T range_min, T range_max) {
     random_device rd;
     return std::uniform_int_distribution<T>{range_min, range_max}(rd);
+}
+
+/* Generate a random time interval between range_min and range_max.  This is just a wrapper around
+ * rand_range with integers (not that this does *not* yield a smaller interval, i.e. `rand_range(1s,
+ * 2s)` will return 1s or 2s but not 1278ms).
+ */
+template <std::integral Rep, typename Period>
+std::chrono::duration<Rep, Period> rand_range(
+        std::chrono::duration<Rep, Period> range_min,
+        std::chrono::duration<Rep, Period> range_max) {
+    return std::chrono::duration<Rep, Period>{rand_range(range_min.count(), range_max.count())};
 }
 
 /* Generate a random index between 0 and sz-1
@@ -319,3 +338,20 @@ template <>
 struct std::hash<crypto::x25519_public_key> : crypto::raw_hasher<crypto::x25519_public_key> {};
 template <>
 struct std::hash<crypto::ed25519_signature> : crypto::raw_hasher<crypto::ed25519_signature> {};
+template <>
+struct std::hash<crypto::bls_public_key> : crypto::raw_hasher<crypto::bls_public_key> {};
+template <>
+struct std::hash<crypto::eth_address> : crypto::raw_hasher<crypto::eth_address> {};
+
+// For an eth address, override the default format of <...hex...> to be 0x...hex... instead.  (But
+// don't override for non-default formatting).
+template <>
+struct fmt::formatter<crypto::eth_address> : formattable::hex_span_formatter {
+    fmt::format_context::iterator default_format(
+            std::span<const unsigned char> val, fmt::format_context& ctx) const override {
+        auto out = ctx.out();
+        *out++ = '0';
+        *out++ = 'x';
+        return oxenc::to_hex(val.begin(), val.end(), out);
+    }
+};

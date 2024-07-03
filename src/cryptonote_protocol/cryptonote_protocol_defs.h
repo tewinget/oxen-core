@@ -220,29 +220,6 @@ struct NOTIFY_REQUEST_FLUFFY_MISSING_TX {
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
-struct NOTIFY_UPTIME_PROOF {
-    const static int ID = BC_COMMANDS_POOL_BASE + 11;
-
-    struct request {
-        std::array<uint16_t, 3> snode_version;
-
-        uint64_t timestamp;
-        crypto::public_key pubkey;
-        crypto::signature sig;
-        crypto::ed25519_public_key pubkey_ed25519;
-        crypto::ed25519_signature sig_ed25519;
-        uint32_t public_ip;
-        uint16_t storage_https_port;
-        uint16_t storage_omq_port;
-        uint16_t qnet_port;
-
-        KV_MAP_SERIALIZABLE
-    };
-};
-
-/************************************************************************/
-/*                                                                      */
-/************************************************************************/
 struct NOTIFY_BTENCODED_UPTIME_PROOF {
     const static int ID = BC_COMMANDS_POOL_BASE + 12;
 
@@ -250,7 +227,7 @@ struct NOTIFY_BTENCODED_UPTIME_PROOF {
 
         // BT-Encoded string of the Uptime Proof
         std::string proof;
-        std::string sig;
+        std::optional<std::string> sig;  // Not sent in HF21+
         std::string ed_sig;
 
         KV_MAP_SERIALIZABLE

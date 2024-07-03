@@ -2,6 +2,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "common/guts.h"
+
 static auto logcat = oxen::log::Cat("rpc");
 
 namespace nlohmann {
@@ -30,7 +32,7 @@ void to_json(nlohmann::json& j, const checkpoint_t& c) {
             {"version", c.version},
             {"type", c.type},
             {"height", c.height},
-            {"block_hash", tools::type_to_hex(c.block_hash)},
+            {"block_hash", tools::hex_guts(c.block_hash)},
             {"signatures", c.signatures},
             {"prev_height", c.prev_height},
     };
@@ -40,7 +42,7 @@ void to_json(nlohmann::json& j, const checkpoint_t& c) {
 namespace service_nodes {
 void to_json(nlohmann::json& j, const key_image_blacklist_entry& b) {
     j = nlohmann::json{
-            {"key_image", tools::type_to_hex(b.key_image)},
+            {"key_image", tools::hex_guts(b.key_image)},
             {"unlock_height", b.unlock_height},
             {"amount", b.amount}};
 };
@@ -48,7 +50,7 @@ void to_json(nlohmann::json& j, const key_image_blacklist_entry& b) {
 void to_json(nlohmann::json& j, const quorum_signature& s) {
     j = nlohmann::json{
             {"voter_index", s.voter_index},
-            {"signature", tools::type_to_hex(s.signature)},
+            {"signature", tools::hex_guts(s.signature)},
     };
 };
 }  // namespace service_nodes

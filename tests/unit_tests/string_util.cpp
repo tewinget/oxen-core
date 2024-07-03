@@ -30,7 +30,6 @@
 
 #include "common/guts.h"
 #include "common/string_util.h"
-#include "common/hex.h"
 
 using namespace std::literals;
 
@@ -177,15 +176,15 @@ TEST(common_string_util, view_guts)
   ASSERT_EQ(tools::copy_guts(y), "12345"s);
 }
 
-TEST(common_string_util, hex_to_type)
+TEST(common_string_util, hex_guts)
 {
   struct Foo { char abcd[4]; };
   Foo f;
-  tools::hex_to_type("61626364", f);
+  tools::load_from_hex_guts("61626364"sv, f);
   ASSERT_EQ(std::string_view(f.abcd, sizeof(f.abcd)), "abcd"sv);
 
-  ASSERT_FALSE(tools::hex_to_type("616263", f)); // hex too short
-  ASSERT_FALSE(tools::hex_to_type("6162636465", f)); // hex too long
-  ASSERT_FALSE(tools::hex_to_type("6162636g", f)); // not hex
-  ASSERT_FALSE(tools::hex_to_type("012345678", f)); // odd number of hex chars
+  ASSERT_FALSE(tools::try_load_from_hex_guts("616263"sv, f)); // hex too short
+  ASSERT_FALSE(tools::try_load_from_hex_guts("6162636465"sv, f)); // hex too long
+  ASSERT_FALSE(tools::try_load_from_hex_guts("6162636g"sv, f)); // not hex
+  ASSERT_FALSE(tools::try_load_from_hex_guts("012345678"sv, f)); // odd number of hex chars
 }

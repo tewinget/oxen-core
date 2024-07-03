@@ -419,7 +419,7 @@ int main(int argc, char* argv[]) {
     crypto::hash opt_txid{};
     uint64_t output_amount = 0, output_offset = 0;
     if (!opt_txid_string.empty()) {
-        if (!tools::hex_to_type(opt_txid_string, opt_txid)) {
+        if (!tools::try_load_from_hex_guts(opt_txid_string, opt_txid)) {
             std::cerr << "Invalid txid" << std::endl;
             return 1;
         }

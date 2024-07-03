@@ -32,7 +32,6 @@
 #include <vector>
 
 #include "checkpoints/checkpoints.h"
-#include "common/hex.h"
 #include "common/util.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -373,7 +372,7 @@ bool verify_quorum_signatures(
             log::info(
                     logcat,
                     "Voter: {}, quorum index is duplicated: {}, failed verification at height: {}",
-                    tools::type_to_hex(key),
+                    key,
                     quorum_signature.voter_index,
                     height);
             return false;

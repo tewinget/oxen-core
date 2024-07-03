@@ -1024,13 +1024,12 @@ POP_WARNINGS
     typename connection<t_protocol_handler>::shared_state *state = static_cast<typename connection<t_protocol_handler>::shared_state*>(m_state.get());
     state->stop_signal_sent = true;
     TRY_ENTRY();
-    connections_mutex.lock();
-    for (auto &c: connections_)
     {
-      c->cancel();
+        std::lock_guard lock{connections_mutex};
+        for (auto &c: connections_)
+          c->cancel();
+        connections_.clear();
     }
-    connections_.clear();
-    connections_mutex.unlock();
     io_service_.stop();
     CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::send_stop_signal()", void());
   }
@@ -1157,7 +1156,9 @@ POP_WARNINGS
     std::unique_lock lock{local_shared_context->connect_mut};
     auto connect_callback = [](boost::system::error_code ec_, std::shared_ptr<local_async_context> shared_context)
     {
-      shared_context->connect_mut.lock(); shared_context->ec = ec_; shared_context->cond.notify_one(); shared_context->connect_mut.unlock();
+        std::lock_guard lock{shared_context->connect_mut};
+        shared_context->ec = ec_;
+        shared_context->cond.notify_one();
     };
 
     using namespace boost::placeholders;
@@ -1198,9 +1199,10 @@ POP_WARNINGS
     TRY_ENTRY();
 
     connection_ptr new_connection_l(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type) );
-    connections_mutex.lock();
-    connections_.insert(new_connection_l);
-    connections_mutex.unlock();
+    {
+        std::lock_guard lock{connections_mutex};
+        connections_.insert(new_connection_l);
+    }
     auto scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){ std::lock_guard lock{connections_mutex}; connections_.erase(new_connection_l); });
     boost::asio::ip::tcp::socket&  sock_ = new_connection_l->socket();
 
@@ -1280,9 +1282,10 @@ POP_WARNINGS
       return false;
 
     // start adds the connection to the config object's list, so we don't need to have it locally anymore
-    connections_mutex.lock();
-    connections_.erase(new_connection_l);
-    connections_mutex.unlock();
+    {
+        std::lock_guard lock{connections_mutex};
+        connections_.erase(new_connection_l);
+    }
     bool r = new_connection_l->start(false, 1 < m_threads_count);
     if (r)
     {
@@ -1306,9 +1309,10 @@ POP_WARNINGS
   {
     TRY_ENTRY();    
     connection_ptr new_connection_l(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type) );
-    connections_mutex.lock();
-    connections_.insert(new_connection_l);
-    connections_mutex.unlock();
+    {
+        std::lock_guard lock{connections_mutex};
+        connections_.insert(new_connection_l);
+    }
     auto scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){ std::lock_guard lock{connections_mutex}; connections_.erase(new_connection_l); });
     boost::asio::ip::tcp::socket&  sock_ = new_connection_l->socket();
     
@@ -1398,9 +1402,10 @@ POP_WARNINGS
           }else
           {
             // start adds the connection to the config object's list, so we don't need to have it locally anymore
-            connections_mutex.lock();
-            connections_.erase(new_connection_l);
-            connections_mutex.unlock();
+              {
+                  std::lock_guard lock{connections_mutex};
+                  connections_.erase(new_connection_l);
+              }
             bool r = new_connection_l->start(false, 1 < m_threads_count);
             if (r)
             {

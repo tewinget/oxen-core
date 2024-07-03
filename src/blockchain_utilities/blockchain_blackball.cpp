@@ -37,7 +37,6 @@
 #include "blockchain_objects.h"
 #include "common/command_line.h"
 #include "common/file.h"
-#include "common/hex.h"
 #include "common/signal_handler.h"
 #include "common/string_util.h"
 #include "common/unordered_containers_boost_serialization.h"
@@ -501,10 +500,8 @@ static bool for_all_transactions(
 
         ret = mdb_cursor_get(cur_txs, &k, &v, op_txs);
         if (ret)
-            throw std::runtime_error(
-                    "Failed to fetch transaction " +
-                    tools::type_to_hex(get_transaction_hash(b.miner_tx)) + ": " +
-                    std::string(mdb_strerror(ret)));
+            throw std::runtime_error{"Failed to fetch transaction {}: {}"_format(
+                    get_transaction_hash(b.miner_tx), mdb_strerror(ret))};
         op_txs = MDB_NEXT;
 
         bool last_block = height == n_blocks - 1;
@@ -516,9 +513,8 @@ static bool for_all_transactions(
             const crypto::hash& txid = b.tx_hashes[i];
             ret = mdb_cursor_get(cur_txs, &k, &v, op_txs);
             if (ret)
-                throw std::runtime_error(
-                        "Failed to fetch transaction " + tools::type_to_hex(txid) + ": " +
-                        std::string(mdb_strerror(ret)));
+                throw std::runtime_error{
+                        "Failed to fetch transaction {}: {}"_format(txid, mdb_strerror(ret))};
             if (start_idx <= tx_idx++) {
                 cryptonote::transaction_prefix tx;
                 bd.assign(reinterpret_cast<char*>(v.mv_data), v.mv_size);
@@ -1323,15 +1319,13 @@ int main(int argc, char* argv[]) {
 
     log::warning(logcat, "Scanning for spent outputs...");
 
-    size_t done = 0;
-
     const uint64_t start_blackballed_outputs = get_num_spent_outputs();
 
     tools::ringdb ringdb(
-            output_file_path.string(), tools::type_to_hex(get_genesis_block_hash(inputs[0])));
+            output_file_path.string(), tools::hex_guts(get_genesis_block_hash(inputs[0])));
 
     bool stop_requested = false;
-    tools::signal_handler::install([&stop_requested](int type) { stop_requested = true; });
+    tools::signal_handler::install([&stop_requested](int) { stop_requested = true; });
 
     int dbr = resize_env(cache_dir.string().c_str());
     CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to resize LMDB database: {}", mdb_strerror(dbr));

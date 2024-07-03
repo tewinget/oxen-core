@@ -40,14 +40,13 @@
 #include "blockchain_db/lmdb/db_lmdb.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "common/fs.h"
-#include "common/hex.h"
 #include "logging/oxen_logger.h"
 
 #include "random_path.h"
 
 using namespace cryptonote;
 
-#define ASSERT_HASH_EQ(a,b) ASSERT_EQ(tools::type_to_hex(a), tools::type_to_hex(b))
+#define ASSERT_HASH_EQ(a,b) ASSERT_EQ(tools::hex_guts(a), tools::hex_guts(b))
 
 namespace {  // anonymous namespace
   
@@ -88,8 +87,8 @@ const std::vector<std::vector<std::string>> t_transactions =
 // from std::string, this might break.
 bool compare_blocks(const block& a, const block& b)
 {
-  auto hash_a = tools::type_to_hex(get_block_hash(a));
-  auto hash_b = tools::type_to_hex(get_block_hash(b));
+  auto hash_a = tools::hex_guts(get_block_hash(a));
+  auto hash_b = tools::hex_guts(get_block_hash(b));
 
   return hash_a == hash_b;
 }
@@ -98,8 +97,8 @@ bool compare_blocks(const block& a, const block& b)
 void print_block(const block& blk, const std::string& prefix = "")
 {
   std::cerr << prefix << ": " << std::endl
-            << "\thash - " << tools::type_to_hex(get_block_hash(blk)) << std::endl
-            << "\tparent - " << tools::type_to_hex(blk.prev_id) << std::endl
+            << "\thash - " << tools::hex_guts(get_block_hash(blk)) << std::endl
+            << "\tparent - " << tools::hex_guts(blk.prev_id) << std::endl
             << "\ttimestamp - " << blk.timestamp << std::endl
   ;
 }

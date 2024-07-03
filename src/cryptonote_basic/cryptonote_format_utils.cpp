@@ -38,7 +38,6 @@
 #include <limits>
 #include <variant>
 
-#include "common/hex.h"
 #include "common/i18n.h"
 #include "common/meta.h"
 #include "crypto/crypto.h"
@@ -304,7 +303,7 @@ bool generate_key_image_helper(
                 logcat,
                 "key image helper: failed to generate_key_derivation({}, <{}>)",
                 tx_public_key,
-                tools::type_to_hex(ack.m_view_secret_key));
+                tools::hex_guts(ack.m_view_secret_key));
         memcpy(&recv_derivation, rct::identity().bytes, sizeof(recv_derivation));
     }
 
@@ -318,7 +317,7 @@ bool generate_key_image_helper(
                     logcat,
                     "key image helper: failed to generate_key_derivation({}, {})",
                     additional_tx_public_keys[i],
-                    tools::type_to_hex(ack.m_view_secret_key));
+                    tools::hex_guts(ack.m_view_secret_key));
         } else {
             additional_recv_derivations.push_back(additional_recv_derivation);
         }

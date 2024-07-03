@@ -1,10 +1,14 @@
 #include "bls_aggregator.h"
 
+#include <oxenc/bt_producer.h>
+
 #include "bls/bls_utils.h"
-#include "bls/bls_omq.h"
+#include "common/bigint.h"
 #include "common/guts.h"
-#include "ethyl/utils.hpp"
 #include "common/string_util.h"
+#include "crypto/crypto.h"
+#include "cryptonote_core/cryptonote_core.h"
+#include "ethyl/utils.hpp"
 #include "logging/oxen_logger.h"
 
 #define BLS_ETH
@@ -23,59 +27,53 @@
 
 static auto logcat = oxen::log::Cat("bls_aggregator");
 
-BLSAggregator::BLSAggregator(
-        service_nodes::service_node_list& _snl,
-        std::shared_ptr<oxenmq::OxenMQ> _omq,
-        std::shared_ptr<BLSSigner> _bls_signer) :
-        bls_signer(std::move(_bls_signer)), omq(std::move(_omq)), service_node_list(_snl) {}
+BLSAggregator::BLSAggregator(cryptonote::core& _core) : core{_core} {
 
-std::vector<std::pair<std::string, std::string>> BLSAggregator::getPubkeys() {
-    std::vector<std::pair<std::string, std::string>> pubkeys;
-    std::mutex pubkeys_mutex;
-
-    processNodes(
-            "bls.pubkey_request",
-            [&pubkeys, &pubkeys_mutex](
-                    const BLSRequestResult& request_result, const std::vector<std::string>& data) {
-                if (request_result.success) {
-                    std::lock_guard<std::mutex> lock(pubkeys_mutex);
-                    pubkeys.emplace_back(data[0], data[1]);
-                }
-            });
-
-    return pubkeys;
+    if (core.service_node()) {
+        auto& omq = core.get_omq();
+        omq.add_category("bls", oxenmq::Access{oxenmq::AuthLevel::none})
+                .add_request_command(
+                        "get_reward_balance", [this](auto& m) { get_reward_balance(m); })
+                .add_request_command("get_exit", [this](auto& m) { get_exit(m); })
+                .add_request_command("get_liquidation", [this](auto& m) { get_liquidation(m); });
+    }
 }
 
-blsRegistrationResponse BLSAggregator::registration(
-        const std::string& senderEthAddress, const std::string& serviceNodePubkey) const {
-    return blsRegistrationResponse{
-            bls_signer->getPublicKeyHex(),
-            bls_signer->proofOfPossession(senderEthAddress, serviceNodePubkey),
-            senderEthAddress,
+BLSRegistrationResponse BLSAggregator::registration(
+        const crypto::eth_address& sender, const crypto::public_key& serviceNodePubkey) const {
+    auto& signer = core.get_bls_signer();
+    return BLSRegistrationResponse{
+            signer.getCryptoPubkey(),
+            signer.proofOfPossession(sender, serviceNodePubkey),
+            sender,
             serviceNodePubkey,
-            ""};
+            crypto::null<crypto::ed25519_signature>};
 }
 
-void BLSAggregator::processNodes(
+void BLSAggregator::nodesRequest(
         std::string_view request_name,
-        std::function<void(const BLSRequestResult&, const std::vector<std::string>&)> callback,
-        std::span<const std::string> message,
-        std::span<const crypto::x25519_public_key> exclude) {
+        std::string_view message,
+        const request_callback& callback) {
     std::mutex connection_mutex;
     std::condition_variable cv;
     size_t active_connections = 0;
     const size_t MAX_CONNECTIONS = 900;
 
-    std::vector<service_nodes::service_node_address> sn_nodes = {};
-    service_node_list.copy_active_service_node_addresses(std::back_inserter(sn_nodes), exclude);
+    // FIXME: make this function async rather than blocking
 
-    for (const service_nodes::service_node_address& sn_address : sn_nodes) {
+    std::vector<service_nodes::service_node_address> snodes;
+    core.get_service_node_list().copy_reachable_active_service_node_addresses(
+            std::back_inserter(snodes));
+
+    auto& omq = core.get_omq();
+    for (size_t i = 0; i < snodes.size(); i++) {
+        auto& snode = snodes[i];
         if (1) {
-            std::lock_guard<std::mutex> connection_lock(connection_mutex);
+            std::lock_guard connection_lock(connection_mutex);
             ++active_connections;
         } else {
             // TODO(doyle): Rate limit
-            std::unique_lock<std::mutex> connection_lock(connection_mutex);
+            std::unique_lock connection_lock(connection_mutex);
             cv.wait(connection_lock,
                     [&active_connections] { return active_connections < MAX_CONNECTIONS; });
         }
@@ -83,30 +81,96 @@ void BLSAggregator::processNodes(
         // NOTE:  Connect to the SN. Note that we do a request directly to the public key, this
         // should allow OMQ to re-use a connection (for potential subsequent calls) but also
         // automatically kill connections on our behalf.
-        BLSRequestResult request_result = {};
-        request_result.sn_address = sn_address;
-
-        omq->request(
-                oxenmq::ConnectionID(tools::copy_guts(sn_address.x_pkey)),
+        omq.request(
+                tools::view_guts(snode.x_pubkey),
                 request_name,
-                [&connection_mutex, &active_connections, &cv, callback, &request_result](bool success, std::vector<std::string> data) {
-                    request_result.success = success;
-                    callback(request_result, data);
-
-                    std::lock_guard<std::mutex> connection_lock(connection_mutex);
+                [i, &snodes, &connection_mutex, &active_connections, &cv, &callback](
+                        bool success, std::vector<std::string> data) {
+                    callback(BLSRequestResult{snodes[i], success}, data);
+                    std::lock_guard connection_lock{connection_mutex};
                     assert(active_connections);
-                    --active_connections;
-                    if (active_connections == 0) {
+                    if (--active_connections == 0)
                         cv.notify_all();
-                    }
                 },
-                oxenmq::send_option::data_parts(message.begin(), message.end()));
+                message);
     }
 
-    std::unique_lock<std::mutex> connection_lock(connection_mutex);
+    std::unique_lock connection_lock{connection_mutex};
     cv.wait(connection_lock, [&active_connections] { return active_connections == 0; });
 }
 
+// Takes a oxenmq::Message expected to contain a single argument extractable to a `T` that must be
+// encoded as raw bytes, hex, or 0x-prefixed hex.  Sends an appropriate reply and returns false on
+// error, otherwise sets `val` and returns true.
+template <tools::safe_to_memcpy T>
+static bool extract_1part_msg(
+        oxenmq::Message& m, T& val, std::string_view cmd_name, std::string_view value_name) {
+    if (m.data.size() != 1) {
+        m.send_reply(
+                "400",
+                "Bad request: {} command should have one {} data part; received {}"_format(
+                        cmd_name, value_name, m.data.size()));
+        return false;
+    }
+    if (m.data[0].size() == 2 + 2 * sizeof(T) &&
+        (m.data[0].starts_with("0x") || m.data[0].starts_with("0X")) && oxenc::is_hex(m.data[0])) {
+        std::string_view hex{m.data[0]};
+        hex.remove_prefix(2);
+        val = tools::make_from_hex_guts<T>(hex, false);
+        return true;
+    }
+    if (m.data[0].size() == 2 * sizeof(T) && oxenc::is_hex(m.data[0])) {
+        val = tools::make_from_hex_guts<T>(m.data[0], false);
+        return true;
+    }
+    if (m.data[0].size() == sizeof(T)) {
+        tools::make_from_guts<T>(m.data[0]);
+        return true;
+    }
+
+    m.send_reply(
+            "400",
+            "Bad request: {} command data should be a {}-byte {}; got {} bytes"_format(
+                    cmd_name, sizeof(T), value_name, m.data[0].size()));
+    return false;
+}
+
+void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
+    oxen::log::trace(logcat, "Received omq rewards signature request");
+
+    crypto::eth_address eth_addr;
+    if (!extract_1part_msg(m, eth_addr, "BLS rewards", "ETH address"))
+        return;
+
+    auto [batchdb_height, amount] =
+            core.get_blockchain_storage().sqlite_db()->get_accrued_earnings(eth_addr);
+    if (amount == 0) {
+        m.send_reply("400", "Address has a zero balance in the database");
+        return;
+    }
+
+    // We sign H(H(rewardTag || chainid || contract) || recipientAddress ||
+    // recipientAmount),
+    // where everything is in bytes, and recipientAmount is a 32-byte big
+    // endian integer value.
+    auto& signer = core.get_bls_signer();
+    const auto tag = signer.buildTagHash(signer.rewardTag);
+    const auto sig = signer.signHash(keccak(tag, eth_addr, tools::encode_integer_be<32>(amount)));
+
+    oxenc::bt_dict_producer d;
+    // Address requesting balance
+    d.append("address", tools::view_guts(eth_addr));
+    // Balance
+    d.append("balance", amount);
+    // Height of balance
+    d.append("height", batchdb_height);
+    // Signature of addr + balance
+    d.append("signature", tools::view_guts(sig));
+
+    m.send_reply("200", std::move(d).str());
+}
+
+/*
 static void logNetworkRequestFailedWarning(
         const BLSRequestResult& result, std::string_view omq_cmd) {
     std::string ip_string = epee::string_tools::get_ip_string_from_int32(result.sn_address.ip);
@@ -117,17 +181,28 @@ static void logNetworkRequestFailedWarning(
             std::to_string(result.sn_address.port),
             omq_cmd);
 }
+*/
+
 
 BLSRewardsResponse BLSAggregator::rewards_request(
-        const crypto::eth_address& address,
-        const std::string& oxen_address,
-        uint64_t amount,
-        uint64_t height,
-        std::span<const crypto::x25519_public_key> exclude) {
-    oxen::log::trace(logcat, "Initiating rewards request of {} SENT for {} at height {}", amount, address, height);
+        const crypto::eth_address& address) {
+
+    auto [height, amount] =
+            core.get_blockchain_storage().sqlite_db()->get_accrued_earnings(address);
+
+    // FIXME: make this async
+
+    oxen::log::trace(
+            logcat,
+            "Initiating rewards request of {} SENT for {} at height {}",
+            amount,
+            address,
+            height);
+
+    const auto& service_node_list = core.get_service_node_list();
 
     // NOTE: Validate the arguments
-    if (address == crypto::eth_address{}) {
+    if (address == crypto::null<crypto::eth_address>) {
         throw std::invalid_argument(fmt::format(
                 "Aggregating a rewards request for the zero address for {} SENT at height {} is "
                 "invalid because address is invalid. Request rejected",
@@ -155,240 +230,237 @@ BLSRewardsResponse BLSAggregator::rewards_request(
                 service_node_list.height()));
     }
 
-    // NOTE: Setup the work data for `processNodes`
-    BLSSigner* signer = bls_signer.get();
-    struct WorkPayload
-    {
-        std::mutex mutex;                   /// `processNodes` dispatches to a threadpool hence we require synchronisation
-        std::vector<std::string> signers;   /// List of BLS public keys that signed the signature
-        bls::Signature aggregate_signature; /// The signature we aggregate BLS responses to
-        std::string message_to_hash;        /// The message that each node must hash
-        crypto::bytes<32> hash_to_sign;     /// The hash of the message that will be signed
-    };
+    BLSRewardsResponse result{};
+    result.address = address;
+    result.amount = amount;
+    result.height = height;
+    result.signed_hash = keccak(
+            BLSSigner::buildTagHash(BLSSigner::rewardTag, core.get_nettype()),
+            result.address, tools::encode_integer_be<32>(amount));
 
-    WorkPayload work = {};
-    work.aggregate_signature.clear();
-
-    // NOTE: Add our own signature to the aggregate signature
-    {
-        oxen::bls::GetRewardBalanceSignatureParts signature_parts = oxen::bls::get_reward_balance_request_message(signer, address, amount);
-        work.message_to_hash = std::move(signature_parts.message_to_sign);
-        work.hash_to_sign    = signature_parts.hash_to_sign;
-
-        bls::Signature my_signature = signer->signHash(work.hash_to_sign);
-        work.aggregate_signature.add(my_signature);
-        work.signers.push_back(signer->getPublicKeyHex());
-    }
+    // `nodesRequest` dispatches to a threadpool hence we require synchronisation:
+    std::mutex sig_mutex;
+    bls::Signature aggSig;
+    aggSig.clear();
 
     // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
-    // call!
-    processNodes(
-            oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD,
-            [&work, &address, amount, height](
+    // call (FIXME -- it should not be!)
+    nodesRequest(
+            "bls.get_reward_balance",
+            tools::view_guts(address),
+            [&aggSig, &result, &sig_mutex](
                     const BLSRequestResult& request_result, const std::vector<std::string>& data) {
-                // NOTE: Sanity check the response
-                if (!request_result.success) {
-                    logNetworkRequestFailedWarning(request_result, oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD);
-                    return;
-                }
 
-                oxen::bls::GetRewardBalanceResponse response = oxen::bls::parse_get_reward_balance_response(data);
-                if (!response.success) {
-                    oxen::log::trace(logcat, "OMQ request '{}' rejected: {}", oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD, response.error);
-                    return;
-                }
+                try {
+                    if (!request_result.success || data.size() != 2 || data[0] != "200")
+                        throw std::runtime_error{
+                                "Error retrieving reward balance: {}"_format(fmt::join(data, " "))};
 
-                // NOTE: Verify that the values that compose the signature are correct
-                if (address != response.address || amount != response.amount || height != response.height) {
-                    oxen::log::trace(
+                    oxenc::bt_dict_consumer d{data[1]};
+
+                    auto bal = d.require<uint64_t>("balance");
+                    auto hei = d.require<uint64_t>("height");
+                    auto sig = tools::make_from_guts<crypto::bls_signature>(
+                            d.require<std::string_view>("signature"));
+
+                    if (result.address != tools::make_from_guts<crypto::eth_address>(
+                                                  d.require<std::string_view>("address")))
+                        throw std::runtime_error{"ETH address does not match the request"};
+                    if (result.amount != bal || hei != result.height)
+                        throw std::runtime_error{
+                                    "Balance/height mismatch: expected {}/{}, got {}/{}"_format(
+                                            result.amount, result.height, bal, hei)};
+
+                    auto bls_sig = bls_utils::from_crypto_signature(sig);
+                    if (!bls_sig.verifyHash(
+                                bls_utils::from_crypto_pubkey(request_result.sn.bls_pubkey),
+                                result.signed_hash.data(),
+                                result.signed_hash.size()))
+                        throw std::runtime_error{
+                                "Invalid BLS signature for BLS pubkey {}"_format(
+                                        request_result.sn.bls_pubkey)};
+
+                    std::lock_guard lock{sig_mutex};
+                    aggSig.add(bls_sig);
+                    result.signers_bls_pubkeys.push_back(request_result.sn.bls_pubkey);
+                } catch (const std::exception& e) {
+                    oxen::log::warning(
                             logcat,
-                            "OMQ request '{}' rejected: Service node with BLS public key {} "
-                            "(x25519 {} @ {}:{}) produced different values to sign than ours:\n"
-                            "  - height:  {}\n"
-                            "  - address: {}\n"
-                            "  - amount:  {}\n"
-                            "\n"
-                            "Their values were:\n"
-                            "  - height:  {}\n"
-                            "  - address: {}\n"
-                            "  - amount:  {}\n"
-                            "\n"
-                            "Signature was not aggregated into the response.",
-                            oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD,
-                            bls_utils::PublicKeyToHex(response.bls_pkey),
-                            request_result.sn_address.x_pkey,
-                            epee::string_tools::get_ip_string_from_int32(request_result.sn_address.ip),
-                            request_result.sn_address.port,
-                            height,
-                            address,
-                            amount,
-                            response.height,
-                            response.address,
-                            response.amount);
-                    return;
+                            "Reward balance response rejected from {}: {}",
+                            request_result.sn.sn_pubkey,
+                            e.what());
                 }
+            });
 
-                // NOTE: Validate that the signature signed what we thought it
-                // did by reconstructing the message.
-                if (!response.message_hash_signature.verifyHash(response.bls_pkey, work.hash_to_sign.data(), work.hash_to_sign.size())) {
-                    oxen::log::trace(
-                            logcat,
-                            "OMQ request '{}' rejected: Service node with BLS public key {} "
-                            "(x25519 {} @ {}:{}) produced a signature that could not be verified "
-                            "using the values:\n"
-                            "  - height:          {}\n"
-                            "  - address:         {}\n"
-                            "  - amount:          {}\n"
-                            "  - message to sign: {}\n"
-                            "\n"
-                            "They generated signature that didn't use the values "
-                            "they reported in their response (above). Signature was not aggregated "
-                            "into the response.",
-                            oxen::bls::BLS_OMQ_REWARD_BALANCE_CMD,
-                            bls_utils::PublicKeyToHex(response.bls_pkey),
-                            request_result.sn_address.x_pkey,
-                            epee::string_tools::get_ip_string_from_int32(request_result.sn_address.ip),
-                            request_result.sn_address.port,
-                            height,
-                            address,
-                            amount,
-                            work.message_to_hash);
-                    return;
-                }
+    result.signature = bls_utils::to_crypto_signature(aggSig);
 
-                std::lock_guard<std::mutex> lock(work.mutex);
-                work.aggregate_signature.add(response.message_hash_signature);
-                work.signers.push_back(bls_utils::PublicKeyToHex(response.bls_pkey));
-            },
-            std::array{oxenc::type_to_hex(address), oxen_address, std::to_string(amount)},
-            exclude);
+#ifndef NDEBUG
+    bls::PublicKey aggPub;
+    aggPub.clear();
 
-    const auto sig_str = bls_utils::SignatureToHex(work.aggregate_signature);
-    BLSRewardsResponse result = {
-            .address = "0x" + oxenc::type_to_hex(address),
-            .amount = amount,
-            .height = height,
-            .signed_message = work.message_to_hash,
-            .signers_bls_pubkeys = work.signers,
-            .signature = sig_str};
+    for (const auto& blspk : result.signers_bls_pubkeys)
+        aggPub.add(bls_utils::from_crypto_pubkey(blspk));
+
+    oxen::log::trace(
+            logcat,
+            "BLS aggregate pubkey for reward requests: {} ({} aggregations) with signature {}",
+            bls_utils::to_crypto_pubkey(aggPub),
+            result.signers_bls_pubkeys.size(),
+            result.signature
+            );
+#endif
+
     return result;
 }
 
-aggregateExitResponse BLSAggregator::aggregateExit(const std::string& bls_key) {
-    bls::Signature agg_sig;
-    agg_sig.clear();
-    std::vector<std::string> signers;
-    std::mutex signers_mutex;
-    std::string signed_message = "";
-    bool initial_data_set = false;
+void BLSAggregator::get_exit(oxenmq::Message& m) {
+    oxen::log::trace(logcat, "Received omq exit signature request");
 
-    std::string_view cmd = "bls.get_exit";
-    processNodes(
-            cmd,
-            [&agg_sig, &signers, &signers_mutex, &bls_key, &signed_message, &initial_data_set, cmd](
-                    const BLSRequestResult& request_result, const std::vector<std::string>& data) {
-                if (request_result.success) {
-                    if (data[0] == "200") {
+    crypto::bls_public_key exiting_pk;
+    if (!extract_1part_msg(m, exiting_pk, "BLS exit", "BLS pubkey"))
+        return;
 
-                        // Data contains -> status, bls_pubkey (signer), bls_pubkey (node being
-                        // removed), signed message, signature
-                        signers_mutex.lock();
-                        if (!initial_data_set) {
-                            signed_message = data[3];
-                            initial_data_set = true;
-                        }
-                        signers_mutex.unlock();
-                        if (data[1] != bls_key || data[3] != signed_message) {
-                            // Log if the current data doesn't match the first set
-                            oxen::log::warning(
-                                    logcat,
-                                    "Mismatch in data from node with bls pubkey {}. Expected "
-                                    "bls_key: {}, signed message: {}. Received bls_key: {}, "
-                                    "signed_message: {}.",
-                                    data[2],
-                                    bls_key,
-                                    signed_message,
-                                    data[1],
-                                    data[3]);
-                        } else {
-                            bls::Signature external_signature;
-                            external_signature.setStr(data[4]);
-                            std::lock_guard<std::mutex> lock(signers_mutex);
-                            agg_sig.add(external_signature);
-                            signers.push_back(data[2]);
-                        }
-                    } else {
-                        oxen::log::warning(
-                                logcat,
-                                "Error message received when requesting exit {} : {}",
-                                data[0],
-                                data[1]);
-                    }
-                } else {
-                    logNetworkRequestFailedWarning(request_result, cmd);
-                }
-            },
-            std::array{bls_key});
-    const auto sig_str = bls_utils::SignatureToHex(agg_sig);
-    return aggregateExitResponse{bls_key, signed_message, signers, sig_str};
+    // right not its approving everything
+    if (!core.is_node_removable(exiting_pk)) {
+        m.send_reply(
+                "403",
+                "Forbidden: The BLS pubkey {} is not currently removable."_format(exiting_pk));
+        return;
+    }
+
+    auto& signer = core.get_bls_signer();
+    const auto tag = signer.buildTagHash(signer.removalTag);
+    const auto sig = signer.signHash(keccak(tag, exiting_pk));
+
+    oxenc::bt_dict_producer d;
+    // exiting BLS pubkey:
+    d.append("exit", tools::view_guts(exiting_pk));
+    // signature of *this* snode of the exiting pubkey:
+    d.append("signature", tools::view_guts(sig));
+
+    m.send_reply("200", std::move(d).str());
 }
 
-aggregateExitResponse BLSAggregator::aggregateLiquidation(const std::string& bls_key) {
-    bls::Signature agg_sig;
-    agg_sig.clear();
-    std::vector<std::string> signers;
+void BLSAggregator::get_liquidation(oxenmq::Message& m) {
+    oxen::log::trace(logcat, "Received omq liquidation signature request");
+
+    crypto::bls_public_key liquidating_pk;
+    if (!extract_1part_msg(m, liquidating_pk, "BLS exit", "BLS pubkey"))
+        return;
+
+    if (!core.is_node_liquidatable(liquidating_pk)) {
+        m.send_reply(
+                "403",
+                "Forbidden: The BLS key {} is not currently liquidatable"_format(liquidating_pk));
+        return;
+    }
+
+    auto& signer = core.get_bls_signer();
+    const auto tag = signer.buildTagHash(signer.liquidateTag);
+    const auto sig = signer.signHash(keccak(tag, liquidating_pk));
+
+    oxenc::bt_dict_producer d;
+    // BLS key of the node being liquidated:
+    d.append("liquidate", tools::view_guts(liquidating_pk));
+    // signature of *this* snode of the liquidating pubkey:
+    d.append("signature", tools::view_guts(sig));
+
+    m.send_reply("200", std::move(d).str());
+}
+
+// Common code for exit and liquidation requests, which only differ in three ways:
+// - the endpoint they go to;
+// - the tag that gets used in the signed hash; and
+// - the key under which the signed pubkey gets confirmed back to us.
+AggregateExitResponse BLSAggregator::aggregateExitOrLiquidate(
+        const crypto::bls_public_key& bls_pubkey,
+        std::string_view hash_tag,
+        std::string_view endpoint,
+        std::string_view pubkey_key) {
+
+    // FIXME: make this async
+
+    assert(pubkey_key < "signature");  // response dict keys must be processed in sorted order, and
+                                       // we expect the pubkey to be in a key that comes first.
+
+    AggregateExitResponse result;
+    result.exit_pubkey = bls_pubkey;
+    result.signed_hash =
+            crypto::keccak(BLSSigner::buildTagHash(hash_tag, core.get_nettype()), bls_pubkey);
+
     std::mutex signers_mutex;
-    std::string signed_message = "";
-    bool initial_data_set = false;
+    bls::Signature aggSig;
+    aggSig.clear();
 
-    std::string_view cmd = "bls.get_liquidation";
-    processNodes(
-            cmd,
-            [&agg_sig, &signers, &signers_mutex, &bls_key, &signed_message, &initial_data_set, cmd](
+    nodesRequest(
+            endpoint,
+            tools::view_guts(bls_pubkey),
+            [endpoint, pubkey_key, &aggSig, &result, &signers_mutex](
                     const BLSRequestResult& request_result, const std::vector<std::string>& data) {
-                if (request_result.success) {
-                    if (data[0] == "200") {
 
-                        // Data contains -> status, bls_pubkey (signer), bls_pubkey (node being
-                        // removed), signed message, signature
-                        signers_mutex.lock();
-                        if (!initial_data_set) {
-                            signed_message = data[3];
-                            initial_data_set = true;
-                        }
-                        signers_mutex.unlock();
+                try {
+                    if (!request_result.success || data.size() != 2 || data[0] != "200")
+                        throw std::runtime_error{
+                                "Request returned an error: {}"_format(fmt::join(data, " "))};
 
-                        if (data[1] != bls_key || data[3] != signed_message) {
-                            // Log if the current data doesn't match the first set
-                            oxen::log::warning(
-                                    logcat,
-                                    "Mismatch in data from node with bls pubkey {}. Expected "
-                                    "bls_key: {}, signed message: {}. Received bls_key: {}, "
-                                    "signed_message: {}.",
-                                    data[2],
-                                    bls_key,
-                                    signed_message,
-                                    data[1],
-                                    data[3]);
-                        } else {
-                            bls::Signature external_signature;
-                            external_signature.setStr(data[4]);
-                            std::lock_guard<std::mutex> lock(signers_mutex);
-                            agg_sig.add(external_signature);
-                            signers.push_back(data[2]);
-                        }
-                    } else {
-                        oxen::log::warning(
-                                logcat,
-                                "Error message received when requesting liquidation {} : {}",
-                                data[0],
-                                data[1]);
-                    }
-                } else {
-                    logNetworkRequestFailedWarning(request_result, cmd);
+                    oxenc::bt_dict_consumer d{data[1]};
+                    if (result.exit_pubkey != tools::make_from_guts<crypto::bls_public_key>(
+                                                      d.require<std::string_view>(pubkey_key)))
+                        throw std::runtime_error{"BLS pubkey does not match the request"};
+
+                    auto sig = tools::make_from_guts<crypto::bls_signature>(
+                            d.require<std::string_view>("signature"));
+
+                    auto bls_sig = bls_utils::from_crypto_signature(sig);
+
+                    if (!bls_sig.verifyHash(
+                                bls_utils::from_crypto_pubkey(request_result.sn.bls_pubkey),
+                                result.signed_hash.data(),
+                                result.signed_hash.size()))
+                        throw std::runtime_error{"Invalid BLS signature for BLS pubkey {}"_format(
+                                request_result.sn.bls_pubkey)};
+
+                    std::lock_guard<std::mutex> lock(signers_mutex);
+                    aggSig.add(bls_sig);
+                    result.signers_bls_pubkeys.push_back(request_result.sn.bls_pubkey);
+                } catch (const std::exception& e) {
+                    oxen::log::warning(
+                            logcat,
+                            "{} signature response rejected from {}: {}",
+                            endpoint,
+                            request_result.sn.sn_pubkey,
+                            e.what());
                 }
-            },
-            std::array{bls_key});
-    const auto sig_str = bls_utils::SignatureToHex(agg_sig);
-    return aggregateExitResponse{bls_key, signed_message, signers, sig_str};
+            });
+
+    result.signature = bls_utils::to_crypto_signature(aggSig);
+
+#ifndef NDEBUG
+    bls::PublicKey aggPub;
+    aggPub.clear();
+
+    for (const auto& blspk : result.signers_bls_pubkeys)
+        aggPub.add(bls_utils::from_crypto_pubkey(blspk));
+
+    oxen::log::trace(
+            logcat,
+            "BLS agg pubkey for {} requests: {} ({} aggregations) with signature {}",
+            endpoint,
+            bls_utils::to_crypto_pubkey(aggPub),
+            result.signers_bls_pubkeys.size(),
+            result.signature
+            );
+#endif
+
+    return result;
+}
+
+AggregateExitResponse BLSAggregator::aggregateExit(const crypto::bls_public_key& bls_pubkey) {
+    return aggregateExitOrLiquidate(bls_pubkey, BLSSigner::removalTag, "bls.get_exit", "exit");
+}
+
+AggregateExitResponse BLSAggregator::aggregateLiquidation(
+        const crypto::bls_public_key& bls_pubkey) {
+    return aggregateExitOrLiquidate(
+            bls_pubkey, BLSSigner::liquidateTag, "bls.get_liquidation", "liquidate");
 }

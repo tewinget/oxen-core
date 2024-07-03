@@ -7,50 +7,47 @@
 #include <vector>
 
 #include "bls_signer.h"
+#include "crypto/crypto.h"
 #include "cryptonote_core/service_node_list.h"
 
-struct aggregateExitResponse {
-    std::string bls_key;
-    std::string signed_message;
-    std::vector<std::string> signers_bls_pubkeys;
-    std::string signature;
+struct AggregateSigned {
+    crypto::hash signed_hash;
+    std::vector<crypto::bls_public_key> signers_bls_pubkeys;
+    crypto::bls_signature signature;
 };
 
-struct BLSRewardsResponse {
-    std::string address;
+struct AggregateExitResponse : AggregateSigned {
+    crypto::bls_public_key exit_pubkey;
+};
+
+struct BLSRewardsResponse : AggregateSigned {
+    crypto::eth_address address;
     uint64_t amount;
     uint64_t height;
-    std::string signed_message;
-    std::vector<std::string> signers_bls_pubkeys;
-    std::string signature;
 };
 
-struct blsRegistrationResponse {
-    std::string bls_pubkey;
-    std::string proof_of_possession;
-    std::string address;
-    std::string service_node_pubkey;
-    std::string service_node_signature;
+struct BLSRegistrationResponse {
+    crypto::bls_public_key bls_pubkey;
+    crypto::bls_signature proof_of_possession;
+    crypto::eth_address address;
+    crypto::public_key sn_pubkey;
+    crypto::ed25519_signature ed_signature;
 };
 
 struct BLSRequestResult {
-    service_nodes::service_node_address sn_address;
+    service_nodes::service_node_address sn;
     bool success;
 };
 
 class BLSAggregator {
   private:
-    std::shared_ptr<BLSSigner> bls_signer;
-    std::shared_ptr<oxenmq::OxenMQ> omq;
-    service_nodes::service_node_list& service_node_list;
+    cryptonote::core& core;
 
   public:
-    BLSAggregator(
-            service_nodes::service_node_list& _snl,
-            std::shared_ptr<oxenmq::OxenMQ> _omq,
-            std::shared_ptr<BLSSigner> _bls_signer);
+    using request_callback = std::function<void(
+            const BLSRequestResult& request_result, const std::vector<std::string>& data)>;
 
-    std::vector<std::pair<std::string, std::string>> getPubkeys();
+    explicit BLSAggregator(cryptonote::core& core);
 
     /// Request the service node network to sign the requested amount of
     /// 'rewards' for the given Ethereum 'address' if by consensus they agree
@@ -59,26 +56,28 @@ class BLSAggregator {
     ///
     /// This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
     /// amount is `0` or height is greater than the current blockchain height.
-    BLSRewardsResponse rewards_request(
-            const crypto::eth_address& address,
-            const std::string& oxen_address,
-            uint64_t rewards,
-            uint64_t height,
-            std::span<const crypto::x25519_public_key> exclude);
+    BLSRewardsResponse rewards_request(const crypto::eth_address& address);
 
-    aggregateExitResponse aggregateExit(const std::string& bls_key);
-    aggregateExitResponse aggregateLiquidation(const std::string& bls_key);
-    blsRegistrationResponse registration(
-            const std::string& senderEthAddress, const std::string& serviceNodePubkey) const;
+    AggregateExitResponse aggregateExit(const crypto::bls_public_key& bls_pubkey);
+    AggregateExitResponse aggregateLiquidation(const crypto::bls_public_key& bls_pubkey);
+    BLSRegistrationResponse registration(
+            const crypto::eth_address& sender, const crypto::public_key& serviceNodePubkey) const;
 
   private:
+    void get_reward_balance(oxenmq::Message& m);
+    void get_exit(oxenmq::Message& m);
+    void get_liquidation(oxenmq::Message& m);
+
+    AggregateExitResponse aggregateExitOrLiquidate(
+            const crypto::bls_public_key& bls_pubkey,
+            std::string_view hash_tag,
+            std::string_view endpoint,
+            std::string_view pubkey_key);
+
     // Goes out to the nodes on the network and makes oxenmq requests to all of them, when getting
     // the reply `callback` will be called to process their reply
-    void processNodes(
+    void nodesRequest(
             std::string_view request_name,
-            std::function<void(
-                    const BLSRequestResult& request_result, const std::vector<std::string>& data)>
-                    callback,
-            std::span<const std::string> message = {},
-            std::span<const crypto::x25519_public_key> exclude = {});
+            std::string_view message,
+            const request_callback& callback);
 };

@@ -32,7 +32,7 @@
 #include <forward_list>
 
 #include "common/command_line.h"
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/scoped_message_writer.h"
 #include "common/string_util.h"
 #include "rpc/core_rpc_server_commands_defs.h"
@@ -329,7 +329,7 @@ bool command_parser_executor::print_block(const std::vector<std::string>& args) 
         return m_executor.print_block_by_height(height, include_hex);
     } catch (const boost::bad_lexical_cast&) {
         crypto::hash block_hash;
-        if (tools::hex_to_type(arg, block_hash))
+        if (tools::try_load_from_hex_guts(arg, block_hash))
             return m_executor.print_block_by_hash(block_hash, include_hex);
         log::error(logcat, "Invalid hash or height value: {}", arg);
     }
@@ -362,7 +362,7 @@ bool command_parser_executor::print_transaction(const std::vector<std::string>& 
 
     const std::string& str_hash = args.front();
     crypto::hash tx_hash;
-    if (tools::hex_to_type(str_hash, tx_hash))
+    if (tools::try_load_from_hex_guts(str_hash, tx_hash))
         m_executor.print_transaction(tx_hash, include_metadata, include_hex, include_json);
     else
         log::error(logcat, "Invalid transaction hash: {}", str_hash);
@@ -379,7 +379,7 @@ bool command_parser_executor::is_key_image_spent(const std::vector<std::string>&
 
     std::vector<crypto::key_image> kis;
     for (const auto& hex : args) {
-        if (!tools::hex_to_type(hex, kis.emplace_back())) {
+        if (!tools::try_load_from_hex_guts(hex, kis.emplace_back())) {
             tools::fail_msg_writer("Invalid key image: '{}'", hex);
             return true;
         }
@@ -584,7 +584,7 @@ bool command_parser_executor::flush_txpool(const std::vector<std::string>& args)
     std::string txid;
     if (args.size() == 1) {
         crypto::hash hash;
-        if (!tools::hex_to_type(args[0], hash)) {
+        if (!tools::try_load_from_hex_guts(args[0], hash)) {
             std::cout << "failed to parse tx id: " << args[0] << "\n";
             return true;
         }
@@ -684,7 +684,7 @@ bool command_parser_executor::relay_tx(const std::vector<std::string>& args) {
 
     std::string txid;
     crypto::hash hash;
-    if (!tools::hex_to_type(args[0], hash)) {
+    if (!tools::try_load_from_hex_guts(args[0], hash)) {
         std::cout << "failed to parse tx id: " << args[0] << std::endl;
         return true;
     }

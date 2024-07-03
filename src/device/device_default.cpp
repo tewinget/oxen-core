@@ -407,7 +407,7 @@ bool device_default::generate_output_ephemeral_keys(
                 false,
                 "at creation outs: failed to generate_key_derivation({}, {})",
                 txkey_pub,
-                type_to_hex(sender_account_keys.m_view_secret_key));
+                tools::hex_guts(sender_account_keys.m_view_secret_key));
 
     } else {
         // sending to the recipient; derivation = r*A (or s*C in the subaddress scheme)
@@ -420,7 +420,7 @@ bool device_default::generate_output_ephemeral_keys(
                 false,
                 "at creation outs: failed to generate_key_derivation({}, {})",
                 dst_entr.addr.m_view_public_key,
-                type_to_hex(
+                tools::hex_guts(
                         dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec
                                                                          : tx_key));
     }

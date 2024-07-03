@@ -300,7 +300,7 @@ namespace cryptonote
       cnx.current_download = cntxt.m_current_speed_down;
       cnx.current_upload = cntxt.m_current_speed_up;
 
-      cnx.connection_id = tools::type_to_hex(cntxt.m_connection_id);
+      cnx.connection_id = tools::hex_guts(cntxt.m_connection_id);
 
       cnx.height = cntxt.m_remote_blockchain_height;
       cnx.pruning_seed = cntxt.m_pruning_seed;
@@ -351,7 +351,7 @@ namespace cryptonote
     context.m_pruning_seed = hshd.pruning_seed;
     if constexpr (PRUNING_DEBUG_SPOOF_SEED) {
       context.m_pruning_seed = tools::make_pruning_seed(1 + (context.m_remote_address.as<epee::net_utils::ipv4_network_address>().ip()) % (1 << PRUNING_LOG_STRIPES), PRUNING_LOG_STRIPES);
-      log::info(logcat, "{}New connection posing as pruning seed {}", context, tools::type_to_hex(context.m_pruning_seed));
+      log::info(logcat, "{}New connection posing as pruning seed {:08x}", context, context.m_pruning_seed);
     }
 
     // No chain synchronization over hidden networks (tor, i2p, etc.)
@@ -560,7 +560,8 @@ namespace cryptonote
         // What we asked for != to what we received ..
         if(context.m_requested_objects.size() != arg.b.txs.size())
         {
-          log::error(logcat, "NOTIFY_NEW_FLUFFY_BLOCK -> request/response mismatch, block = {}, requested = {}, received = {}, dropping connection", tools::type_to_hex(get_blob_hash(arg.b.block)), context.m_requested_objects.size(), new_block.tx_hashes.size());
+          log::error(logcat, "NOTIFY_NEW_FLUFFY_BLOCK -> request/response mismatch, block = {}, requested = {}, received = {}, dropping connection",
+                  get_blob_hash(arg.b.block), context.m_requested_objects.size(), new_block.tx_hashes.size());
           drop_connection(context, false, false);
           m_core.resume_mine();
           return 1;
@@ -789,39 +790,7 @@ namespace cryptonote
   }  
   //------------------------------------------------------------------------------------------------------------------------  
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_uptime_proof(int command, NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& context)
-  {
-    log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_UPTIME_PROOF");
-    // NOTE: Don't relay your own uptime proof, otherwise we have the following situation
-
-    // Node1 sends uptime ->
-    // Node2 receives uptime and relays it back to Node1 for acknowledgement ->
-    // Node1 receives it, handle_uptime_proof returns true to acknowledge, Node1 tries to resend to the same peers again
-
-    // Instead, if we receive our own uptime proof, then acknowledge but don't
-    // send on. If the we are missing an uptime proof it will have been
-    // submitted automatically by the daemon itself instead of
-    // using my own proof relayed by other nodes.
-
-    (void)context;
-    bool my_uptime_proof_confirmation = false;
-    if (m_core.handle_uptime_proof(arg, my_uptime_proof_confirmation))
-    {
-      if (!my_uptime_proof_confirmation)
-      {
-        // NOTE: The default exclude context contains the peer who sent us this
-        // uptime proof, we want to ensure we relay it back so they know that the
-        // peer they relayed to received their uptime and confirm it, so send in an
-        // empty context so we don't omit the source peer from the relay back.
-        cryptonote_connection_context empty_context = {};
-        relay_uptime_proof(arg, empty_context);
-      }
-    }
-    return 1;
-  }
-  //------------------------------------------------------------------------------------------------------------------------  
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_btencoded_uptime_proof(int command, NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_uptime_proof(int command, NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_BTENCODED_UPTIME_PROOF");
     // NOTE: Don't relay your own uptime proof, otherwise we have the following situation
@@ -838,7 +807,7 @@ namespace cryptonote
     (void)context;
     bool my_uptime_proof_confirmation = false;
 
-    if (m_core.handle_btencoded_uptime_proof(arg, my_uptime_proof_confirmation))
+    if (m_core.handle_uptime_proof(arg, my_uptime_proof_confirmation))
     {
       if (!my_uptime_proof_confirmation)
       {
@@ -847,7 +816,7 @@ namespace cryptonote
         // peer they relayed to received their uptime and confirm it, so send in an
         // empty context so we don't omit the source peer from the relay back.
         cryptonote_connection_context empty_context = {};
-        relay_btencoded_uptime_proof(arg, empty_context);
+        relay_uptime_proof(arg, empty_context);
       }
     }
     return 1;
@@ -1194,14 +1163,16 @@ namespace cryptonote
       auto req_it = context.m_requested_objects.find(block_hash);
       if(req_it == context.m_requested_objects.end())
       {
-        log::error(logcat, "sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id={} wasn't requested, dropping connection", tools::type_to_hex(get_blob_hash(block_entry.block)));
+        log::error(logcat, "sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id={} wasn't requested, dropping connection",
+                get_blob_hash(block_entry.block));
         drop_connection(context, false, false);
         ++m_sync_bad_spans_downloaded;
         return 1;
       }
       if(b.tx_hashes.size() != block_entry.txs.size())
       {
-        log::error(logcat, "sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id={}, tx_hashes.size()= {} mismatch with block_complete_entry.m_txs.size()= {}, dropping connection", tools::type_to_hex(get_blob_hash(block_entry.block)), b.tx_hashes.size(), block_entry.txs.size());
+        log::error(logcat, "sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id={}, tx_hashes.size()= {} mismatch with block_complete_entry.m_txs.size()= {}, dropping connection",
+                get_blob_hash(block_entry.block), b.tx_hashes.size(), block_entry.txs.size());
         drop_connection(context, false, false);
         ++m_sync_bad_spans_downloaded;
         return 1;
@@ -1455,7 +1426,8 @@ namespace cryptonote
                   if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id)->bool{
                     cryptonote::transaction tx;
                     parse_and_validate_tx_from_blob(block_entry.txs[i], tx); // must succeed if we got here
-                    log::error(logcat, "transaction verification failed on NOTIFY_RESPONSE_GET_BLOCKS, tx_id = {}, dropping connection", tools::type_to_hex(cryptonote::get_transaction_hash(tx)));
+                    log::error(logcat, "transaction verification failed on NOTIFY_RESPONSE_GET_BLOCKS, tx_id = {}, dropping connection",
+                            cryptonote::get_transaction_hash(tx));
                     drop_connection(context, false, true);
                     return 1;
                   }))
@@ -2451,14 +2423,7 @@ Use the "help" command to see the list of available commands.
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_uptime_proof(NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context)
-  {
-    bool result = relay_to_synchronized_peers<NOTIFY_UPTIME_PROOF>(arg, exclude_context);
-    return result;
-  }
-  //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_btencoded_uptime_proof(NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context)
+  bool t_cryptonote_protocol_handler<t_core>::relay_uptime_proof(NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context)
   {
     bool result = relay_to_synchronized_peers<NOTIFY_BTENCODED_UPTIME_PROOF>(arg, exclude_context);
     return result;

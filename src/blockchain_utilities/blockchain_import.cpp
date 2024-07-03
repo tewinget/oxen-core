@@ -40,7 +40,6 @@
 #include "blocks/blocks.h"
 #include "bootstrap_file.h"
 #include "bootstrap_serialization.h"
-#include "common/hex.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/uptime_proof.h"
@@ -136,10 +135,7 @@ int check_flush(cryptonote::core& core, std::vector<block_complete_entry>& block
     for (const auto& b : blocks) {
         cryptonote::block block;
         if (!parse_and_validate_block_from_blob(b.block, block)) {
-            log::error(
-                    logcat,
-                    "Failed to parse block: {}",
-                    tools::type_to_hex(get_blob_hash(b.block)));
+            log::error(logcat, "Failed to parse block: {}", get_blob_hash(b.block));
             core.cleanup_handle_incoming_blocks();
             return 1;
         }
@@ -169,7 +165,7 @@ int check_flush(cryptonote::core& core, std::vector<block_complete_entry>& block
                 log::error(
                         logcat,
                         "transaction verification failed, tx_id = {}",
-                        tools::type_to_hex(get_blob_hash(tx_blob)));
+                        get_blob_hash(tx_blob));
                 core.cleanup_handle_incoming_blocks();
                 return 1;
             }
@@ -188,9 +184,7 @@ int check_flush(cryptonote::core& core, std::vector<block_complete_entry>& block
 
         if (bvc.m_verifivation_failed) {
             log::error(
-                    logcat,
-                    "Block verification failed, id = {}",
-                    tools::type_to_hex(get_blob_hash(block_entry.block)));
+                    logcat, "Block verification failed, id = {}", get_blob_hash(block_entry.block));
             core.cleanup_handle_incoming_blocks();
             return 1;
         }

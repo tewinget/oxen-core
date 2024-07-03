@@ -328,28 +328,13 @@ void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
 
 // Must be called with the address_str_cache_mutex held!
 std::string BlockchainSQLite::get_address_str(const cryptonote::batch_sn_payment& addr) {
-    if (addr.eth_address.has_value()) {
-        auto eth_address = tools::type_to_hex(addr.eth_address.value());
-        std::transform(
-                eth_address.begin(), eth_address.end(), eth_address.begin(), [](unsigned char c) {
-                    return std::tolower(c);
-                });
-        return "0x" + eth_address;
-    }
+    if (addr.eth_address)
+        return "0x{:x}"_format(addr.eth_address);
     auto& address_str = address_str_cache[addr.address_info.address];
     if (address_str.empty())
         address_str =
                 cryptonote::get_account_address_as_str(m_nettype, 0, addr.address_info.address);
     return address_str;
-}
-
-bool BlockchainSQLite::update_sn_rewards_address(
-        const std::string& oxen_address, const crypto::eth_address& eth_address) {
-    auto update_address = prepared_st(
-            "UPDATE batched_payments_accrued SET address = ? WHERE address = ?"
-            " ON CONFLICT (address) DO UPDATE SET amount = amount + excluded.amount");
-    bool result = db::exec_query(update_address, tools::type_to_hex(eth_address), oxen_address) > 0;
-    return result;
 }
 
 bool BlockchainSQLite::add_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments) {
@@ -432,31 +417,27 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint
     return payments;
 }
 
-std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const std::string& address) {
-    log::trace(logcat, "BlockchainDB_SQLITE::{} for {}", __func__, address);
-    // auto earnings = prepared_maybe_get<int64_t>(R"(
-    // WITH RelevantOxenAddress AS (
-    // SELECT oxen_address
-    // FROM eth_mapping
-    // WHERE eth_address = ?
-    // HAVING height = MAX(height)
-    //)
-    // SELECT amount
-    // FROM batched_payments_accrued
-    // WHERE address = ?
-    // UNION
-    // SELECT bpa.amount
-    // FROM batched_payments_accrued bpa
-    // JOIN RelevantOxenAddress roa ON bpa.address = roa.oxen_address;
-    //)", address, address);
-    auto earnings = prepared_maybe_get<int64_t>(
+static std::pair<uint64_t, uint64_t> get_accrued_earnings_impl(BlockchainSQLite& db, const std::string& address, uint64_t height) {
+    log::trace(logcat, "BlockchainDB_SQLITE {} for {}", __func__, address);
+    auto earnings = db.prepared_maybe_get<int64_t>(
             R"(
         SELECT amount
         FROM batched_payments_accrued
         WHERE address = ?
-    )",
-            address);
+    )", address);
     auto result = std::make_pair(height, static_cast<uint64_t>(earnings.value_or(0) / 1000));
+    return result;
+}
+
+std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const crypto::eth_address& address) {
+    std::string address_string = fmt::format("0x{:x}", address);
+    auto result = get_accrued_earnings_impl(*this, address_string, height);
+    return result;
+}
+
+std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const account_public_address& address) {
+    std::string address_string = get_account_address_as_str(m_nettype, false /*subaddress*/, address);
+    auto result = get_accrued_earnings_impl(*this, address_string, height);
     return result;
 }
 
@@ -540,7 +521,7 @@ bool BlockchainSQLite::reward_handler(
 
     uint64_t block_reward = block.reward * BATCH_REWARD_FACTOR;
     uint64_t service_node_reward =
-            block.major_version >= hf::hf20
+            block.major_version >= feature::ETH_BLS
                     ? block_reward
                     : cryptonote::service_node_reward_formula(0, block.major_version) *
                               BATCH_REWARD_FACTOR;
@@ -592,7 +573,8 @@ bool BlockchainSQLite::reward_handler(
     }
 
     // Step 3: Add Governance reward to the list
-    if (m_nettype != cryptonote::network_type::FAKECHAIN && block.major_version < hf::hf20) {
+    if (m_nettype != cryptonote::network_type::FAKECHAIN &&
+        block.major_version < feature::ETH_BLS) {
         if (parsed_governance_addr.first != block.major_version) {
             cryptonote::get_account_address_from_str(
                     parsed_governance_addr.second,

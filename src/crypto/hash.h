@@ -31,13 +31,11 @@
 #pragma once
 
 #include <cstddef>
-#include <ostream>
+#include <span>
 
 #include "base.h"
-
-extern "C" {
 #include "hash-ops.h"
-}
+#include "keccak.h"
 
 namespace crypto {
 
@@ -70,6 +68,53 @@ inline hash cn_fast_hash(const void* data, std::size_t length) {
     hash h;
     cn_fast_hash(data, length, h);
     return h;
+}
+
+inline void keccak_update(KECCAK_CTX& ctx, std::span<const unsigned char> piece) {
+    ::keccak_update(&ctx, piece.data(), piece.size());
+}
+inline void keccak_update(KECCAK_CTX& ctx, std::span<const char> piece) {
+    ::keccak_update(&ctx, reinterpret_cast<const uint8_t*>(piece.data()), piece.size());
+}
+inline void keccak_update(KECCAK_CTX& ctx, std::span<const std::byte> piece) {
+    ::keccak_update(&ctx, reinterpret_cast<const uint8_t*>(piece.data()), piece.size());
+}
+
+template <typename T>
+concept byte_span_convertible = std::convertible_to<T, std::span<const char>> ||
+                                std::convertible_to<T, std::span<const unsigned char>> ||
+                                std::convertible_to<T, std::span<const std::byte>>;
+
+template <typename Hash>
+concept keccak_hashable = Hash::size() % 8 == 0 && (Hash::size() <= 100 || Hash::size() == 200);
+
+// C++ version of keccak() that takes any number of char or unsigned char character spans (such as
+// vectors, arrays, strings) and keccaks them, writing the hash into a `Hash` that gets returned.
+template <keccak_hashable Hash = crypto::hash, byte_span_convertible... T>
+Hash keccak(T&&... piece) {
+    Hash hash;
+    if constexpr (sizeof...(T) == 1) {
+        (::keccak(
+                 reinterpret_cast<const uint8_t*>(piece.data()),
+                 piece.size(),
+                 hash.data(),
+                 hash.size()),
+         ...);
+    } else {
+        KECCAK_CTX ctx;
+        ::keccak_init(&ctx);
+        (crypto::keccak_update(ctx, std::forward<T>(piece)), ...);
+        ::keccak_finish(&ctx, hash.data(), hash.size());
+    }
+    return hash;
+}
+
+// Multi-argument version of keccak_update (so that you can provide multiple update arguments at
+// once), like with the `keccak()` function above, when building a more complex hashed value.
+template <byte_span_convertible... T>
+    requires(sizeof...(T) > 1)
+void keccak_update(KECCAK_CTX& ctx, T&&... piece) {
+    (keccak_update(ctx, std::forward<T>(piece)), ...);
 }
 
 enum struct cn_slow_hash_type {

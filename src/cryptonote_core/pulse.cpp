@@ -1794,8 +1794,7 @@ namespace {
 
                 for (size_t index = 0; index < quorum.size(); index++) {
                     if (auto& random_value = quorum[index]; random_value) {
-                        epee::wipeable_string string =
-                                oxenc::to_hex(tools::view_guts(random_value->data));
+                        epee::wipeable_string string = tools::hex_guts(random_value->data);
 
 #if defined(NDEBUG)
                         // Mask the random value generated incase someone is snooping logs
@@ -1841,7 +1840,7 @@ namespace {
                     logcat,
                     "{}Block final random value {} generated from validators {}",
                     log_prefix(context),
-                    oxenc::to_hex(tools::view_guts(final_block.pulse.random_value.data)),
+                    tools::hex_guts(final_block.pulse.random_value.data),
                     bitset_view16(stage.bitset).to_string());
             return round_state::send_and_wait_for_signed_blocks;
         }

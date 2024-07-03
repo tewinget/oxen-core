@@ -75,8 +75,7 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_CHAIN_ENTRY, handle_response_chain_entry)
     HANDLE_NOTIFY_T2(NOTIFY_NEW_FLUFFY_BLOCK, handle_notify_new_fluffy_block)
     HANDLE_NOTIFY_T2(NOTIFY_REQUEST_FLUFFY_MISSING_TX, handle_request_fluffy_missing_tx)
-    HANDLE_NOTIFY_T2(NOTIFY_UPTIME_PROOF, handle_uptime_proof)
-    HANDLE_NOTIFY_T2(NOTIFY_BTENCODED_UPTIME_PROOF, handle_btencoded_uptime_proof)
+    HANDLE_NOTIFY_T2(NOTIFY_BTENCODED_UPTIME_PROOF, handle_uptime_proof)
     HANDLE_NOTIFY_T2(NOTIFY_NEW_SERVICE_NODE_VOTE, handle_notify_new_service_node_vote)
     HANDLE_NOTIFY_T2(NOTIFY_REQUEST_BLOCK_BLINKS, handle_request_block_blinks)
     HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_BLOCK_BLINKS, handle_response_block_blinks)
@@ -141,8 +140,6 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
             NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg,
             cryptonote_connection_context& context);
     int handle_uptime_proof(
-            int command, NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& context);
-    int handle_btencoded_uptime_proof(
             int command,
             NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
             cryptonote_connection_context& context);
@@ -195,8 +192,6 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     virtual bool relay_transactions(
             NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& exclude_context);
     virtual bool relay_uptime_proof(
-            NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context);
-    virtual bool relay_btencoded_uptime_proof(
             NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
             cryptonote_connection_context& exclude_context);
     virtual bool relay_service_node_votes(
@@ -232,9 +227,9 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     std::atomic<bool> m_no_sync;
     std::mutex m_sync_lock;
     block_queue m_block_queue;
-    tools::periodic_task m_idle_peer_kicker{30s};
-    tools::periodic_task m_standby_checker{100ms};
-    tools::periodic_task m_sync_search_checker{101s};
+    tools::periodic_task m_idle_peer_kicker{"idle peer cleanup", 30s};
+    tools::periodic_task m_standby_checker{"standby checker", 100ms};
+    tools::periodic_task m_sync_search_checker{"sync search check", 101s};
     std::atomic<unsigned int> m_max_out_peers;
     std::chrono::steady_clock::time_point m_sync_timer;
     std::chrono::steady_clock::time_point m_last_add_end_time;

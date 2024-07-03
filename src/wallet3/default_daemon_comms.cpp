@@ -7,6 +7,7 @@
 
 #include "block.hpp"
 #include "block_tx.hpp"
+#include "common/guts.h"
 #include "wallet.hpp"
 #include "wallet2½.hpp"
 
@@ -460,7 +461,7 @@ std::future<std::pair<std::string, crypto::hash>> DefaultDaemonComms::ons_names_
             if (not result.skip_until("txid"))
                 throw std::runtime_error{"Invalid response from daemon"};
 
-            tools::hex_to_type<crypto::hash>(dc.consume_string(), prev_txid);
+            tools::load_from_hex_guts(dc.consume_string(), prev_txid);
 
             p->set_value(std::make_pair(curr_owner, prev_txid));
         } catch (...) {

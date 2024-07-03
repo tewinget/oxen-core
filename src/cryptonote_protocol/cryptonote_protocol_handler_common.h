@@ -45,8 +45,6 @@ struct i_cryptonote_protocol {
             NOTIFY_NEW_TRANSACTIONS::request& arg,
             cryptonote_connection_context& exclude_context) = 0;
     virtual bool relay_uptime_proof(
-            NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context) = 0;
-    virtual bool relay_btencoded_uptime_proof(
             NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
             cryptonote_connection_context& exclude_context) = 0;
     // virtual bool request_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg,
@@ -74,10 +72,6 @@ struct cryptonote_protocol_stub : public i_cryptonote_protocol {
         return false;
     }
     virtual bool relay_uptime_proof(
-            NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context) {
-        return false;
-    }
-    virtual bool relay_btencoded_uptime_proof(
             NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
             cryptonote_connection_context& exclude_context) {
         return false;

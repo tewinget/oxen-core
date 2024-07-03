@@ -5,7 +5,6 @@
 
 #include "common/format.h"
 #include "common/formattable.h"
-#include "common/hex.h"
 
 namespace crypto {
 
@@ -15,7 +14,7 @@ template <typename T>
 constexpr T null{};
 
 // Base type for fixed-byte quantities (points, scalars, signatures, hashes).  The bool controls
-// whether the type should have ==, !=, std::hash, and to_hex_string.
+// whether the type should have ==, !=, std::hash, and be hex formattble.
 template <size_t Bytes, bool MemcmpHashHex = false, typename AlignAs = size_t>
 struct alignas(AlignAs) bytes {
     std::array<unsigned char, Bytes> data_;
@@ -56,18 +55,20 @@ auto operator<=>(const T& left, const T& right) {
 }
 
 template <hash_hex_comparable T>
-std::string to_hex_string(const T& val) {
-    return "<{}>"_format(tools::type_to_hex(val));
-}
-
-template <hash_hex_comparable T>
-    requires(
-            std::is_standard_layout_v<T> && sizeof(T) >= sizeof(size_t) &&
-            alignof(T) >= sizeof(size_t))
+    requires(std::is_standard_layout_v<T> && sizeof(T) >= sizeof(size_t))
 struct raw_hasher {
-    size_t operator()(const T& val) const { return *reinterpret_cast<const size_t*>(val.data()); }
+    size_t operator()(const T& val) const {
+        if constexpr (alignof(T) >= sizeof(size_t))
+            return *reinterpret_cast<const size_t*>(val.data());
+        else {
+            size_t x;
+            std::memcpy(&x, val.data(), sizeof(x));
+            return x;
+        }
+    }
 };
+
 }  // namespace crypto
 
 template <crypto::hash_hex_comparable T>
-inline constexpr bool formattable::via_to_hex_string<T> = true;
+struct fmt::formatter<T> : formattable::hex_span_formatter {};

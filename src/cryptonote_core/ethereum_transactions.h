@@ -9,13 +9,6 @@
 
 namespace ethereum {
 
-bool validate_ethereum_address_notification_tx(
-        cryptonote::hf hf_version,
-        uint64_t blockchain_height,
-        cryptonote::transaction const& tx,
-        cryptonote::tx_extra_ethereum_address_notification& eth_extra,
-        std::string* reason);
-
 bool validate_ethereum_new_service_node_tx(
         cryptonote::hf hf_version,
         uint64_t blockchain_height,

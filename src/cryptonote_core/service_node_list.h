@@ -29,12 +29,15 @@
 #pragma once
 
 #include <chrono>
+#include <iterator>
 #include <mutex>
 #include <shared_mutex>
 #include <string_view>
 #include <span>
 
+#include "bls/bls_signer.h"
 #include "common/util.h"
+#include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/hardfork.h"
@@ -52,7 +55,7 @@ struct checkpoint_t;
 };  // namespace cryptonote
 
 namespace service_nodes {
-constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
+inline constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
 
 struct checkpoint_participation_entry {
     uint64_t height = INVALID_HEIGHT;
@@ -165,16 +168,6 @@ struct proof_info {
             uint64_t ts,
             std::unique_ptr<uptime_proof::Proof> new_proof,
             const crypto::x25519_public_key& pk_x2);
-    // TODO: remove after HF18
-    bool update(
-            uint64_t ts,
-            uint32_t ip,
-            uint16_t s_https_port,
-            uint16_t s_omq_port,
-            uint16_t q_port,
-            std::array<uint16_t, 3> ver,
-            const crypto::ed25519_public_key& pk_ed,
-            const crypto::x25519_public_key& pk_x2);
 
     // Stores this record in the database.
     void store(const crypto::public_key& pubkey, cryptonote::Blockchain& blockchain);
@@ -198,12 +191,6 @@ struct pulse_sort_key {
     VARINT_FIELD(last_height_validating_in_quorum)
     FIELD(quorum_index)
     END_SERIALIZE()
-};
-
-struct service_node_address {
-    crypto::x25519_public_key x_pkey;
-    uint32_t ip;
-    uint16_t port;
 };
 
 struct service_node_info  // registration information
@@ -374,6 +361,14 @@ struct service_node_info  // registration information
     END_SERIALIZE()
 };
 
+struct service_node_address {
+    crypto::public_key sn_pubkey;
+    crypto::bls_public_key bls_pubkey;
+    crypto::x25519_public_key x_pubkey;
+    uint32_t ip;
+    uint16_t port;
+};
+
 using pubkey_and_sninfo = std::pair<crypto::public_key, std::shared_ptr<const service_node_info>>;
 using service_nodes_infos_t =
         std::unordered_map<crypto::public_key, std::shared_ptr<const service_node_info>>;
@@ -460,6 +455,12 @@ struct service_node_keys {
     /// ed25519 key).
     crypto::x25519_secret_key key_x25519;
     crypto::x25519_public_key pub_x25519;
+
+    /// BLS keypair of this service node, used for SENT registrations and interacting with the SENT
+    /// staking contract.
+    crypto::bls_secret_key key_bls;
+    crypto::bls_public_key pub_bls;
+    std::shared_ptr<BLSSigner> bls_signer;
 };
 
 class service_node_list {
@@ -476,7 +477,6 @@ class service_node_list {
     bool state_history_exists(uint64_t height);
     bool process_batching_rewards(const cryptonote::block& block);
     bool pop_batching_rewards_block(const cryptonote::block& block);
-    bool process_ethereum_address_notification_transactions(const cryptonote::network_type nettype, const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
     void blockchain_detached(uint64_t height);
     void init();
     void validate_miner_tx(const cryptonote::miner_tx_info& info) const;
@@ -544,12 +544,15 @@ class service_node_list {
     std::string remote_lookup(std::string_view x25519_pk);
 
     /// Does something read-only for each registered service node in the range of pubkeys.  The SN
-    /// lock is held while iterating, so the "something" should be quick.  Func should take
-    /// arguments:
-    ///     (const crypto::public_key&, const service_node_info&, const proof_info&)
+    /// lock is held while iterating, so the "something" should be quick.
+    ///
     /// Unknown public keys are skipped.
-    template <typename It, typename Func>
-    void for_each_service_node_info_and_proof(It begin, It end, Func f) const {
+    template <
+            std::input_iterator It,
+            std::sentinel_for<It> End,
+            std::invocable<const crypto::public_key&, const service_node_info&, const proof_info&>
+                    Func>
+    void for_each_service_node_info_and_proof(It begin, End end, Func f) const {
         static const proof_info empty_proof{};
         std::lock_guard lock{m_sn_mutex};
         for (auto sni_end = m_state.service_nodes_infos.end(); begin != end; ++begin) {
@@ -563,7 +566,7 @@ class service_node_list {
 
     /// Copies x25519 pubkeys (as strings) of all currently active SNs into the given output
     /// iterator
-    template <typename OutputIt>
+    template <std::output_iterator<std::string> OutputIt>
     void copy_active_x25519_pubkeys(OutputIt out) const {
         std::lock_guard lock{m_sn_mutex};
         for (const auto& pk_info : m_state.service_nodes_infos) {
@@ -577,10 +580,12 @@ class service_node_list {
         }
     }
 
-    /// Copies `service_node_addresses` of all currently active SNs into the given output
-    /// iterator
-    template <typename OutputIt>
-    void copy_active_service_node_addresses(OutputIt out, std::span<const crypto::x25519_public_key> exclude) const {
+    /// Copies `service_node_address`es (pubkeys, ip, port) of all currently active SNs with
+    /// potentially reachable, known addresses (via a recently received valid proof) into the given
+    /// output iterator.  Service nodes that are active but for which we have not yet
+    /// received/accepted a proof containing IP info are not included.
+    template <std::output_iterator<service_node_address> OutputIt>
+    void copy_reachable_active_service_node_addresses(OutputIt out) const {
         std::lock_guard lock{m_sn_mutex};
         for (const auto& pk_info : m_state.service_nodes_infos) {
             if (!pk_info.second->is_active())
@@ -588,17 +593,19 @@ class service_node_list {
             auto it = proofs.find(pk_info.first);
             if (it == proofs.end())
                 continue;
-            if (const auto& x2_pk = it->second.pubkey_x25519) {
-                for (const crypto::x25519_public_key& exclude_key : exclude) {
-                    if (x2_pk == exclude_key)
-                        continue;
-                }
-                service_node_address address = {};
-                address.x_pkey = x2_pk;
-                address.ip = it->second.proof ? it->second.proof->public_ip : 0;
-                address.port = it->second.proof ? it->second.proof->qnet_port : 0;
-                *out++ = address;
-            }
+            // If we don't have a proof then we won't know the IP/port, and so this node isn't
+            // considered reachable and shouldn't be returned.
+            if (!it->second.proof)
+                continue;
+            auto& proof = *it->second.proof;
+            const auto& x_pk = it->second.pubkey_x25519;
+            assert(x_pk); // Should always be set to non-null if we have a proof
+            *out++ = service_node_address{
+                    pk_info.first,
+                    proof.pubkey_bls,
+                    it->second.pubkey_x25519,
+                    proof.public_ip,
+                    proof.qnet_port};
         }
     }
 
@@ -611,18 +618,8 @@ class service_node_list {
             uint64_t hist_size);  // 0 = none (default), 1 = unlimited, N = # of blocks
     bool store();
 
-    // TODO: remove after HF18
-    crypto::hash hash_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request& proof) const;
-
-    /// Record public ip and storage port and add them to the service node list
-    // TODO: remove after HF18
-    cryptonote::NOTIFY_UPTIME_PROOF::request generate_uptime_proof(
-            uint32_t public_ip,
-            uint16_t storage_https_port,
-            uint16_t storage_omq_port,
-            uint16_t quorumnet_port) const;
-
     uptime_proof::Proof generate_uptime_proof(
+            cryptonote::hf hardfork,
             uint32_t public_ip,
             uint16_t storage_port,
             uint16_t storage_omq_port,
@@ -630,18 +627,12 @@ class service_node_list {
             uint16_t quorumnet_port,
             std::array<uint16_t, 3> lokinet_version) const;
 
-    // TODO: remove after HF18
     bool handle_uptime_proof(
-            cryptonote::NOTIFY_UPTIME_PROOF::request const& proof,
-            bool& my_uptime_proof_confirmation,
-            crypto::x25519_public_key& x25519_pkey);
-
-    bool handle_btencoded_uptime_proof(
             std::unique_ptr<uptime_proof::Proof> proof,
             bool& my_uptime_proof_confirmation,
             crypto::x25519_public_key& x25519_pkey);
 
-    crypto::public_key bls_public_key_lookup(const crypto::bls_public_key& bls_key) const;
+    crypto::public_key bls_public_key_lookup(const crypto::bls_public_key& bls_pubkey) const;
 
     void record_checkpoint_participation(
             crypto::public_key const& pubkey, uint64_t height, bool participated);
@@ -884,7 +875,7 @@ class service_node_list {
         return m_state.is_premature_unlock(nettype, hf_version, block_height, tx);
     }
 
-    bool is_recently_expired(std::string_view node_bls_pubkey) const;
+    bool is_recently_expired(const crypto::bls_public_key& node_bls_pubkey) const;
 
   private:
     // Note(maxim): private methods don't have to be protected the mutex
@@ -941,7 +932,10 @@ class service_node_list {
 
     state_t m_state;  // NOTE: Not in m_transient due to the non-trivial constructor. We can't
                       // blanket initialise using = {}; needs to be reset in ::reset(...) manually
-    std::unordered_map<std::string, uint64_t> recently_expired_nodes;
+
+    // nodes that can't yet be liquidated; the .second value is the expiry block height at which we
+    // remove them (and thus allow liquidation):
+    std::unordered_map<crypto::bls_public_key, uint64_t> recently_expired_nodes;
 };
 
 struct staking_components {
@@ -971,9 +965,15 @@ struct registration_details {
     uint64_t fee;
     uint64_t hf;         // expiration timestamp before HF19
     bool uses_portions;  // if true then `hf` is a timestamp
-    crypto::signature signature;
+    union {
+        // Up to HF20 we use a Monero-type signature (which is the same crypto, but incompatible
+        // with standard Ed25519 signatures); starting at HF21 all registration signatures must be
+        // proper Ed25519.
+        crypto::signature signature;
+        crypto::ed25519_signature ed_signature;
+    };
     std::vector<eth_contribution> eth_contributions;
-    crypto::bls_public_key bls_key;
+    crypto::bls_public_key bls_pubkey;
 };
 
 bool is_registration_tx(
@@ -1017,6 +1017,9 @@ void validate_registration(
         const registration_details& registration);
 void validate_registration_signature(const registration_details& registration);
 crypto::hash get_registration_hash(const registration_details& registration);
+
+std::basic_string<unsigned char> get_registration_message_for_signing(
+        const registration_details& registration);
 
 bool make_registration_cmd(
         cryptonote::network_type nettype,

@@ -168,7 +168,7 @@ class transaction_prefix {
 
     bool is_transfer() const {
         return type == txtype::standard || type == txtype::stake ||
-               type == txtype::oxen_name_system || type == txtype::ethereum_address_notification;
+               type == txtype::oxen_name_system;
     }
 
     // not used after version 2, but remains for compatibility

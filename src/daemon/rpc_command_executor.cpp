@@ -48,7 +48,6 @@
 #include <type_traits>
 
 #include "checkpoints/checkpoints.h"
-#include "common/hex.h"
 #include "common/median.h"
 #include "common/password.h"
 #include "common/pruning.h"
@@ -568,8 +567,8 @@ bool rpc_command_executor::show_status() {
                 my_sn_active = state["active"].get<bool>();
                 my_decomm_remaining = state["earned_downtime_blocks"].get<uint64_t>();
                 my_sn_last_uptime = state["last_uptime_proof"].get<uint64_t>();
-                my_reason_all = state["last_decommission_reason_consensus_all"].get<uint16_t>();
-                my_reason_any = state["last_decommission_reason_consensus_any"].get<uint16_t>();
+                my_reason_all = state.value<uint16_t>("last_decommission_reason_consensus_all", 0);
+                my_reason_any = state.value<uint16_t>("last_decommission_reason_consensus_any", 0);
             }
         }
     }
@@ -859,11 +858,14 @@ bool rpc_command_executor::print_quorum_state(
 }
 
 bool rpc_command_executor::set_log_level(int8_t level) {
-    if (!invoke<SET_LOG_LEVEL>(json{{"level", level}}))
+    try {
+        invoke<SET_LOG_LEVEL>(json{{"level", level}});
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("Failed to set log level: {}", e.what());
         return false;
+    }
 
-    tools::success_msg_writer("Log level is now {:d}", level);
-
+    tools::success_msg_writer("Log level set to {:d}", level);
     return true;
 }
 
@@ -895,7 +897,7 @@ bool rpc_command_executor::print_block_by_hash(const crypto::hash& block_hash, b
     auto maybe_block = try_running(
             [this, &block_hash] {
                 return invoke<GET_BLOCK>(
-                        json{{"hash", tools::type_to_hex(block_hash)}, {"fill_pow_hash", true}});
+                        json{{"hash", tools::hex_guts(block_hash)}, {"fill_pow_hash", true}});
             },
             "Block retrieval failed");
     if (!maybe_block)
@@ -937,7 +939,7 @@ bool rpc_command_executor::print_transaction(
     auto maybe_tx = try_running(
             [this, &transaction_hash] {
                 return invoke<GET_TRANSACTIONS>(
-                        json{{"tx_hashes", json::array({tools::type_to_hex(transaction_hash)})},
+                        json{{"tx_hashes", json::array({tools::hex_guts(transaction_hash)})},
                              {"split", true}});
             },
             "Transaction retrieval failed");
@@ -1013,7 +1015,7 @@ bool rpc_command_executor::is_key_image_spent(const std::vector<crypto::key_imag
             [this, &ki] {
                 auto kis = json::array();
                 for (auto& k : ki)
-                    kis.push_back(tools::type_to_hex(k));
+                    kis.push_back(tools::hex_guts(k));
                 return invoke<IS_KEY_IMAGE_SPENT>(json{{"key_images", std::move(kis)}});
             },
             "Failed to retrieve key image status");
@@ -1080,7 +1082,8 @@ static void print_pool(const json& txs) {
                     tx["last_failed_block"].get<std::string_view>());
         if (auto extra = tx.find("extra"); extra != tx.end()) {
             msg.append("    transaction extra: ");
-            for (auto line : tools::split(extra->dump(2), "\n", true))
+            auto extra_json = extra->dump(2);
+            for (auto line : tools::split(extra_json, "\n", true))
                 msg.append("      {}\n", line);
         }
         msg.append("\n");
@@ -1364,8 +1367,10 @@ bool rpc_command_executor::flush_txpool(std::string txid) {
     if (!txid.empty())
         txids.push_back(std::move(txid));
 
-    if (!invoke<FLUSH_TRANSACTION_POOL>(json{{txids, std::move(txids)}})) {
-        tools::fail_msg_writer("Failed to flush tx pool");
+    try {
+        invoke<FLUSH_TRANSACTION_POOL>(json{{"txids", std::move(txids)}});
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("Failed to flush tx pool: {}", e.what());
         return false;
     }
 
@@ -1965,8 +1970,8 @@ static void append_printable_service_node_list_entry(
                    << " blocks required to enable deregistration delay)";
     } else if (is_funded) {
         stream << indent2 << "Current Status: DECOMMISSIONED";
-        auto reason_all = entry["last_decommission_reason_consensus_all"].get<uint16_t>();
-        auto reason_any = entry["last_decommission_reason_consensus_any"].get<uint16_t>();
+        auto reason_all = entry.value<uint16_t>("last_decommission_reason_consensus_all", 0);
+        auto reason_any = entry.value<uint16_t>("last_decommission_reason_consensus_any", 0);
         if (reason_any)
             stream << " - ";
         if (auto reasons = cryptonote::readable_reasons(reason_all); !reasons.empty())
@@ -2125,9 +2130,14 @@ bool rpc_command_executor::print_sn(const std::vector<std::string>& args, bool s
 }
 
 bool rpc_command_executor::flush_cache(bool bad_txs, bool bad_blocks) {
-    if (!invoke<FLUSH_CACHE>(
-                json{{"bad_txs", bad_txs}, {"bad_blocks", bad_blocks}}, "Failed to flush TX cache"))
+    try {
+        invoke<FLUSH_CACHE>(json{{"bad_txs", bad_txs}, {"bad_blocks", bad_blocks}});
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("Failed to flush cache: {}", e.what());
         return false;
+    }
+
+    tools::success_msg_writer("Cache flushed successfully");
     return true;
 }
 
@@ -2261,8 +2271,11 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
         return false;
     auto& snode_keys = *maybe_keys;
 
-    // TODO sean use the feature flag instead
-    if (hf_version > hf::hf20) {
+    if (hf_version >= cryptonote::feature::ETH_BLS) {
+        // TODO FIXME XXX
+        tools::fail_msg_writer("FIXME: REPLACE THIS FOR feature::ETH_BLS");
+        assert(false);
+
         tools::success_msg_writer(
                 "Service Node Pubkey: {}\n"
                 "Service Node Signature: {}\n",

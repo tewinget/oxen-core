@@ -28,6 +28,7 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include "common/guts.h"
 #include "gtest/gtest.h"
 
 #include <cstdint>
@@ -38,7 +39,6 @@
 #include "ringct/rctSigs.h"
 #include "ringct/rctOps.h"
 #include "device/device.hpp"
-#include "common/hex.h"
 
 using namespace crypto;
 using namespace rct;
@@ -190,7 +190,7 @@ TEST(ringct, CLSAG)
   // D not in main subgroup in clsag at verification
   backup_key = clsag.D;
   rct::key x;
-  ASSERT_TRUE(tools::hex_to_type("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa", x));
+  ASSERT_TRUE(tools::try_load_from_hex_guts("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"sv, x));
   clsag.D = rct::addKeys(clsag.D, x);
   ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
   clsag.D = backup_key;
@@ -767,15 +767,6 @@ TEST(ringct, reject_gen_simple_ver_non_simple)
   const uint64_t outputs[] = {1000};
   rct::rctSig sig = make_sample_simple_rct_sig(NELTS(inputs), inputs, NELTS(outputs), outputs, 1000);
   ASSERT_FALSE(rct::verRct(sig));
-}
-
-TEST(ringct, key_ostream)
-{
-  auto out = "BEGIN{}END"_format(rct::H);
-  EXPECT_EQ(
-    std::string{"BEGIN<8b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f94>END"},
-    out
-  );
 }
 
 TEST(ringct, zeroCommmit)

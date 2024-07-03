@@ -110,7 +110,7 @@ std::vector<crypto::key_image> TransactionScanner::scan_spent(const cryptonote::
         if (auto* input = std::get_if<cryptonote::txin_to_key>(&input_variant)) {
             auto our_spend = db->prepared_get<int>(
                     "SELECT COUNT(*) FROM key_images WHERE key_image = ?",
-                    tools::type_to_hex(input->k_image));
+                    tools::hex_guts(input->k_image));
 
             if (our_spend > 0)
                 spends.push_back(input->k_image);
