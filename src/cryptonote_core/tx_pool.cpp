@@ -423,6 +423,7 @@ bool tx_memory_pool::add_tx(
         log::info(logcat, "Transaction with id= {} already has a duplicate tx for height", id);
         tvc.m_verifivation_failed = true;
         tvc.m_double_spend = true;
+        tvc.m_duplicate_nonstandard = true;
         return false;
     }
 

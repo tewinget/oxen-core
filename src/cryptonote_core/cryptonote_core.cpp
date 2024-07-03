@@ -1537,7 +1537,9 @@ bool core::handle_parsed_txs(
             log::debug(logcat, "tx added: {}", info.tx_hash);
         } else {
             ok = false;
-            if (info.tvc.m_verifivation_failed)
+            if (info.tvc.m_duplicate_nonstandard)
+                log::debug(log::Cat("verify"), "Transaction is a duplicate non-standard tx (e.g. state change)");
+            else if (info.tvc.m_verifivation_failed)
                 log::error(log::Cat("verify"), "Transaction verification failed: {}", info.tx_hash);
             else if (info.tvc.m_verifivation_impossible)
                 log::error(
