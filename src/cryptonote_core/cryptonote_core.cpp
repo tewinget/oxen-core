@@ -155,12 +155,11 @@ static const command_line::arg_flag arg_omq_quorumnet_public{
         "commands as if passed to --lmq-curve-public. "
         "Note that even without this option the quorumnet port can be used for RPC commands by "
         "--lmq-admin and --lmq-user pubkeys."};
-static const command_line::arg_descriptor<std::string> arg_l2_provider = {
+static const command_line::arg_descriptor<std::vector<std::string>> arg_l2_provider = {
         "l2-provider",
-        "Specify one or more providers by URL to which this service node will query the Ethereum "
+        "Specify a provider HTTP or HTTPS URL to which this service node will query the Ethereum "
         "L2 blockchain when tracking the rewards smart contract. Required if operating as a "
-        "service node. Multiple providers can be specified by comma delimiting the URLs for "
-        "example: 'http://127.0.0.1:8545,https://example.com/api'"};
+        "service node. Can be specified multiple times to add backup providers."};
 
 // Floating point duration, to which all integer durations are implicitly convertible
 using dseconds = std::chrono::duration<double>;
@@ -798,20 +797,19 @@ bool core::init(
 
     const auto l2_provider = command_line::get_arg(vm, arg_l2_provider);
     if (!l2_provider.empty()) {
-        auto provider_urls = tools::split_any(l2_provider, ", \t\n", /*trim=*/true);
+        for (auto provider : l2_provider) {
+            auto provider_urls = tools::split_any(provider, ", \t\n", /*trim=*/true);
 
-        try {
-            if (provider_urls.empty())
-                throw std::invalid_argument{"Ethereum L2 provider list is empty"};
-            for (size_t index = 0; index < provider_urls.size(); index++)
-                m_l2_tracker->provider.addClient(
-                        index == 0 ? "Primary L2 provider"s
-                                   : "Backup L2 provider #{}"_format(index),
-                        std::string{provider_urls[index]});
-        } catch (const std::exception& e) {
-            log::critical(
-                    logcat, "Invalid Ethereum L2 provider(s) '{}': {}", l2_provider, e.what());
-            return false;
+            try {
+                for (size_t index = 0; index < provider_urls.size(); index++)
+                    m_l2_tracker->provider.addClient(
+                            index == 0 ? "Primary L2 provider"s
+                                       : "Backup L2 provider #{}"_format(index),
+                            std::string{provider_urls[index]});
+            } catch (const std::exception& e) {
+                log::critical(logcat, "Invalid l2-provider argument '{}': {}", provider, e.what());
+                return false;
+            }
         }
     }
 
