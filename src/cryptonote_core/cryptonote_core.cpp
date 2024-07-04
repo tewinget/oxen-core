@@ -163,7 +163,7 @@ static const command_line::arg_descriptor<uint16_t, false, true, 2> arg_quorumne
         "service nodes for quorum messages.  The port must be publicly reachable "
         "on the `--service-node-public-ip' address and binds to the p2p IP address."
         " Only applies when running as a service node.",
-        config::QNET_DEFAULT_PORT,
+        config::mainnet::QNET_DEFAULT_PORT,
         {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
         [](std::array<bool, 2> testnet_devnet, bool defaulted, uint16_t val) -> uint16_t {
             return defaulted && testnet_devnet[0] ? config::testnet::QNET_DEFAULT_PORT

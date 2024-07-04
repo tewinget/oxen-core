@@ -51,9 +51,9 @@
 #include "common/pruning.h"
 #include "common/string_util.h"
 #include "crypto/crypto.h"
+#include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_basic/connection_context.h"
 #include "epee/misc_log_ex.h"
 #include "epee/net/local_ip.h"
 #include "epee/storages/levin_abstract_invoke2.h"
@@ -618,11 +618,7 @@ bool node_server<t_payload_net_handler>::init(const boost::program_options::vari
     bool res = handle_command_line(vm);
     CHECK_AND_ASSERT_MES(res, false, "Failed to handle command line");
 
-    memcpy(&m_network_id,
-           m_nettype == cryptonote::network_type::TESTNET ? &cryptonote::config::testnet::NETWORK_ID
-           : m_nettype == cryptonote::network_type::DEVNET ? &cryptonote::config::devnet::NETWORK_ID
-                                                           : &cryptonote::config::NETWORK_ID,
-           16);
+    memcpy(&m_network_id, &get_config(m_nettype).NETWORK_ID, 16);
 
     m_config_folder = fs::path{
             tools::convert_sv<char8_t>(command_line::get_arg(vm, cryptonote::arg_data_dir))};

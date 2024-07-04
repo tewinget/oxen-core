@@ -79,7 +79,7 @@ size_t constexpr STORE_LONG_TERM_STATE_INTERVAL = 10000;
 constexpr auto X25519_MAP_PRUNING_INTERVAL = 5min;
 constexpr auto X25519_MAP_PRUNING_LAG = 24h;
 static_assert(
-        X25519_MAP_PRUNING_LAG > cryptonote::config::UPTIME_PROOF_VALIDITY,
+        X25519_MAP_PRUNING_LAG > cryptonote::config::mainnet::UPTIME_PROOF_VALIDITY,
         "x25519 map pruning lag is too short!");
 
 static uint64_t short_term_state_cull_height(hf hf_version, uint64_t block_height) {
@@ -4101,7 +4101,7 @@ std::optional<bool> proof_info::reachable_stats::reachable(
         const std::chrono::steady_clock::time_point& now) const {
     if (last_reachable >= last_unreachable)
         return true;
-    if (last_unreachable > now - cryptonote::config::REACHABLE_MAX_FAILURE_VALIDITY)
+    if (last_unreachable > now - cryptonote::REACHABLE_MAX_FAILURE_VALIDITY)
         return false;
     // Last result was a failure, but it was a while ago, so we don't know for sure that it isn't
     // reachable now:

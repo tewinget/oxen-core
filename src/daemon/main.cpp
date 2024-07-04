@@ -347,7 +347,7 @@ int main(int argc, char const* argv[]) {
                                          ? cryptonote::config::testnet::RPC_DEFAULT_PORT
                                  : command_line::get_arg(vm, cryptonote::arg_devnet_on)
                                          ? cryptonote::config::devnet::RPC_DEFAULT_PORT
-                                         : cryptonote::config::RPC_DEFAULT_PORT;
+                                         : cryptonote::config::mainnet::RPC_DEFAULT_PORT;
                     rpc_addr = rpc_config.bind_ip.value_or("127.0.0.1") + ":" +
                                std::to_string(rpc_port);
                 } else {

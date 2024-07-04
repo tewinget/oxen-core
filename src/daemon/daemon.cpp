@@ -176,7 +176,7 @@ daemon::daemon(boost::program_options::variables_map vm_) :
             else if (command_line::get_arg(vm, cryptonote::arg_devnet_on))
                 main_rpc_port = cryptonote::config::devnet::RPC_DEFAULT_PORT;
             else
-                main_rpc_port = cryptonote::config::RPC_DEFAULT_PORT;
+                main_rpc_port = cryptonote::config::mainnet::RPC_DEFAULT_PORT;
         }
         if (main_rpc_port && main_rpc_port == restricted_rpc_port)
             restricted = true;

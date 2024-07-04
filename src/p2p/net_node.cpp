@@ -114,7 +114,7 @@ const command_line::arg_descriptor<std::string> arg_p2p_bind_ipv6_address = {
 const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port = {
         "p2p-bind-port",
         "Port for p2p network protocol (IPv4)",
-        std::to_string(cryptonote::config::P2P_DEFAULT_PORT),
+        std::to_string(cryptonote::config::mainnet::P2P_DEFAULT_PORT),
         {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
         [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val) -> std::string {
             auto [testnet, devnet] = testnet_devnet;
@@ -127,7 +127,7 @@ const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_por
 const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port_ipv6 = {
         "p2p-bind-port-ipv6",
         "Port for p2p network protocol (IPv6)",
-        std::to_string(cryptonote::config::P2P_DEFAULT_PORT),
+        std::to_string(cryptonote::config::mainnet::P2P_DEFAULT_PORT),
         {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
         [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val) -> std::string {
             if (testnet_devnet[0] && defaulted)

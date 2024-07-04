@@ -41,6 +41,7 @@
 #include "epee/int-util.h"
 #include "epee/string_tools.h"
 #include "logging/oxen_logger.h"
+#include "networks.h"
 #include "serialization/binary_utils.h"
 #include "serialization/container.h"
 
@@ -120,12 +121,13 @@ bool get_base_block_reward(
         return true;
     }
 
-    #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
-    // NOTE: In devnet, we typically speed past into PoS so we probably don't care about difficulty target management.
-    #else
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+// NOTE: In devnet, we typically speed past into PoS so we probably don't care about difficulty
+// target management.
+#else
     static_assert(
             (TARGET_BLOCK_TIME % 1min) == 0s, "difficulty targets must be a multiple of a minute");
-    #endif
+#endif
 
     uint64_t base_reward = version >= hf::hf17     ? oxen::BLOCK_REWARD_HF17
                          : version >= hf::hf15_ons ? oxen::BLOCK_REWARD_HF15

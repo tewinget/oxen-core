@@ -30,8 +30,8 @@ const command_line::arg_descriptor<std::vector<std::string>, false, true, 2>
                 "rpc-admin",
                 "Specifies an IP:PORT to listen on for admin (unrestricted) RPC requests; can be "
                 "specified multiple times. Specify \"none\" to disable.",
-                {"127.0.0.1:" + std::to_string(config::RPC_DEFAULT_PORT),
-                 "[::1]:" + std::to_string(config::RPC_DEFAULT_PORT)},
+                {"127.0.0.1:" + std::to_string(config::mainnet::RPC_DEFAULT_PORT),
+                 "[::1]:" + std::to_string(config::mainnet::RPC_DEFAULT_PORT)},
                 {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
                 [](std::array<bool, 2> testnet_devnet,
                    bool defaulted,

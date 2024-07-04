@@ -40,7 +40,7 @@
 TEST(service_nodes, staking_requirement)
 {
   // NOTE: Thanks for the values @Sonofotis
-  const uint64_t atomic_epsilon = cryptonote::config::DEFAULT_DUST_THRESHOLD;
+  const uint64_t atomic_epsilon = cryptonote::DEFAULT_DUST_THRESHOLD;
 
   // LHS of Equation
   // Try underflow

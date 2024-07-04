@@ -15,6 +15,7 @@
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "logging/oxen_logger.h"
+#include "networks.h"
 
 namespace eth {
 

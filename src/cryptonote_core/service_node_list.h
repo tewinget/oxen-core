@@ -32,8 +32,8 @@
 #include <iterator>
 #include <mutex>
 #include <shared_mutex>
-#include <string_view>
 #include <span>
+#include <string_view>
 
 #include "bls/bls_signer.h"
 #include "common/util.h"
@@ -45,6 +45,7 @@
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/service_node_voting.h"
+#include "networks.h"
 #include "serialization/serialization.h"
 #include "uptime_proof.h"
 
@@ -598,7 +599,8 @@ class service_node_list {
             if (!it->second.proof)
                 continue;
             auto& proof = *it->second.proof;
-            assert(it->second.pubkey_x25519); // Should always be set to non-null if we have a proof
+            assert(it->second
+                           .pubkey_x25519);  // Should always be set to non-null if we have a proof
             *out++ = service_node_address{
                     pk_info.first,
                     proof.pubkey_bls,

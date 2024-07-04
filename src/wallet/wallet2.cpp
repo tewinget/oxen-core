@@ -11845,7 +11845,7 @@ void wallet2::light_wallet_get_unspent_outs() {
     oreq.address = get_account().get_public_address_str(m_nettype);
     oreq.view_key = tools::hex_guts(get_account().get_keys().m_view_secret_key);
     // openMonero specific
-    oreq.dust_threshold = std::to_string(::config::DEFAULT_DUST_THRESHOLD);
+    oreq.dust_threshold = std::to_string(DEFAULT_DUST_THRESHOLD);
     // below are required by openMonero api - but are not used.
     oreq.mixin = 0;
     oreq.use_dust = true;
