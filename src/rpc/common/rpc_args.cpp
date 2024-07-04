@@ -40,29 +40,28 @@ using namespace std::literals;
 namespace cryptonote {
 
 rpc_args::descriptors::descriptors() :
-        rpc_bind_ip({"rpc-bind-ip", rpc_args::tr("Specify IP to bind RPC server"), "127.0.0.1"}),
-        rpc_bind_ipv6_address(
-                {"rpc-bind-ipv6-address",
-                 rpc_args::tr("Specify IPv6 address to bind RPC server"),
-                 "::1"}),
-        rpc_use_ipv6({"rpc-use-ipv6", rpc_args::tr("Allow IPv6 for RPC"), false}),
-        rpc_ignore_ipv4(
-                {"rpc-ignore-ipv4", rpc_args::tr("Ignore unsuccessful IPv4 bind for RPC"), false}),
-        rpc_login(
-                {"rpc-login",
-                 rpc_args::tr("Specify username[:password] required for RPC server"),
-                 "",
-                 true}),
-        confirm_external_bind(
-                {"confirm-external-bind",
-                 rpc_args::tr("Confirm rpc bind IP value is NOT a loopback (local) IP")}),
-        rpc_access_control_origins(
-                {"rpc-access-control-origins",
-                 rpc_args::tr("Specify a comma separated list of origins to allow cross origin "
-                              "resource sharing"),
-                 ""}),
-        zmq_rpc_bind_ip({"zmq-rpc-bind-ip", rpc_args::tr("Deprecated option, ignored."), ""}),
-        zmq_rpc_bind_port({"zmq-rpc-bind-port", rpc_args::tr("Deprecated option, ignored."), ""}) {}
+        rpc_bind_ip{"rpc-bind-ip", rpc_args::tr("Specify IP to bind RPC server"), "127.0.0.1"},
+        rpc_bind_ipv6_address{
+                "rpc-bind-ipv6-address",
+                rpc_args::tr("Specify IPv6 address to bind RPC server"),
+                "::1"},
+        rpc_use_ipv6{"rpc-use-ipv6", rpc_args::tr("Allow IPv6 for RPC")},
+        rpc_ignore_ipv4{
+                "rpc-ignore-ipv4", rpc_args::tr("Ignore unsuccessful IPv4 bind for RPC")},
+        rpc_login{
+                "rpc-login",
+                rpc_args::tr("Specify username[:password] required for RPC server"),
+                ""},
+        confirm_external_bind{
+                "confirm-external-bind",
+                rpc_args::tr("Confirm rpc bind IP value is NOT a loopback (local) IP")},
+        rpc_access_control_origins{
+                "rpc-access-control-origins",
+                rpc_args::tr("Specify a comma separated list of origins to allow cross origin "
+                             "resource sharing"),
+                ""},
+        zmq_rpc_bind_ip{"zmq-rpc-bind-ip", rpc_args::tr("Deprecated option, ignored."), ""},
+        zmq_rpc_bind_port{"zmq-rpc-bind-port", rpc_args::tr("Deprecated option, ignored."), ""} {}
 
 const char* rpc_args::tr(const char* str) {
     return i18n_translate(str, "cryptonote::rpc_args");
@@ -131,7 +130,7 @@ rpc_args rpc_args::process(const boost::program_options::variables_map& vm) {
     auto verify = [](bool verify) {
         return tools::password_container::prompt(verify, "RPC server password");
     };
-    if (command_line::has_arg(vm, arg.rpc_login))
+    if (!command_line::is_arg_defaulted(vm, arg.rpc_login))
         config.login = tools::login::parse(command_line::get_arg(vm, arg.rpc_login), true, verify);
     else if (const char* env_rpc_login = std::getenv("RPC_LOGIN");
              env_rpc_login != nullptr && std::strlen(env_rpc_login))

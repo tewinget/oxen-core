@@ -3,6 +3,7 @@
 #include <string_view>
 #include <boost/uuid/uuid.hpp>
 
+#include "common/fs.h"
 #include "cryptonote_config.h"
 #include "network_config/mainnet.h"
 #include "network_config/devnet.h"
@@ -37,6 +38,12 @@ constexpr std::string_view network_type_to_string(network_type t) {
         default: return "undefined";
     }
     return "undefined";
+}
+
+inline std::filesystem::path network_config_subdir(network_type t) {
+    if (t == network_type::MAINNET)
+        return {};
+    return tools::utf8_path(network_type_to_string(t));
 }
 
 inline constexpr const network_config& get_config(network_type nettype) {

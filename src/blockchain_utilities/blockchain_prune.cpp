@@ -524,12 +524,11 @@ int main(int argc, char* argv[]) {
             "db-sync-mode",
             "Specify sync option, using format [safe|fast|fastest]:[nrecords_per_sync].",
             "fast:1000"};
-    const command_line::arg_descriptor<bool> arg_copy_pruned_database = {
+    const command_line::arg_flag arg_copy_pruned_database = {
             "copy-pruned-database", "Copy database anyway if already pruned"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_db_sync_mode);
     command_line::add_arg(desc_cmd_sett, arg_copy_pruned_database);
@@ -562,11 +561,7 @@ int main(int argc, char* argv[]) {
 
     log::info(logcat, "Starting...");
 
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    network_type net_type = opt_testnet ? network_type::TESTNET
-                          : opt_devnet  ? network_type::DEVNET
-                                        : network_type::MAINNET;
+    auto net_type = command_line::get_network(cm);
     bool opt_copy_pruned_database = command_line::get_arg(vm, arg_copy_pruned_database);
     std::string data_dir = command_line::get_arg(vm, cryptonote::arg_data_dir);
     while (data_dir.ends_with('/') || data_dir.ends_with('\\'))

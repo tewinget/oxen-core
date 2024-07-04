@@ -49,8 +49,8 @@ const command_line::arg_descriptor<std::string> arg_db_sync_mode = {
         "Specify sync option, using format "
         "[safe|fast|fastest]:[sync|async]:[<nblocks_per_sync>[blocks]|<nbytes_per_sync>[bytes]].",
         "fast:async:250000000bytes"};
-const command_line::arg_descriptor<bool> arg_db_salvage = {
-        "db-salvage", "Try to salvage a blockchain database if it seems corrupted", false};
+const command_line::arg_flag arg_db_salvage = {
+        "db-salvage", "Try to salvage a blockchain database if it seems corrupted"};
 
 std::unique_ptr<BlockchainDB> new_db() {
     return std::make_unique<BlockchainLMDB>();

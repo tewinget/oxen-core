@@ -71,8 +71,8 @@ struct ancestor {
 
     template <typename t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a& amount;
-        a& offset;
+        a & amount;
+        a & offset;
     }
 };
 BOOST_CLASS_VERSION(ancestor, 0)
@@ -121,9 +121,9 @@ struct tx_data_t {
 
     template <typename t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a& coinbase;
-        a& vin;
-        a& vout;
+        a & coinbase;
+        a & vin;
+        a & vout;
     }
 };
 
@@ -138,25 +138,25 @@ struct ancestry_state_t {
 
     template <typename t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a& height;
-        a& ancestry;
-        a& output_cache;
+        a & height;
+        a & ancestry;
+        a & output_cache;
         if (ver < 1) {
             std::unordered_map<crypto::hash, cryptonote::transaction> old_tx_cache;
-            a& old_tx_cache;
+            a & old_tx_cache;
             for (const auto& [hash, tx] : old_tx_cache)
                 tx_cache.insert(std::make_pair(hash, ::tx_data_t(tx)));
         } else {
-            a& tx_cache;
+            a & tx_cache;
         }
         if (ver < 2) {
             std::unordered_map<uint64_t, cryptonote::block> old_block_cache;
-            a& old_block_cache;
+            a & old_block_cache;
             block_cache.reserve(old_block_cache.size());
             for (auto& [i, block] : old_block_cache)
                 block_cache.push_back(std::move(block));
         } else {
-            a& block_cache;
+            a & block_cache;
         }
     }
 };
@@ -337,22 +337,17 @@ int main(int argc, char* argv[]) {
             "output", "Get ancestry for this output (amount/offset format)", ""};
     const command_line::arg_descriptor<uint64_t> arg_height = {
             "height", "Get ancestry for all txes at this height", 0};
-    const command_line::arg_descriptor<bool> arg_refresh = {
-            "refresh", "Refresh the whole chain first", false};
-    const command_line::arg_descriptor<bool> arg_cache_outputs = {
-            "cache-outputs", "Cache outputs (memory hungry)", false};
-    const command_line::arg_descriptor<bool> arg_cache_txes = {
-            "cache-txes", "Cache txes (memory hungry)", false};
-    const command_line::arg_descriptor<bool> arg_cache_blocks = {
-            "cache-blocks", "Cache blocks (memory hungry)", false};
-    const command_line::arg_descriptor<bool> arg_include_coinbase = {
-            "include-coinbase", "Including coinbase tx in per height average", false};
-    const command_line::arg_descriptor<bool> arg_show_cache_stats = {
-            "show-cache-stats", "Show cache statistics", false};
+    const command_line::arg_flag arg_refresh{"refresh", "Refresh the whole chain first"};
+    const command_line::arg_flag arg_cache_outputs{
+            "cache-outputs", "Cache outputs (memory hungry)"};
+    const command_line::arg_flag arg_cache_txes{"cache-txes", "Cache txes (memory hungry)"};
+    const command_line::arg_flag arg_cache_blocks{"cache-blocks", "Cache blocks (memory hungry)"};
+    const command_line::arg_flag arg_include_coinbase{
+            "include-coinbase", "Including coinbase tx in per height average"};
+    const command_line::arg_flag arg_show_cache_stats{"show-cache-stats", "Show cache statistics"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_txid);
     command_line::add_arg(desc_cmd_sett, arg_output);
@@ -389,11 +384,7 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Starting...");
 
     std::string opt_data_dir = command_line::get_arg(vm, cryptonote::arg_data_dir);
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    network_type net_type = opt_testnet ? network_type::TESTNET
-                          : opt_devnet  ? network_type::DEVNET
-                                        : network_type::MAINNET;
+    auto net_type = command_line::get_network(vm);
     std::string opt_txid_string = command_line::get_arg(vm, arg_txid);
     std::string opt_output_string = command_line::get_arg(vm, arg_output);
     uint64_t opt_height = command_line::get_arg(vm, arg_height);

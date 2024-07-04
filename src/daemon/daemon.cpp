@@ -37,6 +37,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "common/command_line.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "epee/misc_log_ex.h"
@@ -171,12 +172,8 @@ daemon::daemon(boost::program_options::variables_map vm_) :
         if (main_rpc_port == 0) {
             if (restricted && restricted_rpc_port != 0)
                 std::swap(main_rpc_port, restricted_rpc_port);
-            else if (command_line::get_arg(vm, cryptonote::arg_testnet_on))
-                main_rpc_port = cryptonote::config::testnet::RPC_DEFAULT_PORT;
-            else if (command_line::get_arg(vm, cryptonote::arg_devnet_on))
-                main_rpc_port = cryptonote::config::devnet::RPC_DEFAULT_PORT;
             else
-                main_rpc_port = cryptonote::config::mainnet::RPC_DEFAULT_PORT;
+                main_rpc_port = get_config(command_line::get_network(vm)).RPC_DEFAULT_PORT;
         }
         if (main_rpc_port && main_rpc_port == restricted_rpc_port)
             restricted = true;

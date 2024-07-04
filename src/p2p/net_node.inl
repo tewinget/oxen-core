@@ -46,6 +46,7 @@
 #include <tuple>
 #include <vector>
 
+#include "common/command_line.h"
 #include "common/file.h"
 #include "common/periodic_task.h"
 #include "common/pruning.h"
@@ -95,8 +96,8 @@ void node_server<t_payload_net_handler>::init_options(
         boost::program_options::options_description& hidden) {
     command_line::add_arg(desc, arg_p2p_bind_ip);
     command_line::add_arg(desc, arg_p2p_bind_ipv6_address);
-    command_line::add_arg(desc, arg_p2p_bind_port, false);
-    command_line::add_arg(desc, arg_p2p_bind_port_ipv6, false);
+    command_line::add_arg(desc, arg_p2p_bind_port);
+    command_line::add_arg(desc, arg_p2p_bind_port_ipv6);
     command_line::add_arg(desc, arg_p2p_use_ipv6);
     command_line::add_arg(desc, arg_p2p_ignore_ipv4);
     command_line::add_arg(desc, arg_p2p_external_port);
@@ -330,20 +331,15 @@ bool node_server<t_payload_net_handler>::add_host_fail(
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::handle_command_line(
         const boost::program_options::variables_map& vm) {
-    bool testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    bool fakenet = command_line::get_arg(vm, cryptonote::arg_regtest_on);
-    m_nettype = testnet ? cryptonote::network_type::TESTNET
-              : devnet  ? cryptonote::network_type::DEVNET
-              : fakenet ? cryptonote::network_type::FAKECHAIN
-                        : cryptonote::network_type::MAINNET;
+
+    m_nettype = command_line::get_network(vm);
 
     network_zone& public_zone = m_network_zones[epee::net_utils::zone::public_];
     public_zone.m_connect = &public_connect;
     public_zone.m_bind_ip = command_line::get_arg(vm, arg_p2p_bind_ip);
     public_zone.m_bind_ipv6_address = command_line::get_arg(vm, arg_p2p_bind_ipv6_address);
-    public_zone.m_port = command_line::get_arg(vm, arg_p2p_bind_port);
-    public_zone.m_port_ipv6 = command_line::get_arg(vm, arg_p2p_bind_port_ipv6);
+    public_zone.m_port = "{}"_format(command_line::get_arg(vm, arg_p2p_bind_port));
+    public_zone.m_port_ipv6 = "{}"_format(command_line::get_arg(vm, arg_p2p_bind_port_ipv6));
     public_zone.m_can_pingback = true;
     m_external_port = command_line::get_arg(vm, arg_p2p_external_port);
     m_allow_local_ip = command_line::get_arg(vm, arg_p2p_allow_local_ip);
@@ -406,10 +402,10 @@ bool node_server<t_payload_net_handler>::handle_command_line(
             return false;
     }
 
-    if (command_line::has_arg(vm, arg_p2p_hide_my_port))
+    if (command_line::get_arg(vm, arg_p2p_hide_my_port))
         m_hide_my_port = true;
 
-    if (command_line::has_arg(vm, arg_no_sync))
+    if (command_line::get_arg(vm, arg_no_sync))
         m_payload_handler.set_no_sync(true);
 
     if (!set_max_out_peers(public_zone, command_line::get_arg(vm, arg_out_peers)))

@@ -25,26 +25,15 @@ const command_line::arg_descriptor<std::vector<std::string>> http_server::arg_rp
         "Specifies an IP:PORT to listen on for public (restricted) RPC requests; can be specified "
         "multiple times."};
 
-const command_line::arg_descriptor<std::vector<std::string>, false, true, 2>
-        http_server::arg_rpc_admin{
-                "rpc-admin",
-                "Specifies an IP:PORT to listen on for admin (unrestricted) RPC requests; can be "
-                "specified multiple times. Specify \"none\" to disable.",
-                {"127.0.0.1:" + std::to_string(config::mainnet::RPC_DEFAULT_PORT),
-                 "[::1]:" + std::to_string(config::mainnet::RPC_DEFAULT_PORT)},
-                {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
-                [](std::array<bool, 2> testnet_devnet,
-                   bool defaulted,
-                   std::vector<std::string> val) {
-                    auto& [testnet, devnet] = testnet_devnet;
-                    if (defaulted && (testnet || devnet)) {
-                        auto port = std::to_string(
-                                testnet ? config::testnet::RPC_DEFAULT_PORT
-                                        : config::devnet::RPC_DEFAULT_PORT);
-                        val = {"127.0.0.1:" + port, "[::1]:" + port};
-                    }
-                    return val;
-                }};
+const command_line::arg_descriptor<std::vector<std::string>> http_server::arg_rpc_admin{
+        "rpc-admin",
+        "Specifies an IP:PORT to listen on for admin (unrestricted) RPC requests; can be "
+        "specified multiple times. Specify \"none\" to disable.",
+        [](cryptonote::network_type nettype) -> std::vector<std::string> {
+            const auto& conf = get_config(nettype);
+            return {"127.0.0.1:{}"_format(conf.RPC_DEFAULT_PORT),
+                    "[::1]:{}"_format(conf.RPC_DEFAULT_PORT)};
+        }};
 
 const command_line::arg_descriptor<uint16_t> http_server::arg_rpc_bind_port = {
         "rpc-bind-port",
@@ -56,13 +45,13 @@ const command_line::arg_descriptor<uint16_t> http_server::arg_rpc_restricted_bin
         "Port for restricted RPC server; deprecated, use --rpc-public instead",
         0};
 
-const command_line::arg_descriptor<bool> http_server::arg_restricted_rpc = {
-        "restricted-rpc", "Deprecated, use --rpc-public instead", false};
+const command_line::arg_flag http_server::arg_restricted_rpc = {
+        "restricted-rpc", "Deprecated, use --rpc-public instead"};
 
 // This option doesn't do anything anymore, but keep it here for now in case people added it to
 // config files/startup flags.
-const command_line::arg_descriptor<bool> http_server::arg_public_node = {
-        "public-node", "Deprecated; use --rpc-public option instead", false};
+const command_line::arg_flag http_server::arg_public_node = {
+        "public-node", "Deprecated; use --rpc-public option instead"};
 
 namespace {
     void long_poll_trigger(cryptonote::tx_memory_pool&);

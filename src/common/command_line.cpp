@@ -30,8 +30,11 @@
 
 #include "command_line.h"
 
+#include <boost/program_options/variables_map.hpp>
+
 #include "common/i18n.h"
 #include "common/string_util.h"
+#include "networks.h"
 #ifdef HAVE_READLINE
 #include "epee/readline_buffer.h"
 #endif
@@ -41,8 +44,35 @@
 #endif
 
 namespace command_line {
-const arg_descriptor<bool> arg_help = {"help", "Produce help message"};
-const arg_descriptor<bool> arg_version = {"version", "Output version information"};
+
+const arg_flag arg_help{"help", "Produce help message"};
+const arg_flag arg_version{"version", "Output version information"};
+
+const arg_flag arg_testnet{"testnet", "Run on testnet."};
+const arg_flag arg_devnet{"devnet", "Run on devnet."};
+const arg_flag arg_regtest{"regtest", "Run in regression testing mode (aka \"fakechain\")."};
+
+void add_network_args(boost::program_options::options_description& od) {
+    add_arg(od, arg_testnet);
+    add_arg(od, arg_devnet);
+    add_arg(od, arg_regtest);
+}
+
+cryptonote::network_type get_network(const boost::program_options::variables_map& vm) {
+    auto [testnet, devnet, regtest] = get_args(vm, arg_testnet, arg_devnet, arg_regtest);
+    using cryptonote::network_type;
+    network_type nettype = testnet ? network_type::TESTNET
+                         : devnet  ? network_type::DEVNET
+                         : regtest ? network_type::FAKECHAIN
+                                   : network_type::MAINNET;
+    if (testnet + devnet + regtest > 1)
+        log::error(
+                globallogcat,
+                "Multiple network options (--testnet, --devnet, etc.) specified; using {}",
+                network_type_to_string(nettype));
+
+    return nettype;
+}
 
 // Terminal sizing.
 //

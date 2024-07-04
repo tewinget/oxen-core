@@ -111,37 +111,20 @@ const command_line::arg_descriptor<std::string> arg_p2p_bind_ip = {
         "p2p-bind-ip", "Interface for p2p network protocol (IPv4)", "0.0.0.0"};
 const command_line::arg_descriptor<std::string> arg_p2p_bind_ipv6_address = {
         "p2p-bind-ipv6-address", "Interface for p2p network protocol (IPv6)", "::"};
-const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port = {
+const command_line::arg_descriptor<uint16_t> arg_p2p_bind_port{
         "p2p-bind-port",
         "Port for p2p network protocol (IPv4)",
-        std::to_string(cryptonote::config::mainnet::P2P_DEFAULT_PORT),
-        {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
-        [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val) -> std::string {
-            auto [testnet, devnet] = testnet_devnet;
-            if (testnet && defaulted)
-                return std::to_string(cryptonote::config::testnet::P2P_DEFAULT_PORT);
-            else if (testnet_devnet[1] && defaulted)
-                return std::to_string(cryptonote::config::devnet::P2P_DEFAULT_PORT);
-            return val;
-        }};
-const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port_ipv6 = {
+        [](cryptonote::network_type nettype) { return get_config(nettype).P2P_DEFAULT_PORT; }};
+const command_line::arg_descriptor<uint16_t> arg_p2p_bind_port_ipv6{
         "p2p-bind-port-ipv6",
         "Port for p2p network protocol (IPv6)",
-        std::to_string(cryptonote::config::mainnet::P2P_DEFAULT_PORT),
-        {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
-        [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val) -> std::string {
-            if (testnet_devnet[0] && defaulted)
-                return std::to_string(cryptonote::config::testnet::P2P_DEFAULT_PORT);
-            else if (testnet_devnet[1] && defaulted)
-                return std::to_string(cryptonote::config::devnet::P2P_DEFAULT_PORT);
-            return val;
-        }};
+        [](cryptonote::network_type nettype) { return get_config(nettype).P2P_DEFAULT_PORT; }};
 
 const command_line::arg_descriptor<uint32_t> arg_p2p_external_port = {
         "p2p-external-port",
         "External port for p2p network protocol (if port forwarding used with NAT)",
         0};
-const command_line::arg_descriptor<bool> arg_p2p_allow_local_ip = {
+const command_line::arg_flag arg_p2p_allow_local_ip = {
         "allow-local-ip", "Allow local ip add to peer list, mostly in debug purposes"};
 const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_peer = {
         "add-peer", "Manually add peer to local peerlist"};
@@ -163,17 +146,16 @@ const command_line::arg_descriptor<std::vector<std::string>> arg_anonymous_inbou
         "anonymous-inbound",
         "<hidden-service-address>,<[bind-ip:]port>[,max_connections] i.e. "
         "\"x.onion,127.0.0.1:18083,100\""};
-const command_line::arg_descriptor<bool> arg_p2p_hide_my_port = {
-        "hide-my-port", "Do not announce yourself as peerlist candidate", false, true};
-const command_line::arg_descriptor<bool> arg_no_sync = {
-        "no-sync", "Don't synchronize the blockchain with other peers", false};
+const command_line::arg_flag arg_p2p_hide_my_port{
+        "hide-my-port", "Do not announce yourself as peerlist candidate"};
+const command_line::arg_flag arg_no_sync{
+        "no-sync", "Don't synchronize the blockchain with other peers"};
 
-const command_line::arg_descriptor<bool> arg_no_igd = {"no-igd", "Deprecated option; ignored"};
+const command_line::arg_flag arg_no_igd = {"no-igd", "Deprecated option; ignored"};
 const command_line::arg_descriptor<std::string> arg_igd = {"igd", "Deprecated option; ignored", ""};
-const command_line::arg_descriptor<bool> arg_p2p_use_ipv6 = {
-        "p2p-use-ipv6", "Enable IPv6 for p2p", false};
-const command_line::arg_descriptor<bool> arg_p2p_ignore_ipv4 = {
-        "p2p-ignore-ipv4", "Ignore unsuccessful IPv4 bind for p2p", false};
+const command_line::arg_flag arg_p2p_use_ipv6{"p2p-use-ipv6", "Enable IPv6 for p2p"};
+const command_line::arg_flag arg_p2p_ignore_ipv4{
+        "p2p-ignore-ipv4", "Ignore unsuccessful IPv4 bind for p2p"};
 const command_line::arg_descriptor<int64_t> arg_out_peers = {
         "out-peers", "set max number of out peers", -1};
 const command_line::arg_descriptor<int64_t> arg_in_peers = {

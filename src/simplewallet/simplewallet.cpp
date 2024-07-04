@@ -165,32 +165,28 @@ namespace {
             "mnemonic-language", sw::tr("Language for mnemonic"), ""};
     const command_line::arg_descriptor<std::string> arg_electrum_seed = {
             "electrum-seed", sw::tr("Specify Electrum seed for wallet recovery/creation"), ""};
-    const command_line::arg_descriptor<bool> arg_restore_deterministic_wallet = {
+    const command_line::arg_flag arg_restore_deterministic_wallet{
             "restore-deterministic-wallet",
-            sw::tr("Recover wallet using Electrum-style mnemonic seed"),
-            false};
-    const command_line::arg_descriptor<bool> arg_restore_multisig_wallet = {
+            sw::tr("Recover wallet using Electrum-style mnemonic seed")};
+    const command_line::arg_flag arg_restore_multisig_wallet{
             "restore-multisig-wallet",
-            sw::tr("Recover multisig wallet using Electrum-style mnemonic seed"),
-            false};
-    const command_line::arg_descriptor<bool> arg_non_deterministic = {
-            "non-deterministic", sw::tr("Generate non-deterministic view and spend keys"), false};
-    const command_line::arg_descriptor<bool> arg_allow_mismatched_daemon_version = {
+            sw::tr("Recover multisig wallet using Electrum-style mnemonic seed")};
+    const command_line::arg_flag arg_non_deterministic{
+            "non-deterministic", sw::tr("Generate non-deterministic view and spend keys")};
+    const command_line::arg_flag arg_allow_mismatched_daemon_version{
             "allow-mismatched-daemon-version",
-            sw::tr("Allow communicating with a daemon that uses a different RPC version"),
-            false};
+            sw::tr("Allow communicating with a daemon that uses a different RPC version")};
     const command_line::arg_descriptor<uint64_t> arg_restore_height = {
             "restore-height", sw::tr("Restore from specific blockchain height"), 0};
     const command_line::arg_descriptor<std::string> arg_restore_date = {
             "restore-date",
             sw::tr("Restore from estimated blockchain height on specified date"),
             ""};
-    const command_line::arg_descriptor<bool> arg_do_not_relay = {
+    const command_line::arg_flag arg_do_not_relay{
             "do-not-relay",
-            sw::tr("The newly created transaction will not be relayed to the oxen network"),
-            false};
-    const command_line::arg_descriptor<bool> arg_create_address_file = {
-            "create-address-file", sw::tr("Create an address file for new wallets"), false};
+            sw::tr("The newly created transaction will not be relayed to the oxen network")};
+    const command_line::arg_flag arg_create_address_file{
+            "create-address-file", sw::tr("Create an address file for new wallets")};
     const command_line::arg_descriptor<std::string> arg_create_hwdev_txt = {
             "create-hwdev-txt",
             sw::tr("Create a .hwdev.txt file for new hardware-backed wallets containing the given "
@@ -199,8 +195,8 @@ namespace {
             "subaddress-lookahead",
             tools::wallet2::tr("Set subaddress lookahead sizes to <major>:<minor>"),
             ""};
-    const command_line::arg_descriptor<bool> arg_use_english_language_names = {
-            "use-english-language-names", sw::tr("Display English language names"), false};
+    const command_line::arg_flag arg_use_english_language_names{
+            "use-english-language-names", sw::tr("Display English language names")};
 
     const command_line::arg_descriptor<std::vector<std::string>> arg_command = {"command", ""};
 
@@ -3549,15 +3545,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                                                      << msg;
     }
 
-    const bool testnet = tools::wallet2::has_testnet_option(vm);
-    const bool devnet = tools::wallet2::has_devnet_option(vm);
-    if (testnet && devnet) {
-        fail_msg_writer() << tr("Can't specify more than one of --testnet and --devnet");
-        return false;
-    }
-    network_type const nettype = testnet ? network_type::TESTNET
-                               : devnet  ? network_type::DEVNET
-                                         : network_type::MAINNET;
+    const auto nettype = command_line::get_network(vm);
 
     epee::wipeable_string multisig_keys;
     epee::wipeable_string password;
@@ -10166,7 +10154,7 @@ int main(int argc, char* argv[]) {
     command_line::add_arg(desc_params, arg_use_english_language_names);
 
     po::positional_options_description positional_options;
-    positional_options.add(arg_command.name, -1);
+    positional_options.add(arg_command.name.c_str(), -1);
 
     auto [vm, should_terminate] = wallet_args::main(
             argc,

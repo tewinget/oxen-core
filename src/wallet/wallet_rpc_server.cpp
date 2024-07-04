@@ -73,17 +73,17 @@ namespace {
 
     constexpr auto DEFAULT_AUTO_REFRESH_PERIOD = 20s;
 
-    const command_line::arg_descriptor<uint16_t, true> arg_rpc_bind_port = {
-            "rpc-bind-port", "Sets bind port for server"};
-    const command_line::arg_descriptor<bool> arg_disable_rpc_login = {
+    const command_line::arg_descriptor<uint16_t> arg_rpc_bind_port = {
+            "rpc-bind-port", "Sets bind port for server", command_line::required};
+    const command_line::arg_flag arg_disable_rpc_login = {
             "disable-rpc-login",
             "Disable HTTP authentication for RPC connections served by this process"};
-    const command_line::arg_descriptor<bool> arg_restricted = {
-            "restricted-rpc", "Restricts to view-only commands", false};
+    const command_line::arg_flag arg_restricted = {
+            "restricted-rpc", "Restricts to view-only commands"};
     const command_line::arg_descriptor<std::string> arg_wallet_dir = {
             "wallet-dir", "Directory for newly created wallets"};
-    const command_line::arg_descriptor<bool> arg_prompt_for_password = {
-            "prompt-for-password", "Prompts for password when not provided", false};
+    const command_line::arg_flag arg_prompt_for_password = {
+            "prompt-for-password", "Prompts for password when not provided"};
 
     constexpr const char default_rpc_username[] = "oxen";
 
@@ -2525,8 +2525,7 @@ namespace {
     // great like that.
     po::variables_map password_arg_hack(const std::string& password, po::variables_map vm) {
         po::options_description desc("dummy");
-        const command_line::arg_descriptor<std::string, true> arg_password = {
-                "password", "password"};
+        const command_line::arg_descriptor<std::string> arg_password = {"password", "password"};
         const char* argv[3];
         int argc = 3;
         argv[0] = "wallet-rpc";
@@ -3036,15 +3035,15 @@ SUBMIT_MULTISIG::response wallet_rpc_server::invoke(SUBMIT_MULTISIG::request&& r
 VALIDATE_ADDRESS::response wallet_rpc_server::invoke(VALIDATE_ADDRESS::request&& req) {
     VALIDATE_ADDRESS::response res{};
     cryptonote::address_parse_info info;
-    constexpr std::pair<cryptonote::network_type, std::string_view> net_types[] = {
-            {cryptonote::network_type::MAINNET, "mainnet"},
-            {cryptonote::network_type::TESTNET, "testnet"},
-            {cryptonote::network_type::DEVNET, "devnet"},
+    constexpr std::array net_types = {
+            cryptonote::network_type::MAINNET,
+            cryptonote::network_type::TESTNET,
+            cryptonote::network_type::DEVNET,
     };
     if (!req.any_net_type && !m_wallet)
         require_open();
 
-    for (const auto& [type, type_str] : net_types) {
+    for (const auto& type : net_types) {
         if (!req.any_net_type && (!m_wallet || type != m_wallet->nettype()))
             continue;
         if (req.allow_openalias) {
@@ -3063,7 +3062,7 @@ VALIDATE_ADDRESS::response wallet_rpc_server::invoke(VALIDATE_ADDRESS::request&&
         if (res.valid) {
             res.integrated = info.has_payment_id;
             res.subaddress = info.is_subaddress;
-            res.nettype = type_str;
+            res.nettype = network_type_to_string(type);
             return res;
         }
     }
@@ -3649,11 +3648,6 @@ ONS_ENCRYPT_VALUE::response wallet_rpc_server::invoke(ONS_ENCRYPT_VALUE::request
 std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
     std::unique_ptr<tools::wallet2> wal;
     {
-        const bool testnet = tools::wallet2::has_testnet_option(m_vm);
-        const bool devnet = tools::wallet2::has_devnet_option(m_vm);
-        if (testnet && devnet)
-            throw std::logic_error{tr("Can't specify more than one of --testnet and --devnet")};
-
         const auto arg_wallet_file = wallet_args::arg_wallet_file();
         const auto arg_from_json = wallet_args::arg_generate_from_json();
 

@@ -108,7 +108,7 @@ struct checkpoint_t;
 typedef std::pair<crypto::hash, uint64_t> tx_out_index;
 
 extern const command_line::arg_descriptor<std::string> arg_db_sync_mode;
-extern const command_line::arg_descriptor<bool, false> arg_db_salvage;
+extern const command_line::arg_flag arg_db_salvage;
 
 #pragma pack(push, 1)
 
@@ -171,7 +171,9 @@ struct txpool_tx_meta_t {
     uint8_t padding2[64];  // till 192 bytes
 };
 
-static_assert(sizeof(txpool_tx_meta_t) == 192 && std::has_unique_object_representations_v<txpool_tx_meta_t>);
+static_assert(
+        sizeof(txpool_tx_meta_t) == 192 &&
+        std::has_unique_object_representations_v<txpool_tx_meta_t>);
 
 #define DBF_SAFE 1
 #define DBF_FAST 2

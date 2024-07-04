@@ -37,6 +37,15 @@ namespace detail {
 template <typename...>
 struct type_list {};
 
+/// True if T is an instantiation of Class<...> for any ... types
+template <template <typename...> class Class, typename T>
+inline constexpr bool is_instantiation_of = false;
+template <template <typename...> class Class, typename... Us>
+inline constexpr bool is_instantiation_of<Class, Class<Us...>> = true;
+
+template <typename T, template <typename...> class Class>
+concept instantiation_of = is_instantiation_of<Class, T>;
+
 /// Accesses the index of the first T within a template type's type list.  E.g.
 ///
 ///     template_index<int, std::variant<double, short, int>>() == 2

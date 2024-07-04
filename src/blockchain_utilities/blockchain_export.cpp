@@ -48,7 +48,6 @@ int main(int argc, char* argv[]) {
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
     uint64_t block_stop = 0;
-    bool blocks_dat = false;
     tools::on_startup();
     auto opt_size = command_line::boost_option_sizes();
 
@@ -56,18 +55,16 @@ int main(int argc, char* argv[]) {
     po::options_description desc_cmd_sett(
             "Command line options and settings options", opt_size.first, opt_size.second);
     const command_line::arg_descriptor<std::string> arg_output_file = {
-            "output-file", "Specify output file", "", true};
+            "output-file", "Specify output file"};
     const command_line::arg_descriptor<std::string> arg_log_level = {
             "log-level", "0-4 or categories", ""};
     const command_line::arg_descriptor<uint64_t> arg_block_stop = {
             "block-stop", "Stop at block number", block_stop};
-    const command_line::arg_descriptor<bool> arg_blocks_dat = {
-            "blocksdat", "Output in blocks.dat format", blocks_dat};
+    const command_line::arg_flag arg_blocks_dat = {"blocksdat", "Output in blocks.dat format"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
     command_line::add_arg(desc_cmd_sett, arg_output_file);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_block_stop);
     command_line::add_arg(desc_cmd_sett, arg_blocks_dat);
@@ -99,18 +96,13 @@ int main(int argc, char* argv[]) {
     oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    if (opt_testnet && opt_devnet) {
-        std::cerr << "Can't specify more than one of --testnet and --devnet" << std::endl;
-        return 1;
-    }
+    auto nettype = command_line::get_network(vm);
     bool opt_blocks_dat = command_line::get_arg(vm, arg_blocks_dat);
 
     auto config_folder = tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir));
 
     fs::path output_file_path;
-    if (command_line::has_arg(vm, arg_output_file))
+    if (!command_line::is_arg_defaulted(vm, arg_output_file))
         output_file_path = tools::utf8_path(command_line::get_arg(vm, arg_output_file));
     else
         output_file_path = config_folder / "export" / BLOCKCHAIN_RAW;
@@ -135,11 +127,7 @@ int main(int argc, char* argv[]) {
         log::warning(logcat, "Error opening database: {}", e.what());
         return 1;
     }
-    r = core_storage->init(
-            std::move(db),
-            opt_testnet  ? cryptonote::network_type::TESTNET
-            : opt_devnet ? cryptonote::network_type::DEVNET
-                         : cryptonote::network_type::MAINNET);
+    r = core_storage->init(std::move(db), nettype);
 
     if (core_storage->get_blockchain_pruning_seed() && !opt_blocks_dat) {
         log::warning(logcat, "Blockchain is pruned, cannot export");

@@ -293,8 +293,6 @@ class wallet2 {
     static const char* ERR_MSG_TOO_MANY_TXS_CONSTRUCTED;
     static const char* ERR_MSG_EXCEPTION_THROWN;
 
-    static bool has_testnet_option(const boost::program_options::variables_map& vm);
-    static bool has_devnet_option(const boost::program_options::variables_map& vm);
     static std::vector<std::string> has_deprecated_options(
             const boost::program_options::variables_map& vm);
     static bool has_disable_rpc_long_poll(const boost::program_options::variables_map& vm);

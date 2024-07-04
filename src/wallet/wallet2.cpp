@@ -326,25 +326,19 @@ namespace {
                 "daemon-address",
                 tools::wallet2::tr("Use oxend RPC at [http://]<host>[:<port>]"),
                 ""};
-        const command_line::arg_descriptor<std::string> daemon_login = {
+        const command_line::arg_descriptor<std::string> daemon_login{
                 "daemon-login",
-                tools::wallet2::tr("Specify username[:password] for daemon RPC client"),
-                "",
-                true};
+                tools::wallet2::tr("Specify username[:password] for daemon RPC client")};
         const command_line::arg_descriptor<std::string> proxy = {
                 "proxy",
                 tools::wallet2::tr("Use socks proxy at [socks4a://]<ip>:<port> for daemon "
-                                   "connections"),
-                "",
-                true};
-        const command_line::arg_descriptor<bool> trusted_daemon = {
+                                   "connections")};
+        const command_line::arg_flag trusted_daemon{
                 "trusted-daemon",
-                tools::wallet2::tr("Enable commands which rely on a trusted daemon"),
-                false};
-        const command_line::arg_descriptor<bool> untrusted_daemon = {
+                tools::wallet2::tr("Enable commands which rely on a trusted daemon")};
+        const command_line::arg_flag untrusted_daemon{
                 "untrusted-daemon",
-                tools::wallet2::tr("Disable commands which rely on a trusted daemon"),
-                false};
+                tools::wallet2::tr("Disable commands which rely on a trusted daemon")};
         const command_line::arg_descriptor<std::string> daemon_ssl_private_key = {
                 "daemon-ssl-private-key",
                 tools::wallet2::tr("Path to a PEM format private key for HTTPS client "
@@ -360,11 +354,10 @@ namespace {
                 tools::wallet2::tr("Path to a CA certificate bundle to use to verify the remote "
                                    "node's HTTPS certificate instead of using your operating "
                                    "system CAs.")};
-        const command_line::arg_descriptor<bool> daemon_ssl_allow_any_cert = {
+        const command_line::arg_flag daemon_ssl_allow_any_cert{
                 "daemon-ssl-allow-any-cert",
                 tools::wallet2::tr("Make the HTTPS connection insecure by allowing any SSL "
-                                   "certificate from the daemon."),
-                false};
+                                   "certificate from the daemon.")};
 
         // Deprecated and not listed in --help
         const command_line::arg_descriptor<std::string> daemon_host = {
@@ -376,49 +369,24 @@ namespace {
                 tools::wallet2::tr("Deprecated. Use --daemon-address https://... instead"),
                 ""};
 
-        const command_line::arg_descriptor<std::string> password = {
-                "password",
-                tools::wallet2::tr("Wallet password (escape/quote as needed)"),
-                "",
-                true};
-        const command_line::arg_descriptor<std::string> password_file = {
-                "password-file", tools::wallet2::tr("Wallet password file"), "", true};
+        const command_line::arg_descriptor<std::string> password{
+                "password", tools::wallet2::tr("Wallet password (escape/quote as needed)")};
+        const command_line::arg_descriptor<std::string> password_file{
+                "password-file", tools::wallet2::tr("Wallet password file")};
 
-        const command_line::arg_descriptor<bool> testnet = {
-                "testnet",
-                tools::wallet2::tr("For testnet. Daemon must also be launched with --testnet flag"),
-                false};
-        const command_line::arg_descriptor<bool> devnet = {
-                "devnet",
-                tools::wallet2::tr("For devnet. Daemon must also be launched with --devnet flag"),
-                false};
-        const command_line::arg_descriptor<bool> regtest = {
-                "regtest",
-                tools::wallet2::tr("For regression testing. Daemon must also be launched with "
-                                   "--regtest flag"),
-                false};
-        const command_line::arg_descriptor<bool> disable_rpc_long_poll = {
+        const command_line::arg_flag disable_rpc_long_poll{
                 "disable-rpc-long-poll",
                 tools::wallet2::tr("Disable TX pool long polling functionality for instantaneous "
-                                   "TX detection"),
-                false};
+                                   "TX detection")};
 
-        const command_line::arg_descriptor<std::string, false, true, 3> shared_ringdb_dir = {
+        const command_line::arg_descriptor<std::string> shared_ringdb_dir = {
                 "shared-ringdb-dir",
                 tools::wallet2::tr("Set shared ring database path"),
-                get_default_ringdb_path(),
-                {{&testnet, &devnet, &regtest}},
-                [](std::array<bool, 3> test_dev_fake,
-                   bool defaulted,
-                   std::string val) -> std::string {
-                    if (!test_dev_fake[0] && !test_dev_fake[1] && !test_dev_fake[2])
-                        return val;
-                    return tools::convert_str<char>((tools::utf8_path(val) /
-                                                     fs::path{
-                                                             test_dev_fake[0]   ? u8"testnet"
-                                                             : test_dev_fake[1] ? u8"devnet"
-                                                                                : u8"fake"})
-                                                            .u8string());
+                [](network_type nettype) {
+                    auto dir = get_default_ringdb_path();
+                    if (auto subdir = network_config_subdir(nettype); !subdir.empty())
+                        dir /= subdir;
+                    return tools::convert_str<char>(dir.u8string());
                 }};
         const command_line::arg_descriptor<uint64_t> kdf_rounds = {
                 "kdf-rounds",
@@ -437,8 +405,8 @@ namespace {
                 "Run a program for each new incoming transaction, '%s' will be replaced by the "
                 "transaction hash",
                 ""};
-        const command_line::arg_descriptor<bool> offline = {
-                "offline", tools::wallet2::tr("Do not connect to a daemon"), false};
+        const command_line::arg_flag offline = {
+                "offline", tools::wallet2::tr("Do not connect to a daemon")};
         const command_line::arg_descriptor<std::string> extra_entropy = {
                 "extra-entropy",
                 tools::wallet2::tr("File containing extra entropy to initialize the PRNG (any "
@@ -497,24 +465,13 @@ namespace {
             const options& opts,
             const std::function<std::optional<tools::password_container>(const char*, bool)>&
                     password_prompter) {
-        const bool testnet = command_line::get_arg(vm, opts.testnet);
-        const bool devnet = command_line::get_arg(vm, opts.devnet);
-        const bool fakenet = command_line::get_arg(vm, opts.regtest);
-        network_type nettype = testnet ? network_type::TESTNET
-                             : devnet  ? network_type::DEVNET
-                             : fakenet ? network_type::FAKECHAIN
-                                       : network_type::MAINNET;
-
-        THROW_WALLET_EXCEPTION_IF(
-                testnet + devnet + fakenet > 1,
-                tools::error::wallet_internal_error,
-                "At most one of --testnet, --devnet, or --regtest may be specified");
+        auto nettype = command_line::get_network(vm);
 
         const uint64_t kdf_rounds = command_line::get_arg(vm, opts.kdf_rounds);
         THROW_WALLET_EXCEPTION_IF(
                 kdf_rounds == 0, tools::error::wallet_internal_error, "KDF rounds must not be 0");
 
-        const bool use_proxy = command_line::has_arg(vm, opts.proxy);
+        const bool use_proxy = !command_line::is_arg_defaulted(vm, opts.proxy);
         auto daemon_address = command_line::get_arg(vm, opts.daemon_address);
         // Deprecated:
         auto daemon_host = command_line::get_arg(vm, opts.daemon_host);
@@ -531,7 +488,7 @@ namespace {
                                    "be combined with --daemon-address"));
 
         std::optional<tools::login> login;
-        if (command_line::has_arg(vm, opts.daemon_login)) {
+        if (!command_line::is_arg_defaulted(vm, opts.daemon_login)) {
             login = tools::login::parse(
                     command_line::get_arg(vm, opts.daemon_login),
                     false,
@@ -656,19 +613,19 @@ namespace {
             const std::function<std::optional<tools::password_container>(const char*, bool)>&
                     password_prompter,
             const bool verify) {
-        if (command_line::has_arg(vm, opts.password) &&
-            command_line::has_arg(vm, opts.password_file)) {
+        if (!command_line::is_arg_defaulted(vm, opts.password) &&
+            !command_line::is_arg_defaulted(vm, opts.password_file)) {
             THROW_WALLET_EXCEPTION(
                     tools::error::wallet_internal_error,
                     tools::wallet2::tr("can't specify more than one of --password and "
                                        "--password-file"));
         }
 
-        if (command_line::has_arg(vm, opts.password)) {
+        if (!command_line::is_arg_defaulted(vm, opts.password)) {
             return tools::password_container{command_line::get_arg(vm, opts.password)};
         }
 
-        if (command_line::has_arg(vm, opts.password_file)) {
+        if (!command_line::is_arg_defaulted(vm, opts.password_file)) {
             std::string password;
             bool r = tools::slurp_file(
                     tools::utf8_path(command_line::get_arg(vm, opts.password_file)), password);
@@ -721,11 +678,7 @@ namespace {
             const options& opts,
             const std::function<std::optional<tools::password_container>(const char*, bool)>&
                     password_prompter) {
-        const bool testnet = command_line::get_arg(vm, opts.testnet);
-        const bool devnet = command_line::get_arg(vm, opts.devnet);
-        const network_type nettype = testnet ? network_type::TESTNET
-                                   : devnet  ? network_type::DEVNET
-                                             : network_type::MAINNET;
+        const auto nettype = command_line::get_network(vm);
 
         /* GET_FIELD_FROM_JSON_RETURN_ON_ERROR Is a generic macro that can return
         false. Gcc will coerce this into unique_ptr(nullptr), but clang correctly
@@ -1439,16 +1392,8 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended) :
 
 wallet2::~wallet2() {}
 
-bool wallet2::has_testnet_option(const boost::program_options::variables_map& vm) {
-    return command_line::get_arg(vm, options().testnet);
-}
-
 bool wallet2::has_disable_rpc_long_poll(const boost::program_options::variables_map& vm) {
     return command_line::get_arg(vm, options().disable_rpc_long_poll);
-}
-
-bool wallet2::has_devnet_option(const boost::program_options::variables_map& vm) {
-    return command_line::get_arg(vm, options().devnet);
 }
 
 std::vector<std::string> wallet2::has_deprecated_options(
@@ -1496,9 +1441,6 @@ void wallet2::init_options(
     command_line::add_arg(desc_params, opts.daemon_ssl_allow_any_cert);
     command_line::add_arg(desc_params, opts.password);
     command_line::add_arg(desc_params, opts.password_file);
-    command_line::add_arg(desc_params, opts.testnet);
-    command_line::add_arg(desc_params, opts.devnet);
-    command_line::add_arg(desc_params, opts.regtest);
     command_line::add_arg(desc_params, opts.shared_ringdb_dir);
     command_line::add_arg(desc_params, opts.kdf_rounds);
 #ifdef WALLET_ENABLE_MMS

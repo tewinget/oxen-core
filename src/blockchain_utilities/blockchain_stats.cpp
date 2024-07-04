@@ -68,18 +68,13 @@ int main(int argc, char* argv[]) {
             "block-start", "start at block number", block_start};
     const command_line::arg_descriptor<uint64_t> arg_block_stop = {
             "block-stop", "Stop at block number", block_stop};
-    const command_line::arg_descriptor<bool> arg_inputs = {
-            "with-inputs", "with input stats", false};
-    const command_line::arg_descriptor<bool> arg_outputs = {
-            "with-outputs", "with output stats", false};
-    const command_line::arg_descriptor<bool> arg_ringsize = {
-            "with-ringsize", "with ringsize stats", false};
-    const command_line::arg_descriptor<bool> arg_hours = {
-            "with-hours", "with txns per hour", false};
+    const command_line::arg_flag arg_inputs{"with-inputs", "with input stats"};
+    const command_line::arg_flag arg_outputs{"with-outputs", "with output stats"};
+    const command_line::arg_flag arg_ringsize{"with-ringsize", "with ringsize stats"};
+    const command_line::arg_flag arg_hours{"with-hours", "with txns per hour"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_block_start);
     command_line::add_arg(desc_cmd_sett, arg_block_stop);
@@ -114,11 +109,7 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Starting...");
 
     std::string opt_data_dir = command_line::get_arg(vm, cryptonote::arg_data_dir);
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    network_type net_type = opt_testnet ? network_type::TESTNET
-                          : opt_devnet  ? network_type::DEVNET
-                                        : network_type::MAINNET;
+    auto net_type = command_line::get_network(vm);
     block_start = command_line::get_arg(vm, arg_block_start);
     block_stop = command_line::get_arg(vm, arg_block_stop);
     bool do_inputs = command_line::get_arg(vm, arg_inputs);

@@ -109,7 +109,7 @@ int main(int argc, char const* argv[]) {
 
             // Positional
             positional_options.add(
-                    daemon_args::arg_command.name, -1);  // -1 for unlimited arguments
+                    daemon_args::arg_command.name.c_str(), -1);  // -1 for unlimited arguments
         }
 
         // Do command line parsing
@@ -147,6 +147,8 @@ int main(int argc, char const* argv[]) {
 
         std::optional<fs::path> load_config;
 
+        auto net_type = command_line::get_network(vm);
+
         if (command_line::is_arg_defaulted(vm, daemon_args::arg_config_file)) {
             // We are using the default config file, which will be in the data directory, as
             // determined *only* by the command-line arguments but *not* config file arguments,
@@ -161,7 +163,7 @@ int main(int argc, char const* argv[]) {
             // --regtest should append a /regtest to the data-dir, but this is done here rather than
             // in the defaults because this is a dev-only option that we don't really want the user
             // to need to worry about.
-            if (command_line::get_arg(vm, cryptonote::arg_regtest_on))
+            if (net_type == cryptonote::network_type::FAKECHAIN)
                 data_dir /= "regtest";
 
             // We also have to worry about migrating loki.conf -> oxen.conf *and* about a potential
@@ -180,12 +182,8 @@ int main(int argc, char const* argv[]) {
                 // If we *have* a --testnet or --devnet arg then we can use it, but it's possible
                 // that the config file itself will set and change that, which is why we retrieve
                 // those arguments again later, after parsing the config.
-                if (command_line::get_arg(vm, cryptonote::arg_testnet_on))
-                    old_data_dir /= "testnet";
-                else if (command_line::get_arg(vm, cryptonote::arg_devnet_on))
-                    old_data_dir /= "devnet";
-                else if (command_line::get_arg(vm, cryptonote::arg_regtest_on))
-                    old_data_dir /= "regtest";
+                if (auto subdir = network_config_subdir(net_type); !subdir.empty())
+                    old_data_dir /= subdir;
 
                 potential.emplace_back(old_data_dir / cryptonote::CONF_FILENAME, false);
                 potential.emplace_back(old_data_dir / cryptonote::old::CONF_FILENAME, true);
@@ -239,16 +237,8 @@ int main(int argc, char const* argv[]) {
                 std::cerr << RED << "Error parsing config file: " << e.what() << RESET << "\n";
                 return 1;
             }
-        }
 
-        const bool testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-        const bool devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-        const bool regtest = command_line::get_arg(vm, cryptonote::arg_regtest_on);
-        if (testnet + devnet + regtest > 1) {
-            std::cerr << RED
-                      << "Can't specify more than one of --testnet and --devnet and --regtest"
-                      << RESET << "\n";
-            return 1;
+            net_type = command_line::get_network(vm);
         }
 
         // data_dir
@@ -264,7 +254,7 @@ int main(int argc, char const* argv[]) {
         // --regtest should append a /regtest to the data-dir, but this is done here rather than in
         // the defaults because this is a dev-only option that we don't really want the user to need
         // to worry about.
-        if (command_line::get_arg(vm, cryptonote::arg_regtest_on))
+        if (net_type == cryptonote::network_type::FAKECHAIN)
             data_dir /= "regtest";
 
         // Will check if the default data directory is used and if it exists.
@@ -272,12 +262,8 @@ int main(int argc, char const* argv[]) {
         // exists.
         if (command_line::is_arg_defaulted(vm, cryptonote::arg_data_dir) && !fs::exists(data_dir)) {
             auto old_data_dir = tools::get_depreciated_default_data_dir();
-            if (testnet)
-                old_data_dir /= "testnet";
-            else if (devnet)
-                old_data_dir /= "devnet";
-            else if (regtest)
-                old_data_dir /= "regtest";
+            if (auto subdir = network_config_subdir(net_type); !subdir.empty())
+                old_data_dir /= subdir;
 
             if (fs::is_directory(old_data_dir)) {
                 std::error_code ec;
@@ -343,13 +329,8 @@ int main(int argc, char const* argv[]) {
                     auto rpc_port = command_line::get_arg(
                             vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
                     if (rpc_port == 0)
-                        rpc_port = command_line::get_arg(vm, cryptonote::arg_testnet_on)
-                                         ? cryptonote::config::testnet::RPC_DEFAULT_PORT
-                                 : command_line::get_arg(vm, cryptonote::arg_devnet_on)
-                                         ? cryptonote::config::devnet::RPC_DEFAULT_PORT
-                                         : cryptonote::config::mainnet::RPC_DEFAULT_PORT;
-                    rpc_addr = rpc_config.bind_ip.value_or("127.0.0.1") + ":" +
-                               std::to_string(rpc_port);
+                        rpc_port = get_config(command_line::get_network(vm)).RPC_DEFAULT_PORT;
+                    rpc_addr = "{}:{}"_format(rpc_config.bind_ip.value_or("127.0.0.1"), rpc_port);
                 } else {
                     rpc_addr = command_line::get_arg(
                             vm, cryptonote::rpc::http_server::arg_rpc_admin)[0];

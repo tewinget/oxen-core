@@ -60,12 +60,11 @@ int main(int argc, char* argv[]) {
             "txid", "Get min depth for this txid", ""};
     const command_line::arg_descriptor<uint64_t> arg_height = {
             "height", "Get min depth for all txes at this height", 0};
-    const command_line::arg_descriptor<bool> arg_include_coinbase = {
-            "include-coinbase", "Include coinbase in the average", false};
+    const command_line::arg_flag arg_include_coinbase{
+            "include-coinbase", "Include coinbase in the average"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_txid);
     command_line::add_arg(desc_cmd_sett, arg_height);
@@ -96,11 +95,7 @@ int main(int argc, char* argv[]) {
     oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    network_type net_type = opt_testnet ? network_type::TESTNET
-                          : opt_devnet  ? network_type::DEVNET
-                                        : network_type::MAINNET;
+    auto net_type = command_line::get_network(vm);
     std::string opt_txid_string = command_line::get_arg(vm, arg_txid);
     uint64_t opt_height = command_line::get_arg(vm, arg_height);
     bool opt_include_coinbase = command_line::get_arg(vm, arg_include_coinbase);

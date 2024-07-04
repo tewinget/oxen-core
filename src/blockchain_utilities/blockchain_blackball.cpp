@@ -1210,11 +1210,10 @@ int main(int argc, char* argv[]) {
     };
     const command_line::arg_descriptor<std::string> arg_log_level = {
             "log-level", "0-4 or categories", ""};
-    const command_line::arg_descriptor<bool> arg_rct_only = {
-            "rct-only", "Only work on ringCT outputs", false};
-    const command_line::arg_descriptor<bool> arg_check_subsets = {
-            "check-subsets", "Check ring subsets (very expensive)", false};
-    const command_line::arg_descriptor<bool> arg_verbose = {"verbose", "Verbose output)", false};
+    const command_line::arg_flag arg_rct_only{"rct-only", "Only work on ringCT outputs"};
+    const command_line::arg_flag arg_check_subsets{
+            "check-subsets", "Check ring subsets (very expensive)"};
+    const command_line::arg_flag arg_verbose = {"verbose", "Verbose output"};
     const command_line::arg_descriptor<std::vector<std::string>> arg_inputs = {
             "inputs", "Path to Oxen DB, and path to any fork DBs"};
     const command_line::arg_descriptor<std::string> arg_db_sync_mode = {
@@ -1225,10 +1224,10 @@ int main(int argc, char* argv[]) {
             "extra-spent-list", "Optional list of known spent outputs", ""};
     const command_line::arg_descriptor<std::string> arg_export = {
             "export", "Filename to export the backball list to"};
-    const command_line::arg_descriptor<bool> arg_force_chain_reaction_pass = {
+    const command_line::arg_flag arg_force_chain_reaction_pass = {
             "force-chain-reaction-pass",
             "Run the chain reaction pass even if no new blockchain data was processed"};
-    const command_line::arg_descriptor<bool> arg_historical_stat = {
+    const command_line::arg_flag arg_historical_stat = {
             "historical-stat",
             "Report historical stat of spent outputs for every 10000 blocks window"};
 
@@ -1249,7 +1248,7 @@ int main(int argc, char* argv[]) {
     desc_options.add(desc_cmd_only).add(desc_cmd_sett);
 
     po::positional_options_description positional_options;
-    positional_options.add(arg_inputs.name, -1);
+    positional_options.add(arg_inputs.name.c_str(), -1);
 
     po::variables_map vm;
     bool r = command_line::handle_error_helper(desc_options, [&]() {

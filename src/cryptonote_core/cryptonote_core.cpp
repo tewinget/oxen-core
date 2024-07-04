@@ -87,40 +87,28 @@ namespace cryptonote {
 static auto logcat = log::Cat("cn");
 static auto omqlogcat = log::Cat("omq");
 
-const command_line::arg_descriptor<bool, false> arg_testnet_on = {
-        "testnet", "Run on testnet. The wallet must be launched with --testnet flag.", false};
-const command_line::arg_descriptor<bool, false> arg_devnet_on = {
-        "devnet", "Run on devnet. The wallet must be launched with --devnet flag.", false};
-const command_line::arg_descriptor<bool> arg_regtest_on = {
-        "regtest", "Run in a regression testing mode.", false};
-const command_line::arg_descriptor<bool> arg_keep_fakechain = {
-        "keep-fakechain", "Don't delete any existing database when in fakechain mode.", false};
+const command_line::arg_flag arg_keep_fakechain{
+        "keep-fakechain", "Don't delete any existing database when in fakechain mode."};
 const command_line::arg_descriptor<difficulty_type> arg_fixed_difficulty = {
         "fixed-difficulty", "Fixed difficulty used for testing.", 0};
-const command_line::arg_descriptor<bool> arg_dev_allow_local = {
+const command_line::arg_flag arg_dev_allow_local{
         "dev-allow-local-ips",
-        "Allow a local IPs for local and received service node public IP (for local testing only)",
-        false};
-const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir = {
-        "data-dir",
-        "Specify data directory",
-        tools::convert_str<char>(tools::get_default_data_dir().u8string()),
-        {{&arg_testnet_on, &arg_devnet_on}},
-        [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val) -> std::string {
-            if (!testnet_devnet[0] && !testnet_devnet[1])
-                return val;
-            return tools::convert_str<char>((fs::path{tools::convert_str<char8_t>(val)} /
-                                             fs::path{testnet_devnet[0] ? u8"testnet" : u8"devnet"})
-                                                    .u8string());
+        "Allow a local IPs for local and received service node public IP (for local testing only)"};
+const command_line::arg_descriptor<std::string> arg_data_dir{
+        "data-dir", "Specify data directory"s, [](network_type nettype) {
+            fs::path base = tools::get_default_data_dir();
+            if (auto subdir = cryptonote::network_config_subdir(nettype); !subdir.empty())
+                base /= subdir;
+            return tools::convert_str<char>(base.u8string());
         }};
-const command_line::arg_descriptor<bool> arg_offline = {
+const command_line::arg_flag arg_offline = {
         "offline", "Do not listen for peers, nor connect to any"};
 const command_line::arg_descriptor<size_t> arg_block_download_max_size = {
         "block-download-max-size",
         "Set maximum size of block download queue in bytes (0 for default)",
         0};
 
-static const command_line::arg_descriptor<bool> arg_test_drop_download = {
+static const command_line::arg_flag arg_test_drop_download = {
         "test-drop-download",
         "For net tests: in download, discard ALL blocks instead checking/saving them (very fast)"};
 static const command_line::arg_descriptor<uint64_t> arg_test_drop_download_height = {
@@ -133,21 +121,18 @@ static const command_line::arg_descriptor<uint64_t> arg_prep_blocks_threads = {
         "prep-blocks-threads",
         "Max number of threads to use when preparing block hashes in groups.",
         4};
-static const command_line::arg_descriptor<uint64_t> arg_show_time_stats = {
-        "show-time-stats",
-        "Show time-stats when processing blocks/txs and disk synchronization.",
-        0};
+static const command_line::arg_flag arg_show_time_stats = {
+        "show-time-stats", "Show time-stats when processing blocks/txs and disk synchronization."};
 static const command_line::arg_descriptor<size_t> arg_block_sync_size = {
         "block-sync-size",
         "How many blocks to sync at once during chain synchronization (0 = adaptive).",
         0};
-static const command_line::arg_descriptor<bool> arg_pad_transactions = {
+static const command_line::arg_flag arg_pad_transactions = {
         "pad-transactions",
-        "Pad relayed transactions to help defend against traffic volume analysis",
-        false};
+        "Pad relayed transactions to help defend against traffic volume analysis"};
 static const command_line::arg_descriptor<size_t> arg_max_txpool_weight = {
         "max-txpool-weight", "Set maximum txpool weight in bytes.", DEFAULT_MEMPOOL_MAX_WEIGHT};
-static const command_line::arg_descriptor<bool> arg_service_node = {
+static const command_line::arg_flag arg_service_node = {
         "service-node", "Run as a service node, option 'service-node-public-ip' must be set"};
 static const command_line::arg_descriptor<std::string> arg_public_ip = {
         "service-node-public-ip",
@@ -157,26 +142,19 @@ static const command_line::arg_descriptor<std::string> arg_public_ip = {
         "service node."};
 static const command_line::arg_descriptor<uint16_t> arg_storage_server_port = {
         "storage-server-port", "Deprecated option, ignored.", 0};
-static const command_line::arg_descriptor<uint16_t, false, true, 2> arg_quorumnet_port = {
+static const command_line::arg_descriptor<uint16_t> arg_quorumnet_port = {
         "quorumnet-port",
         "The port on which this service node listen for direct connections from other "
         "service nodes for quorum messages.  The port must be publicly reachable "
         "on the `--service-node-public-ip' address and binds to the p2p IP address."
         " Only applies when running as a service node.",
-        config::mainnet::QNET_DEFAULT_PORT,
-        {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
-        [](std::array<bool, 2> testnet_devnet, bool defaulted, uint16_t val) -> uint16_t {
-            return defaulted && testnet_devnet[0] ? config::testnet::QNET_DEFAULT_PORT
-                 : defaulted && testnet_devnet[1] ? config::devnet::QNET_DEFAULT_PORT
-                                                  : val;
-        }};
-static const command_line::arg_descriptor<bool> arg_omq_quorumnet_public{
+        [](cryptonote::network_type nettype) { return get_config(nettype).QNET_DEFAULT_PORT; }};
+static const command_line::arg_flag arg_omq_quorumnet_public{
         "lmq-public-quorumnet",
         "Allow the curve-enabled quorumnet address (for a Service Node) to be used for public RPC "
         "commands as if passed to --lmq-curve-public. "
         "Note that even without this option the quorumnet port can be used for RPC commands by "
-        "--lmq-admin and --lmq-user pubkeys.",
-        false};
+        "--lmq-admin and --lmq-user pubkeys."};
 static const command_line::arg_descriptor<std::string> arg_l2_provider = {
         "l2-provider",
         "Specify one or more providers by URL to which this service node will query the Ethereum "
@@ -216,16 +194,15 @@ static const command_line::arg_descriptor<std::string> arg_block_notify = {
         "block-notify",
         "Run a program for each new block, '%s' will be replaced by the block hash",
         ""};
-static const command_line::arg_descriptor<bool> arg_prune_blockchain = {
-        "prune-blockchain", "Prune blockchain", false};
+static const command_line::arg_flag arg_prune_blockchain = {"prune-blockchain", "Prune blockchain"};
 static const command_line::arg_descriptor<std::string> arg_reorg_notify = {
         "reorg-notify",
         "Run a program for each reorg, '%s' will be replaced by the split height, "
         "'%h' will be replaced by the new blockchain height, and '%n' will be "
         "replaced by the number of new blocks in the new chain",
         ""};
-static const command_line::arg_descriptor<bool> arg_keep_alt_blocks = {
-        "keep-alt-blocks", "Keep alternative blocks on restart", false};
+static const command_line::arg_flag arg_keep_alt_blocks{
+        "keep-alt-blocks", "Keep alternative blocks on restart"};
 
 static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
         "store-quorum-history",
@@ -329,10 +306,7 @@ void core::init_options(boost::program_options::options_description& desc) {
 
     command_line::add_arg(desc, arg_test_drop_download);
     command_line::add_arg(desc, arg_test_drop_download_height);
-
-    command_line::add_arg(desc, arg_testnet_on);
-    command_line::add_arg(desc, arg_devnet_on);
-    command_line::add_arg(desc, arg_regtest_on);
+    command_line::add_network_args(desc);
     command_line::add_arg(desc, arg_keep_fakechain);
     command_line::add_arg(desc, arg_fixed_difficulty);
     command_line::add_arg(desc, arg_dev_allow_local);
@@ -370,13 +344,9 @@ void core::init_options(boost::program_options::options_description& desc) {
 }
 //-----------------------------------------------------------------------------------------------
 bool core::handle_command_line(const boost::program_options::variables_map& vm) {
-    if (m_nettype != network_type::FAKECHAIN) {
-        const bool testnet = command_line::get_arg(vm, arg_testnet_on);
-        const bool devnet = command_line::get_arg(vm, arg_devnet_on);
-        m_nettype = testnet ? network_type::TESTNET
-                  : devnet  ? network_type::DEVNET
-                            : network_type::MAINNET;
-    }
+    if (m_nettype != network_type::FAKECHAIN)
+        m_nettype = command_line::get_network(vm);
+
     m_check_uptime_proof_interval.interval(get_net_config().UPTIME_PROOF_CHECK_INTERVAL);
 
     m_config_folder = tools::utf8_path(command_line::get_arg(vm, arg_data_dir));
@@ -603,10 +573,8 @@ bool core::init(
         const GetCheckpointsCallback& get_checkpoints /* = nullptr */) {
     start_time = std::time(nullptr);
 
-    const bool regtest = command_line::get_arg(vm, arg_regtest_on);
-    if (test_options != NULL || regtest) {
+    if (test_options != NULL)
         m_nettype = network_type::FAKECHAIN;
-    }
 
     bool r = handle_command_line(vm);
     /// Currently terminating before blockchain is initialized results in a crash
@@ -854,7 +822,7 @@ bool core::init(
             sqliteDB.release(),
             m_l2_tracker.get(),
             m_offline,
-            regtest ? &regtest_test_options : test_options,
+            m_nettype == network_type::FAKECHAIN ? &regtest_test_options : test_options,
             command_line::get_arg(vm, arg_fixed_difficulty),
             get_checkpoints);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
@@ -1538,7 +1506,9 @@ bool core::handle_parsed_txs(
         } else {
             ok = false;
             if (info.tvc.m_duplicate_nonstandard)
-                log::debug(log::Cat("verify"), "Transaction is a duplicate non-standard tx (e.g. state change)");
+                log::debug(
+                        log::Cat("verify"),
+                        "Transaction is a duplicate non-standard tx (e.g. state change)");
             else if (info.tvc.m_verifivation_failed)
                 log::error(log::Cat("verify"), "Transaction verification failed: {}", info.tx_hash);
             else if (info.tvc.m_verifivation_impossible)
