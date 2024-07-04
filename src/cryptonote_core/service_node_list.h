@@ -241,7 +241,7 @@ struct service_node_info  // registration information
         uint64_t amount = 0;
         uint64_t reserved = 0;
         cryptonote::account_public_address address{};
-        crypto::eth_address ethereum_address{};
+        eth::address ethereum_address{};
         std::vector<contribution_t> locked_contributions;
 
         contributor_t() = default;
@@ -291,8 +291,8 @@ struct service_node_info  // registration information
     uint64_t portions_for_operator = 0;
     swarm_id_t swarm_id = 0;
     cryptonote::account_public_address operator_address{};
-    crypto::eth_address operator_ethereum_address{};
-    crypto::bls_public_key bls_public_key{};
+    eth::address operator_ethereum_address{};
+    eth::bls_public_key bls_public_key{};
     uint64_t last_ip_change_height = 0;  // The height of the last quorum penalty for changing IPs
     version_t version = tools::enum_top<version_t>;
     cryptonote::hf registration_hf_version = cryptonote::hf::none;
@@ -363,7 +363,7 @@ struct service_node_info  // registration information
 
 struct service_node_address {
     crypto::public_key sn_pubkey;
-    crypto::bls_public_key bls_pubkey;
+    eth::bls_public_key bls_pubkey;
     crypto::x25519_public_key x_pubkey;
     uint32_t ip;
     uint16_t port;
@@ -458,9 +458,9 @@ struct service_node_keys {
 
     /// BLS keypair of this service node, used for SENT registrations and interacting with the SENT
     /// staking contract.
-    crypto::bls_secret_key key_bls;
-    crypto::bls_public_key pub_bls;
-    std::shared_ptr<BLSSigner> bls_signer;
+    eth::bls_secret_key key_bls;
+    eth::bls_public_key pub_bls;
+    std::shared_ptr<eth::BLSSigner> bls_signer;
 };
 
 class service_node_list {
@@ -598,8 +598,7 @@ class service_node_list {
             if (!it->second.proof)
                 continue;
             auto& proof = *it->second.proof;
-            const auto& x_pk = it->second.pubkey_x25519;
-            assert(x_pk); // Should always be set to non-null if we have a proof
+            assert(it->second.pubkey_x25519); // Should always be set to non-null if we have a proof
             *out++ = service_node_address{
                     pk_info.first,
                     proof.pubkey_bls,
@@ -632,7 +631,7 @@ class service_node_list {
             bool& my_uptime_proof_confirmation,
             crypto::x25519_public_key& x25519_pkey);
 
-    crypto::public_key bls_public_key_lookup(const crypto::bls_public_key& bls_pubkey) const;
+    crypto::public_key bls_public_key_lookup(const eth::bls_public_key& bls_pubkey) const;
 
     void record_checkpoint_participation(
             crypto::public_key const& pubkey, uint64_t height, bool participated);
@@ -875,7 +874,7 @@ class service_node_list {
         return m_state.is_premature_unlock(nettype, hf_version, block_height, tx);
     }
 
-    bool is_recently_expired(const crypto::bls_public_key& node_bls_pubkey) const;
+    bool is_recently_expired(const eth::bls_public_key& node_bls_pubkey) const;
 
   private:
     // Note(maxim): private methods don't have to be protected the mutex
@@ -935,7 +934,7 @@ class service_node_list {
 
     // nodes that can't yet be liquidated; the .second value is the expiry block height at which we
     // remove them (and thus allow liquidation):
-    std::unordered_map<crypto::bls_public_key, uint64_t> recently_expired_nodes;
+    std::unordered_map<eth::bls_public_key, uint64_t> recently_expired_nodes;
 };
 
 struct staking_components {
@@ -958,7 +957,7 @@ bool tx_get_staking_components_and_amounts(
         staking_components* contribution);
 
 using contribution = std::pair<cryptonote::account_public_address, uint64_t>;
-using eth_contribution = std::pair<crypto::eth_address, uint64_t>;
+using eth_contribution = std::pair<eth::address, uint64_t>;
 struct registration_details {
     crypto::public_key service_node_pubkey;
     std::vector<contribution> reserved;
@@ -973,7 +972,7 @@ struct registration_details {
         crypto::ed25519_signature ed_signature;
     };
     std::vector<eth_contribution> eth_contributions;
-    crypto::bls_public_key bls_pubkey;
+    eth::bls_public_key bls_pubkey;
 };
 
 bool is_registration_tx(

@@ -221,7 +221,7 @@ int main(int argc, char** argv)
   TRY_ENTRY();
   tools::on_startup();
   //set up logging options
-  oxen::logging::init("net_load_tests_srv.log", oxen::log::Level::debug);
+  oxen::logging::init("net_load_tests_srv.log", "*=debug");
 
   size_t thread_count = std::max(min_thread_count, std::thread::hardware_concurrency() / 2);
 

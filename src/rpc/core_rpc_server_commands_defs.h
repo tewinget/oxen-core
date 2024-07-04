@@ -682,7 +682,6 @@ struct block_header_response {
     std::vector<std::string> tx_hashes;
     std::string service_node_winner;
     uint64_t l2_height;
-    std::string l2_state;
 };
 
 void to_json(nlohmann::json& j, const block_header_response& h);
@@ -2306,7 +2305,7 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
     static constexpr auto names() { return NAMES("bls_rewards_request"); }
 
     struct request_parameters {
-        crypto::eth_address address;
+        eth::address address;
     } request;
 };
 
@@ -2330,7 +2329,7 @@ struct BLS_EXIT_REQUEST : PUBLIC {
     static constexpr auto names() { return NAMES("bls_exit_request"); }
 
     struct request_parameters {
-        crypto::bls_public_key bls_pubkey;
+        eth::bls_public_key bls_pubkey;
     } request;
 };
 
@@ -2354,7 +2353,7 @@ struct BLS_LIQUIDATION_REQUEST : PUBLIC {
     static constexpr auto names() { return NAMES("bls_liquidation_request"); }
 
     struct request_parameters {
-        crypto::bls_public_key bls_pubkey;
+        eth::bls_public_key bls_pubkey;
     } request;
 };
 
@@ -2381,7 +2380,7 @@ struct BLS_REGISTRATION : RPC_COMMAND {
     static constexpr auto names() { return NAMES("bls_registration_request"); }
 
     struct request_parameters {
-        crypto::eth_address address;
+        eth::address address;
     } request;
 };
 

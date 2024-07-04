@@ -43,6 +43,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "blockchain_db/sqlite/db_sqlite.h"
 #include "common/command_line.h"
 #include "common/guts.h"
 #include "common/json_binary_proxy.h"
@@ -1346,7 +1347,7 @@ void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, [[maybe_unused]] rpc_
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
         SET_LOG_CATEGORIES& set_log_categories, [[maybe_unused]] rpc_context context) {
-    oxen::logging::process_categories_string(set_log_categories.request.categories.c_str());
+    oxen::logging::apply_categories_string(set_log_categories.request.categories);
     set_log_categories.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -1484,7 +1485,6 @@ void core_rpc_server::fill_block_header_response(
                               cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra))
                     : tools::hex_guts(blk.service_node_winner_key);
     response.coinbase_payouts = get_block_reward(blk);
-    response.l2_state = tools::hex_guts(blk.l2_state);
     response.l2_height = blk.l2_height;
     if (blk.miner_tx.vout.size() > 0)
         response.miner_tx_hash = tools::hex_guts(cryptonote::get_transaction_hash(blk.miner_tx));
@@ -2540,7 +2540,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_conte
     bls_rewards_request.response_hex["signed_hash"] = bls_withdrawal_signature_response.signed_hash;
     bls_rewards_request.response_hex["signature"] = bls_withdrawal_signature_response.signature;
     bls_rewards_request.response["non_signer_indices"] =
-            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+            m_core.get_blockchain_storage().l2_tracker().get_non_signers(
                     bls_withdrawal_signature_response.signers_bls_pubkeys.begin(),
                     bls_withdrawal_signature_response.signers_bls_pubkeys.end());
 }
@@ -2552,7 +2552,7 @@ void core_rpc_server::invoke(BLS_EXIT_REQUEST& exit, rpc_context) {
     exit.response_hex["signed_hash"] = exit_sig.signed_hash;
     exit.response_hex["signature"] = exit_sig.signature;
     exit.response["non_signer_indices"] =
-            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+            m_core.get_blockchain_storage().l2_tracker().get_non_signers(
                     exit_sig.signers_bls_pubkeys.begin(), exit_sig.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2563,7 +2563,7 @@ void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& liquidate, rpc_context) {
     liquidate.response_hex["signed_hash"] = liquidate_sig.signed_hash;
     liquidate.response_hex["signature"] = liquidate_sig.signature;
     liquidate.response["non_signer_indices"] =
-            m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(
+            m_core.get_blockchain_storage().l2_tracker().get_non_signers(
                     liquidate_sig.signers_bls_pubkeys.begin(),
                     liquidate_sig.signers_bls_pubkeys.end());
 }
@@ -3418,13 +3418,13 @@ void core_rpc_server::invoke(
             if (address_parse_info parse_info{};
                 get_account_address_from_str(parse_info, net, address)) {
                 std::tie(std::ignore, amount) =
-                        blockchain.sqlite_db()->get_accrued_earnings(parse_info.address);
+                        blockchain.sqlite_db().get_accrued_earnings(parse_info.address);
                 at_least_one_succeeded = true;
             }
             balances[address] = amount;
         }
     } else {
-        auto [addresses, amounts] = blockchain.sqlite_db()->get_all_accrued_earnings();
+        auto [addresses, amounts] = blockchain.sqlite_db().get_all_accrued_earnings();
         for (size_t i = 0; i < addresses.size(); i++) {
             balances[addresses[i]] = amounts[i];
         }

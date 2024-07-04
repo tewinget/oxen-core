@@ -7,6 +7,7 @@
 #include <unordered_set>
 
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "ringct/rctTypes.h"
 
 using namespace std::literals;
@@ -28,11 +29,11 @@ inline constexpr bool json_is_binary<crypto::ed25519_signature> = true;
 template <>
 inline constexpr bool json_is_binary<crypto::x25519_public_key> = true;
 template <>
-inline constexpr bool json_is_binary<crypto::bls_public_key> = true;
+inline constexpr bool json_is_binary<eth::bls_public_key> = true;
 template <>
-inline constexpr bool json_is_binary<crypto::bls_signature> = true;
+inline constexpr bool json_is_binary<eth::bls_signature> = true;
 template <>
-inline constexpr bool json_is_binary<crypto::eth_address> = true;
+inline constexpr bool json_is_binary<eth::address> = true;
 template <>
 inline constexpr bool json_is_binary<crypto::key_image> = true;
 template <>

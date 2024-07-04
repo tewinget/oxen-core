@@ -223,15 +223,7 @@ int main(int argc, char* argv[]) {
     }
 
     auto log_file_path = "cn_deserialize.log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level))) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level)
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
-    oxen::logging::init(log_file_path, log_level);
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
     if (oxenc::is_hex(input)) {

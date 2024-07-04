@@ -33,13 +33,13 @@ class Proof {
     crypto::signature sig{};
     crypto::ed25519_public_key pubkey_ed25519{};
     crypto::ed25519_signature sig_ed25519{};
-    crypto::bls_public_key pubkey_bls{};
+    eth::bls_public_key pubkey_bls{};
 
     // Our proof of possession here is the BLS signature of H(pubkey_bls || service_node_pubkey); we
     // can't use the same PoP that we use for the smart contract because for transitioning nodes in
     // HF20 (where we need/use this) there isn't an operator or contributor contract ETH address
     // associated with the SN.
-    crypto::bls_signature pop_bls{};
+    eth::bls_signature pop_bls{};
 
     uint32_t public_ip{};
     uint16_t storage_https_port{};

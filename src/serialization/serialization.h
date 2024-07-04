@@ -171,10 +171,10 @@ template <typename T>
 constexpr bool binary_serializable = false;
 
 /// Macro to add a specialization.  Must be used out of any namespace.
-#define BLOB_SERIALIZER(T)                            \
-    namespace serialization {                         \
-        template <>                                   \
-        constexpr bool binary_serializable<T> = true; \
+#define BLOB_SERIALIZER(T)                                   \
+    namespace serialization {                                \
+        template <>                                          \
+        inline constexpr bool binary_serializable<T> = true; \
     }
 
 namespace detail {

@@ -36,31 +36,31 @@
 #include <chrono>
 #include <functional>
 
-#include "crypto/crypto.h"
-#include "cryptonote_config.h"
-#include "oxen_economy.h"
-#include "ringct/rctTypes.h"
-
 extern "C" {
 #include <sodium.h>
 }
 
 #include "blockchain.h"
+#include "blockchain_db/sqlite/db_sqlite.h"
 #include "bls/bls_utils.h"
 #include "common/i18n.h"
 #include "common/lock.h"
 #include "common/random.h"
 #include "common/scoped_message_writer.h"
 #include "common/util.h"
+#include "crypto/crypto.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_basic/tx_extra.h"
+#include "cryptonote_config.h"
 #include "cryptonote_core/uptime_proof.h"
 #include "cryptonote_tx_utils.h"
 #include "epee/int-util.h"
 #include "epee/net/local_ip.h"
 #include "ethereum_transactions.h"
+#include "oxen_economy.h"
 #include "pulse.h"
 #include "ringct/rctSigs.h"
+#include "ringct/rctTypes.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
 #include "service_node_rules.h"
@@ -436,7 +436,7 @@ void validate_registration(
                 reg.eth_contributions.begin(),
                 reg.eth_contributions.end(),
                 std::back_inserter(extracted_amounts),
-                [](const std::pair<crypto::eth_address, uint64_t>& pair) { return pair.second; });
+                [](const std::pair<eth::address, uint64_t>& pair) { return pair.second; });
     } else {
         if (reg.reserved.empty())
             throw invalid_registration{"No operator contribution given"};
@@ -1126,7 +1126,7 @@ bool service_node_list::state_t::process_ethereum_exit_tx(
     auto node = std::find_if(service_nodes_infos.begin(), service_nodes_infos.end(),
         [&exit_data](const auto& pair) {
             const auto& [key, info] = pair;
-            return info->bls_public_key == exit_data.bls_key;
+            return info->bls_public_key == exit_data.bls_pubkey;
         });
     std::vector<cryptonote::batch_sn_payment> returned_stakes;
     for (const auto& contributor : node->second->contributors)
@@ -1134,7 +1134,7 @@ bool service_node_list::state_t::process_ethereum_exit_tx(
 
     returned_stakes[0].amount -= stake_reduction;
 
-    return sn_list->m_blockchain.sqlite_db()->return_staked_amount_to_user(returned_stakes, block_delay);
+    return sn_list->m_blockchain.sqlite_db().return_staked_amount_to_user(returned_stakes, block_delay);
 }
 
 bool service_node_list::state_t::process_key_image_unlock_tx(
@@ -2334,10 +2334,10 @@ bool service_node_list::process_batching_rewards(const cryptonote::block& block)
                 "because the service node list is at height: {} and the batching database is at "
                 "height: {}",
                 height(),
-                m_blockchain.sqlite_db()->height + 1);
+                m_blockchain.sqlite_db().height + 1);
         return false;
     }
-    return m_blockchain.sqlite_db()->add_block(block, m_state);
+    return m_blockchain.sqlite_db().add_block(block, m_state);
 }
 bool service_node_list::pop_batching_rewards_block(const cryptonote::block& block) {
     uint64_t block_height = cryptonote::get_block_height(block);
@@ -2345,11 +2345,11 @@ bool service_node_list::pop_batching_rewards_block(const cryptonote::block& bloc
         block.major_version >= hf::hf19_reward_batching && height() != block_height) {
         if (auto it = m_transient.state_history.find(block_height);
             it != m_transient.state_history.end())
-            return m_blockchain.sqlite_db()->pop_block(block, *it);
-        m_blockchain.sqlite_db()->reset_database();
+            return m_blockchain.sqlite_db().pop_block(block, *it);
+        m_blockchain.sqlite_db().reset_database();
         return false;
     }
-    return m_blockchain.sqlite_db()->pop_block(block, m_state);
+    return m_blockchain.sqlite_db().pop_block(block, m_state);
 }
 
 static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {
@@ -4043,7 +4043,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
 }
 
 crypto::public_key service_node_list::bls_public_key_lookup(
-        const crypto::bls_public_key& bls_pubkey) const {
+        const eth::bls_public_key& bls_pubkey) const {
     bool found = false;
     crypto::public_key found_pk;
     {
@@ -4093,7 +4093,7 @@ void service_node_list::record_timesync_status(crypto::public_key const& pubkey,
         proofs[pubkey].timesync_status.add({synced});
 }
 
-bool service_node_list::is_recently_expired(const crypto::bls_public_key& node_bls_pubkey) const {
+bool service_node_list::is_recently_expired(const eth::bls_public_key& node_bls_pubkey) const {
     return recently_expired_nodes.count(node_bls_pubkey);
 }
 

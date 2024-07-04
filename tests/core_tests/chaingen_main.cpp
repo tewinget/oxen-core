@@ -76,10 +76,9 @@ int main(int argc, char* argv[])
     return 0;
   }
 
-  auto log_level = oxen::log::Level::info;
+  std::string log_level = "*=info";
   if (!command_line::is_arg_defaulted(vm, arg_log_level))
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level).c_str()))
-      log_level = *level;
+    log_level = command_line::get_arg(vm, arg_log_level);
 
   //set up logging options
   oxen::logging::init("core_tests.log", log_level); 

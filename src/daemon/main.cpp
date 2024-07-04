@@ -313,22 +313,13 @@ int main(int argc, char const* argv[]) {
         //   if log-file argument given:
         //     absolute path
         //     relative path: relative to data_dir
-        Log::Level log_level;
-        if (auto level = oxen::logging::parse_level(
-                    command_line::get_arg(vm, daemon_args::arg_log_level).c_str())) {
-            log_level = *level;
-        } else {
-            std::cerr << "Incorrect log level: "
-                      << command_line::get_arg(vm, daemon_args::arg_log_level).c_str() << std::endl;
-            throw std::runtime_error{"Incorrect log level"};
-        }
         auto log_file_path = data_dir / cryptonote::LOG_FILENAME;
         if (!command_line::is_arg_defaulted(vm, daemon_args::arg_log_file))
             log_file_path = command_line::get_arg(vm, daemon_args::arg_log_file);
         if (log_file_path.is_relative())
             log_file_path = fs::absolute(data_dir / log_file_path);
 
-        oxen::logging::init(log_file_path.string(), log_level);
+        oxen::logging::init(log_file_path.string(), command_line::get_arg(vm, daemon_args::arg_log_level));
 
         logs_initialized = true;
 

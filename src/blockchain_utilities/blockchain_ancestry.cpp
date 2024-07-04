@@ -218,14 +218,14 @@ static std::unordered_set<ancestor> get_ancestry(
 }
 
 static bool get_block_from_height(
-        ancestry_state_t& state, BlockchainDB* db, uint64_t height, cryptonote::block& b) {
+        ancestry_state_t& state, BlockchainDB& db, uint64_t height, cryptonote::block& b) {
     ++total_blocks;
     if (state.block_cache.size() > height && !state.block_cache[height].miner_tx.vin.empty()) {
         ++cached_blocks;
         b = state.block_cache[height];
         return true;
     }
-    std::string bd = db->get_block_blob_from_height(height);
+    std::string bd = db.get_block_blob_from_height(height);
     if (!cryptonote::parse_and_validate_block_from_blob(bd, b)) {
         log::warning(logcat, "Bad block from db");
         return false;
@@ -238,7 +238,7 @@ static bool get_block_from_height(
 }
 
 static bool get_transaction(
-        ancestry_state_t& state, BlockchainDB* db, const crypto::hash& txid, ::tx_data_t& tx_data) {
+        ancestry_state_t& state, BlockchainDB& db, const crypto::hash& txid, ::tx_data_t& tx_data) {
     std::unordered_map<crypto::hash, ::tx_data_t>::const_iterator i = state.tx_cache.find(txid);
     ++total_txes;
     if (i != state.tx_cache.end()) {
@@ -248,7 +248,7 @@ static bool get_transaction(
     }
 
     std::string bd;
-    if (!db->get_pruned_tx_blob(txid, bd)) {
+    if (!db.get_pruned_tx_blob(txid, bd)) {
         log::warning(logcat, "Failed to get txid {} from db", txid);
         return false;
     }
@@ -265,7 +265,7 @@ static bool get_transaction(
 
 static bool get_output_txid(
         ancestry_state_t& state,
-        BlockchainDB* db,
+        BlockchainDB& db,
         uint64_t amount,
         uint64_t offset,
         crypto::hash& txid) {
@@ -278,7 +278,7 @@ static bool get_output_txid(
         return true;
     }
 
-    const output_data_t od = db->get_output_key(amount, offset, false);
+    const output_data_t od = db.get_output_key(amount, offset, false);
     cryptonote::block b;
     if (!get_block_from_height(state, db, od.height, b))
         return false;
@@ -385,15 +385,7 @@ int main(int argc, char* argv[]) {
     }
     auto m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
     auto log_file_path = m_config_folder + "oxen-blockchain-ancestry.log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level).c_str())) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
-    oxen::logging::init(log_file_path, log_level);
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
     std::string opt_data_dir = command_line::get_arg(vm, cryptonote::arg_data_dir);
@@ -436,23 +428,23 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
-    BlockchainDB* db = new_db();
-    if (db == NULL) {
+    auto bdb = new_db();
+    if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
         throw std::runtime_error("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 
-    fs::path filename = tools::utf8_path(opt_data_dir) / db->get_db_name();
+    fs::path filename = tools::utf8_path(opt_data_dir) / bdb->get_db_name();
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {
-        db->open(filename, core_storage->nettype(), DBF_RDONLY);
+        bdb->open(filename, core_storage->nettype(), DBF_RDONLY);
     } catch (const std::exception& e) {
         log::warning(logcat, "Error opening database: {}", e.what());
         return 1;
     }
-    r = core_storage->init(db, nullptr /*ons_db*/, nullptr, net_type);
+    r = core_storage->init(std::move(bdb), net_type);
 
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
     log::warning(logcat, "Source blockchain storage initialized OK");
@@ -482,13 +474,14 @@ int main(int argc, char* argv[]) {
     tools::signal_handler::install([](int type) { stop_requested = true; });
 
     // forward method
-    const uint64_t db_height = db->height();
+    auto& db = core_storage->get_db();
+    const uint64_t db_height = db.height();
     if (opt_refresh) {
         log::info(logcat, "Starting from height {}", state.height);
         state.block_cache.reserve(db_height);
         for (uint64_t h = state.height; h < db_height; ++h) {
             size_t block_ancestry_size = 0;
-            const std::string bd = db->get_block_blob_from_height(h);
+            const std::string bd = db.get_block_blob_from_height(h);
             ++total_blocks;
             cryptonote::block b;
             if (!cryptonote::parse_and_validate_block_from_blob(bd, b)) {
@@ -517,7 +510,7 @@ int main(int argc, char* argv[]) {
                     tx_data = i->second;
                 } else {
                     std::string bd;
-                    if (!db->get_pruned_tx_blob(txid, bd)) {
+                    if (!db.get_pruned_tx_blob(txid, bd)) {
                         log::warning(logcat, "Failed to get txid {} from db", txid);
                         return 1;
                     }
@@ -609,7 +602,7 @@ int main(int argc, char* argv[]) {
         }
         start_txids.push_back(txid);
     } else {
-        const std::string bd = db->get_block_blob_from_height(opt_height);
+        const std::string bd = db.get_block_blob_from_height(opt_height);
         cryptonote::block b;
         if (!cryptonote::parse_and_validate_block_from_blob(bd, b)) {
             log::warning(logcat, "Bad block from db");

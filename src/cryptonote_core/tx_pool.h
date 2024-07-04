@@ -32,7 +32,6 @@
 
 #include <boost/serialization/version.hpp>
 #include <functional>
-#include <queue>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -43,7 +42,6 @@
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/verification_context.h"
 #include "epee/string_tools.h"
-#include "l2_tracker/l2_tracker.h"
 #include "oxen_economy.h"
 #include "tx_blink.h"
 
@@ -54,46 +52,54 @@ class Blockchain;
 /************************************************************************/
 
 //! tuple of <deregister, transaction fee, receive time> for organization
-typedef std::pair<std::tuple<bool, double, std::time_t>, crypto::hash>
-        tx_by_fee_and_receive_time_entry;
+using tx_by_fee_and_receive_time_entry =
+        std::pair<std::tuple<bool, double, std::time_t>, crypto::hash>;
 
 class txCompare {
+  private:
+    // Sort order: non-standard txes, fee (descending), arrival time, hash
+    static auto compare_tuple(const tx_by_fee_and_receive_time_entry& x) {
+        return std::make_tuple(
+                !std::get<0>(x.first), -std::get<1>(x.first), std::get<2>(x.first), x.second);
+    }
+
   public:
     bool operator()(
             const tx_by_fee_and_receive_time_entry& a,
             const tx_by_fee_and_receive_time_entry& b) const {
-        // Sort order:         non-standard txes,     fee (descending),      arrival time, hash
-        return std::make_tuple(
-                       !std::get<0>(a.first),
-                       -std::get<1>(a.first),
-                       std::get<2>(a.first),
-                       a.second) <
-               std::make_tuple(
-                       !std::get<0>(b.first),
-                       -std::get<1>(b.first),
-                       std::get<2>(b.first),
-                       b.second);
+        return compare_tuple(a) < compare_tuple(b);
     }
 };
 
 //! container for sorting transactions by fee per unit size
-typedef std::set<tx_by_fee_and_receive_time_entry, txCompare> sorted_tx_container;
+using sorted_tx_container = std::set<tx_by_fee_and_receive_time_entry, txCompare>;
 
 /// Argument passed into add_tx specifying different requires on the transaction
 struct tx_pool_options {
     bool kept_by_block = false;  ///< has this transaction been in a block?
     bool relayed = false;        ///< was this transaction from the network or a local client?
     bool do_not_relay = false;   ///< to avoid relaying the transaction to the network
-    bool approved_blink =
-            false;  ///< signals that this is a blink tx and so should be accepted even if it
-                    ///< conflicts with mempool or recent txes in non-immutable block; typically
-                    ///< specified indirectly (via core.handle_incoming_txs())
-    uint64_t fee_percent = 100;  ///< the required miner tx fee in percent relative to the base
-                                 ///< required miner tx fee; must be >= 100.
-    uint64_t burn_fixed =
-            0;  ///< a required minimum amount that must be burned (in atomic currency)
-    uint64_t burn_percent = 0;  ///< a required amount as a percentage of the base required miner tx
-                                ///< fee that must be burned (additive with burn_fixed, if both > 0)
+
+    /// signals that this is a blink tx and so should be accepted even if it conflicts with mempool
+    /// or recent txes in non-immutable block; typically specified indirectly (via
+    /// core.handle_incoming_txs())
+    bool approved_blink = false;
+
+    /// the required miner tx fee in percent relative to the base required miner tx fee; must be
+    /// >= 100.
+    uint64_t fee_percent = 100;
+
+    /// a required minimum amount that must be burned (in atomic currency)
+    uint64_t burn_fixed = 0;
+
+    /// a required amount as a percentage of the base required miner tx fee that must be burned
+    /// (additive with burn_fixed, if both > 0)
+    uint64_t burn_percent = 0;
+
+    /// For state changes from ETH L2, this contains the L2 block height in which the transaction
+    /// was contained, and can be used during block construction to only select transactions from a
+    /// particular L2 range.
+    uint64_t l2_height = 0;
 
     static tx_pool_options from_block() {
         tx_pool_options o;
@@ -111,7 +117,13 @@ struct tx_pool_options {
         o.do_not_relay = do_not_relay;
         return o;
     }
-    static tx_pool_options new_blink(bool approved, hf hf_version) {
+    static tx_pool_options from_l2(uint64_t l2_height) {
+        tx_pool_options o;
+        o.l2_height = l2_height;
+        o.do_not_relay = true;
+        return o;
+    }
+    static tx_pool_options new_blink(bool approved, hf) {
         tx_pool_options o;
         o.do_not_relay = !approved;
         o.approved_blink = approved;
@@ -167,7 +179,6 @@ class tx_memory_pool {
             tx_verification_context& tvc,
             const tx_pool_options& opts,
             hf hf_version,
-            std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
             uint64_t* blink_rollback_height = nullptr);
 
     /**
@@ -189,8 +200,7 @@ class tx_memory_pool {
             transaction& tx,
             tx_verification_context& tvc,
             const tx_pool_options& opts,
-            hf hf_version,
-            std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session);
+            hf hf_version);
 
     /**
      * @brief attempts to add a blink transaction to the transaction pool.
@@ -449,6 +459,10 @@ class tx_memory_pool {
      * finding this block, including transaction fees and, if applicable, a large block reward
      * penalty.
      * @param version hard fork version to use for consensus rules
+     * @height the height this block will have.
+     * @l2_range if specified, this gives a pair of L2 heights, FROM and TO (inclusive), for which
+     * state change transactions that came from our own L2 provider should be included.  If omitted
+     * or nullopt then *no* L2 state change transactions will be included.
      *
      * @return true
      */
@@ -460,7 +474,8 @@ class tx_memory_pool {
             uint64_t& raw_fee,
             uint64_t& expected_reward,
             hf version,
-            uint64_t height);
+            uint64_t height,
+            std::optional<std::pair<uint64_t, uint64_t>> l2_range = std::nullopt);
 
     /**
      * @brief get a list of all transactions in the pool
@@ -715,7 +730,6 @@ class tx_memory_pool {
     bool is_transaction_ready_to_go(
             txpool_tx_meta_t& txd,
             const crypto::hash& txid,
-            std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
             const std::string& txblob,
             transaction& tx) const;
 
@@ -819,7 +833,6 @@ class tx_memory_pool {
     bool check_tx_inputs(
             const std::function<cryptonote::transaction&()>& get_tx,
             const crypto::hash& txid,
-            std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
             uint64_t& max_used_block_height,
             crypto::hash& max_used_block_id,
             tx_verification_context& tvc,

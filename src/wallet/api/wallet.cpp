@@ -406,7 +406,7 @@ void Wallet::init(
         const std::string& log_path,
         bool console) {
     epee::string_tools::set_module_name_and_folder(argv0);
-    oxen::logging::init(log_path.empty() ? default_log_base_name : log_path, log::Level::info);
+    oxen::logging::init(log_path.empty() ? default_log_base_name : log_path, "*=info", console);
 }
 
 EXPORT

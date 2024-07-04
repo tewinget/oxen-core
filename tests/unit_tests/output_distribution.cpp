@@ -89,7 +89,7 @@ bool get_output_distribution(uint64_t amount, uint64_t from, uint64_t to, uint64
     };
   } opts;
   cryptonote::Blockchain *blockchain = &bc.m_blockchain;
-  bool r = blockchain->init(new TestDB(test_distribution_size), nullptr /*ons_db*/, nullptr /*sqlite_db*/, cryptonote::network_type::FAKECHAIN, true, &opts.test_options, 0, "", NULL);
+  bool r = blockchain->init(std::make_unique<TestDB>(test_distribution_size), opts.test_options);
   return r && blockchain->get_output_distribution(amount, from, to, start_height, distribution, base);
 }
 

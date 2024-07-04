@@ -732,6 +732,9 @@ class core : public i_miner_handler {
      */
     const Blockchain& get_blockchain_storage() const { return m_blockchain_storage; }
 
+    /// Returns a reference to the Ethereum L2 tracking object
+    eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
+
     /// @brief return a reference to the service node list
     const service_nodes::service_node_list& get_service_node_list() const {
         return m_service_node_list;
@@ -750,7 +753,7 @@ class core : public i_miner_handler {
 
     /// Returns a reference to the BLSSigner, if this is a service node.  Throws if not a service
     /// node.
-    BLSSigner& get_bls_signer() {
+    eth::BLSSigner& get_bls_signer() {
         if (!m_bls_signer)
             throw std::logic_error{"Not a service node: no BLS Signer available"};
         return *m_bls_signer;
@@ -937,11 +940,11 @@ class core : public i_miner_handler {
     const std::vector<service_nodes::key_image_blacklist_entry>&
     get_service_node_blacklisted_key_images() const;
 
-    BLSRewardsResponse bls_rewards_request(const crypto::eth_address& address);
-    AggregateExitResponse aggregate_exit_request(const crypto::bls_public_key& bls_pubkey);
-    AggregateExitResponse aggregate_liquidation_request(const crypto::bls_public_key& bls_pubkey);
-    BLSRegistrationResponse bls_registration(
-            const crypto::eth_address& ethereum_address, const uint64_t fee = 0) const;
+    eth::BLSRewardsResponse bls_rewards_request(const eth::address& address);
+    eth::AggregateExitResponse aggregate_exit_request(const eth::bls_public_key& bls_pubkey);
+    eth::AggregateExitResponse aggregate_liquidation_request(const eth::bls_public_key& bls_pubkey);
+    eth::BLSRegistrationResponse bls_registration(
+            const eth::address& ethereum_address, const uint64_t fee = 0) const;
 
     /**
      * @brief get a snapshot of the service node list state at the time of the call.
@@ -952,8 +955,8 @@ class core : public i_miner_handler {
      */
     std::vector<service_nodes::service_node_pubkey_info> get_service_node_list_state(
             const std::vector<crypto::public_key>& service_node_pubkeys = {}) const;
-    bool is_node_removable(const crypto::bls_public_key& node_bls_pubkey);
-    bool is_node_liquidatable(const crypto::bls_public_key& node_bls_pubkey);
+    bool is_node_removable(const eth::bls_public_key& node_bls_pubkey);
+    bool is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey);
 
     /**
      * @brief get a snapshot of the service node list state and compares to the smart contract
@@ -961,7 +964,7 @@ class core : public i_miner_handler {
      *
      * @return all the service nodes bls keys that should be removed from the smart contract
      */
-    std::vector<crypto::bls_public_key> get_removable_nodes();
+    std::vector<eth::bls_public_key> get_removable_nodes();
 
     /**
      * @brief get whether `pubkey` is known as a service node.
@@ -1249,8 +1252,10 @@ class core : public i_miner_handler {
     service_nodes::service_node_list m_service_node_list;
     service_nodes::quorum_cop m_quorum_cop;
 
-    std::shared_ptr<BLSSigner> m_bls_signer;
-    std::unique_ptr<BLSAggregator> m_bls_aggregator;
+    std::unique_ptr<eth::L2Tracker> m_l2_tracker;
+
+    std::shared_ptr<eth::BLSSigner> m_bls_signer;
+    std::unique_ptr<eth::BLSAggregator> m_bls_aggregator;
 
     i_cryptonote_protocol* m_pprotocol;        //!< cryptonote protocol instance
     cryptonote_protocol_stub m_protocol_stub;  //!< cryptonote protocol stub instance

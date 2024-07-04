@@ -105,7 +105,7 @@ static void log()
 TEST(logging, no_logs)
 {
   init();
-  oxen::logging::process_categories_string("*:critical");
+  oxen::logging::apply_categories_string("*:critical");
   log();
   std::string str;
   ASSERT_TRUE(load_log_to_string(log_filename, str));
@@ -130,7 +130,7 @@ TEST(logging, default)
 TEST(logging, all)
 {
   init();
-  oxen::logging::process_categories_string("*:trace");
+  oxen::logging::apply_categories_string("*:trace");
   log();
   std::string str;
   ASSERT_TRUE(load_log_to_string(log_filename, str));
@@ -147,7 +147,7 @@ TEST(logging, all)
 TEST(logging, last_precedence)
 {
   init();
-  oxen::logging::process_categories_string("*:warning,global:critical,global:debug");
+  oxen::logging::apply_categories_string("*:warning,global:critical,global:debug");
   log();
   std::string str;
   ASSERT_TRUE(load_log_to_string(log_filename, str));

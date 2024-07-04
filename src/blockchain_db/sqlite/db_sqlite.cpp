@@ -33,6 +33,7 @@
 
 #include <cassert>
 
+#include "common/guts.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/blockchain.h"
@@ -429,7 +430,7 @@ static std::pair<uint64_t, uint64_t> get_accrued_earnings_impl(BlockchainSQLite&
     return result;
 }
 
-std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const crypto::eth_address& address) {
+std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const eth::address& address) {
     std::string address_string = fmt::format("0x{:x}", address);
     auto result = get_accrued_earnings_impl(*this, address_string, height);
     return result;
@@ -653,8 +654,8 @@ bool BlockchainSQLite::add_block(
                 static_cast<int64_t>(block_height));
         std::vector<cryptonote::batch_sn_payment> delayed_payments;
         for (auto [eth_address_str, amount] : delayed_payments_st) {
-            crypto::eth_address eth_address;
-            tools::hex_to_type(eth_address_str.substr(2), eth_address);
+            eth::address eth_address;
+            tools::load_from_hex_guts(eth_address_str, eth_address);
             delayed_payments.emplace_back(eth_address, amount);
         }
 
@@ -706,8 +707,8 @@ bool BlockchainSQLite::pop_block(
                 static_cast<int64_t>(block_height));
         std::vector<cryptonote::batch_sn_payment> delayed_payments;
         for (auto [eth_address_str, amount] : delayed_payments_st) {
-            crypto::eth_address eth_address;
-            tools::hex_to_type(eth_address_str.substr(2), eth_address);
+            eth::address eth_address;
+            tools::load_from_hex_guts(eth_address_str, eth_address);
             delayed_payments.emplace_back(eth_address, amount);
         }
 

@@ -7,12 +7,12 @@
 #include "bls/bls_signer.h"
 #include "bls/bls_utils.h"
 #include "common/guts.h"
-#include "crypto/crypto.h"
+#include "crypto/eth.h"
 
 using namespace oxenc::literals;
 
 TEST(BLS, Format) {
-    auto pk = tools::make_from_guts<crypto::bls_public_key>(
+    auto pk = tools::make_from_guts<eth::bls_public_key>(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"_hex);
     EXPECT_EQ(
@@ -24,7 +24,7 @@ TEST(BLS, Format) {
             "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
-    auto sig = tools::make_from_guts<crypto::bls_signature>(
+    auto sig = tools::make_from_guts<eth::bls_signature>(
             "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
             "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
             "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
@@ -44,16 +44,16 @@ TEST(BLS, Format) {
 }
 
 TEST(BLS, equality) {
-    auto pk1 = tools::make_from_guts<crypto::bls_public_key>(
+    auto pk1 = tools::make_from_guts<eth::bls_public_key>(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"_hex);
-    crypto::bls_public_key pk2{};
+    eth::bls_public_key pk2{};
     EXPECT_TRUE(pk1);
     EXPECT_FALSE(pk2);
-    EXPECT_NE(pk1, crypto::null<crypto::bls_public_key>);
-    EXPECT_EQ(pk2, crypto::null<crypto::bls_public_key>);
+    EXPECT_NE(pk1, crypto::null<eth::bls_public_key>);
+    EXPECT_EQ(pk2, crypto::null<eth::bls_public_key>);
 
-    crypto::bls_public_key pk3;
+    eth::bls_public_key pk3;
     std::copy(pk1.begin(), pk1.end(), pk3.begin());
     EXPECT_EQ("{}"_format(pk1), "{}"_format(pk3));
     pk3 = pk2;
@@ -64,13 +64,13 @@ TEST(BLS, equality) {
 }
 
 TEST(BLS, to_from_crypto) {
-    auto pk = tools::make_from_guts<crypto::bls_public_key>(
+    auto pk = tools::make_from_guts<eth::bls_public_key>(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"_hex);
     auto pk2 = bls_utils::to_crypto_pubkey(bls_utils::from_crypto_pubkey(pk));
     EXPECT_EQ("{}"_format(pk), "{}"_format(pk2));
 
-    auto sig = tools::make_from_guts<crypto::bls_signature>(
+    auto sig = tools::make_from_guts<eth::bls_signature>(
             "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
             "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
             "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
@@ -79,9 +79,9 @@ TEST(BLS, to_from_crypto) {
     auto sig2 = bls_utils::to_crypto_signature(bls_utils::from_crypto_signature(sig));
     EXPECT_EQ("{}"_format(sig), "{}"_format(sig2));
 
-    auto sk = tools::make_from_guts<crypto::bls_secret_key>(
+    auto sk = tools::make_from_guts<eth::bls_secret_key>(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"_hex);
-    BLSSigner signer{cryptonote::network_type::MAINNET, &sk};
+    eth::BLSSigner signer{cryptonote::network_type::MAINNET, &sk};
     EXPECT_EQ(
             oxenc::to_hex(signer.getPublicKey().getStr(bls_utils::BLS_MODE_BINARY)),
             "2c325c9d9c9593096528b2aa9d0d2cce042915e87a19c2a2a4cfbe4f5c61c694");
@@ -97,9 +97,9 @@ TEST(BLS, to_from_crypto) {
 }
 
 TEST(BLS, signatures) {
-    auto sk = tools::make_from_guts<crypto::bls_secret_key>(
+    auto sk = tools::make_from_guts<eth::bls_secret_key>(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"_hex);
-    BLSSigner signer{cryptonote::network_type::MAINNET, &sk};
+    eth::BLSSigner signer{cryptonote::network_type::MAINNET, &sk};
 
     auto pk = signer.getCryptoPubkey();
     ASSERT_EQ(

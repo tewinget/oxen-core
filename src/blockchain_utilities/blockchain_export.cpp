@@ -96,15 +96,7 @@ int main(int argc, char* argv[]) {
 
     auto m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
     auto log_file_path = m_config_folder + "oxen-blockchain-export.log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level).c_str())) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
-    oxen::logging::init(log_file_path, log_level);
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
     bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
@@ -127,8 +119,8 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
-    BlockchainDB* db = new_db();
-    if (db == NULL) {
+    auto db = new_db();
+    if (!db) {
         log::error(logcat, "Failed to initialize a database");
         throw std::runtime_error("Failed to initialize a database");
     }
@@ -144,9 +136,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     r = core_storage->init(
-            db,
-            nullptr,
-            nullptr,
+            std::move(db),
             opt_testnet  ? cryptonote::network_type::TESTNET
             : opt_devnet ? cryptonote::network_type::DEVNET
                          : cryptonote::network_type::MAINNET);

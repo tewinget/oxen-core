@@ -91,17 +91,17 @@ static CryptoT to_normalized_crypto(const BLS_T& in) {
     return serialized;
 }
 
-crypto::bls_signature to_crypto_signature(const bls::Signature& sig) {
-    return to_normalized_crypto<crypto::bls_signature, mcl::bn::G2>(sig);
+eth::bls_signature to_crypto_signature(const bls::Signature& sig) {
+    return to_normalized_crypto<eth::bls_signature, mcl::bn::G2>(sig);
 }
 
-crypto::bls_public_key to_crypto_pubkey(const bls::PublicKey& publicKey) {
-    return to_normalized_crypto<crypto::bls_public_key, mcl::bn::G1>(publicKey);
+eth::bls_public_key to_crypto_pubkey(const bls::PublicKey& publicKey) {
+    return to_normalized_crypto<eth::bls_public_key, mcl::bn::G1>(publicKey);
 }
 static_assert(std::is_same_v<char*, std::remove_const_t<std::remove_pointer_t<const char*>>*>);
 
-/// This is the reverse of to_normalized_crypto: it takes a crypto::bls_signature or
-/// crypto::bls_pubkey value, encoded in Solidity's BN256G1/2 form, and deserializes it into a
+/// This is the reverse of to_normalized_crypto: it takes a eth::bls_signature or
+/// eth::bls_pubkey value, encoded in Solidity's BN256G1/2 form, and deserializes it into a
 /// herumi bls::Signature of bls::PublicKey object.
 template <typename BLS_T, typename Gx, typename CryptoT>
 static BLS_T from_normalized_crypto(const CryptoT& in) {
@@ -148,18 +148,18 @@ static BLS_T from_normalized_crypto(const CryptoT& in) {
     return bls;
 }
 
-bls::Signature from_crypto_signature(const crypto::bls_signature& sig) {
+bls::Signature from_crypto_signature(const eth::bls_signature& sig) {
     return from_normalized_crypto<bls::Signature, mcl::bn::G2>(sig);
 }
 
-bls::PublicKey from_crypto_pubkey(const crypto::bls_public_key& pk) {
+bls::PublicKey from_crypto_pubkey(const eth::bls_public_key& pk) {
     return from_normalized_crypto<bls::PublicKey, mcl::bn::G1>(pk);
 }
 
 [[nodiscard]] bool verify(
-        const crypto::bls_signature& sig,
+        const eth::bls_signature& sig,
         const crypto::hash& hash,
-        const crypto::bls_public_key& pk) {
+        const eth::bls_public_key& pk) {
     init();
 
     return from_crypto_signature(sig).verifyHash(from_crypto_pubkey(pk), hash.data(), hash.size());

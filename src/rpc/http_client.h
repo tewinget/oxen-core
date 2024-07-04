@@ -290,16 +290,10 @@ class http_client {
     uint64_t get_bytes_received() const { return bytes_received; }
 
   private:
-    class WipedAuth : public cpr::Authentication {
-      public:
-        WipedAuth(std::string_view username, std::string_view password);
-        ~WipedAuth() override;
-    };
-
     cpr::Session session;
     cpr::Url base_url;
     std::optional<cpr::Timeout> timeout{15s};
-    std::optional<WipedAuth> auth;
+    std::optional<cpr::Authentication> auth;
     std::string proxy;
     std::optional<std::pair<cpr::ssl::CertFile, cpr::ssl::KeyFile>> client_cert;
     bool verify_https = true;

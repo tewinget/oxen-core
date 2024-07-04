@@ -7,7 +7,7 @@
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
 
-namespace ethereum {
+namespace eth {
 
 bool validate_ethereum_new_service_node_tx(
         cryptonote::hf hf_version,
@@ -37,4 +37,4 @@ bool validate_ethereum_service_node_deregister_tx(
         cryptonote::tx_extra_ethereum_service_node_deregister& eth_extra,
         std::string* reason);
 
-}  // namespace ethereum
+}  // namespace eth

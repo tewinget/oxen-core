@@ -31,6 +31,7 @@
 #pragma once
 
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "cryptonote_basic.h"
 #include "oxen_economy.h"
 #include "serialization/binary_archive.h"
@@ -625,11 +626,11 @@ struct tx_extra_oxen_name_system {
 };
 
 struct tx_extra_ethereum_contributor {
-    crypto::eth_address address;
+    eth::address address;
     uint64_t amount;
 
     tx_extra_ethereum_contributor() = default;
-    tx_extra_ethereum_contributor(const crypto::eth_address& addr, uint64_t amt) :
+    tx_extra_ethereum_contributor(const eth::address& addr, uint64_t amt) :
             address(addr), amount(amt) {}
 
     BEGIN_SERIALIZE()
@@ -640,8 +641,8 @@ struct tx_extra_ethereum_contributor {
 
 struct tx_extra_ethereum_new_service_node {
     uint8_t version = 0;
-    crypto::bls_public_key bls_pubkey;
-    crypto::eth_address eth_address;
+    eth::bls_public_key bls_pubkey;
+    eth::address eth_address;
     crypto::public_key service_node_pubkey;
     crypto::ed25519_signature signature;
     uint64_t fee;
@@ -660,7 +661,7 @@ struct tx_extra_ethereum_new_service_node {
 
 struct tx_extra_ethereum_service_node_leave_request {
     uint8_t version = 0;
-    crypto::bls_public_key bls_pubkey;
+    eth::bls_public_key bls_pubkey;
 
     BEGIN_SERIALIZE()
     FIELD(version)
@@ -670,9 +671,9 @@ struct tx_extra_ethereum_service_node_leave_request {
 
 struct tx_extra_ethereum_service_node_exit {
     uint8_t version = 0;
-    crypto::eth_address eth_address;
+    eth::address eth_address;
     uint64_t amount;
-    crypto::bls_public_key bls_pubkey;
+    eth::bls_public_key bls_pubkey;
 
     BEGIN_SERIALIZE()
     FIELD(version)
@@ -684,7 +685,7 @@ struct tx_extra_ethereum_service_node_exit {
 
 struct tx_extra_ethereum_service_node_deregister {
     uint8_t version = 0;
-    crypto::bls_public_key bls_pubkey;
+    eth::bls_public_key bls_pubkey;
 
     BEGIN_SERIALIZE()
     FIELD(version)

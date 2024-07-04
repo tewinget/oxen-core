@@ -155,13 +155,6 @@ static const command_line::arg_descriptor<std::string> arg_public_ip = {
         "storage server) are accessible. This IP address will be advertised to the "
         "network via the service node uptime proofs. Required if operating as a "
         "service node."};
-static const command_line::arg_descriptor<std::string> arg_ethereum_provider = {
-        "ethereum-provider",
-        "Specify a provider by URL(s) on which this service node will query the"
-        "Ethereum blockchain when tracking the rewards smart contract. A "
-        "provider is required if operating as a service node.\n"
-        "Multiple ethereum providers can be specified by comma delimiting the "
-        "URLs for example: '127.0.0.1:8545,127.0.0.1:8546'"};
 static const command_line::arg_descriptor<uint16_t> arg_storage_server_port = {
         "storage-server-port", "Deprecated option, ignored.", 0};
 static const command_line::arg_descriptor<uint16_t, false, true, 2> arg_quorumnet_port = {
@@ -184,6 +177,41 @@ static const command_line::arg_descriptor<bool> arg_omq_quorumnet_public{
         "Note that even without this option the quorumnet port can be used for RPC commands by "
         "--lmq-admin and --lmq-user pubkeys.",
         false};
+static const command_line::arg_descriptor<std::string> arg_l2_provider = {
+        "l2-provider",
+        "Specify one or more providers by URL to which this service node will query the Ethereum "
+        "L2 blockchain when tracking the rewards smart contract. Required if operating as a "
+        "service node. Multiple providers can be specified by comma delimiting the URLs for "
+        "example: 'http://127.0.0.1:8545,https://example.com/api'"};
+
+// Floating point duration, to which all integer durations are implicitly convertible
+using dseconds = std::chrono::duration<double>;
+
+static const command_line::arg_descriptor<double> arg_l2_refresh = {
+        "l2-refresh",
+        "Specify the time (in seconds) between refreshes of the Ethereum L2 provider current state",
+        dseconds{ETH_L2_DEFAULT_REFRESH}.count()};
+static const command_line::arg_descriptor<double> arg_l2_timeout = {
+        "l2-timeout",
+        "Specify the timeout (in seconds) for requests to the L2 provider current state; if "
+        "multiple providers are configured then after a timeout the next provider will be tried.",
+        dseconds{ETH_L2_DEFAULT_REQUEST_TIMEOUT}.count()};
+static const command_line::arg_descriptor<int> arg_l2_max_logs = {
+        "l2-max-logs",
+        "Specify the maximum number of logs we will request at once in a single request to the L2 "
+        "provider.  If more logs are needed than this at once then multiple requests will be used.",
+        ETH_L2_DEFAULT_MAX_LOGS};
+static const command_line::arg_descriptor<double> arg_l2_check_interval = {
+        "l2-check-interval",
+        "When multiple L2 providers are specified, this specifies how often (in seconds) all of "
+        "them should be checked to see if they are synced and, if not, switch to a backup "
+        "provider. Earlier L2 providers will be preferred when all providers are reasonably close",
+        dseconds{ETH_L2_DEFAULT_CHECK_INTERVAL}.count()};
+static const command_line::arg_descriptor<int> arg_l2_check_threshold = {
+        "l2-check-threshold",
+        "When multiple L2 providers are specified, this is the threshold (in number of blocks) "
+        "behind the best provider height before we consider a given provider out of sync",
+        ETH_L2_DEFAULT_CHECK_THRESHOLD};
 static const command_line::arg_descriptor<std::string> arg_block_notify = {
         "block-notify",
         "Run a program for each new block, '%s' will be replaced by the block hash",
@@ -317,7 +345,12 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_max_txpool_weight);
     command_line::add_arg(desc, arg_service_node);
     command_line::add_arg(desc, arg_public_ip);
-    command_line::add_arg(desc, arg_ethereum_provider);
+    command_line::add_arg(desc, arg_l2_provider);
+    command_line::add_arg(desc, arg_l2_refresh);
+    command_line::add_arg(desc, arg_l2_timeout);
+    command_line::add_arg(desc, arg_l2_max_logs);
+    command_line::add_arg(desc, arg_l2_check_interval);
+    command_line::add_arg(desc, arg_l2_check_threshold);
     command_line::add_arg(desc, arg_storage_server_port);
     command_line::add_arg(desc, arg_quorumnet_port);
 
@@ -404,11 +437,10 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
             args_okay = false;
         }
 
-        const std::string ethereum_provider = command_line::get_arg(vm, arg_ethereum_provider);
-        if (!ethereum_provider.size()) {
+        if (command_line::get_arg(vm, arg_l2_provider).empty()) {
             log::error(
                     logcat,
-                    "Please specify an ethereum provider from which the service node can access");
+                    "At least one ethereum L2 provider must be specified for a service node");
             args_okay = false;
         }
 
@@ -559,6 +591,11 @@ std::string core::get_status_string() const {
     return s;
 }
 
+template <typename Duration>
+static Duration as_duration(double seconds) {
+    return std::chrono::duration_cast<Duration>(dseconds(seconds));
+}
+
 //-----------------------------------------------------------------------------------------------
 bool core::init(
         const boost::program_options::variables_map& vm,
@@ -603,7 +640,7 @@ bool core::init(
         m_service_node_list.set_my_service_node_keys(&m_service_keys);
     }
 
-    std::unique_ptr<BlockchainDB> db(new_db());
+    auto db = new_db();
     if (!db) {
         log::error(logcat, "Failed to initialize a database");
         return false;
@@ -617,7 +654,7 @@ bool core::init(
     if (m_nettype == network_type::FAKECHAIN) {
         sqlite_db_file_path = ":memory:";
     }
-    auto sqliteDB = std::make_shared<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
+    auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
 
     folder /= db->get_db_name();
     log::info(logcat, "Loading blockchain from folder {} ...", folder);
@@ -760,7 +797,7 @@ bool core::init(
             [this](const auto& info) { m_service_node_list.alt_block_add(info); });
 
     m_blockchain_storage.hook_blockchain_detached([this](const auto& info) {
-        m_blockchain_storage.sqlite_db()->blockchain_detached(info.height);
+        m_blockchain_storage.sqlite_db().blockchain_detached(info.height);
     });
 
     // NOTE: There is an implicit dependency on service node lists being hooked first!
@@ -781,19 +818,44 @@ bool core::init(
         return false;
 
     init_oxenmq(vm);
-    m_bls_aggregator = std::make_unique<BLSAggregator>(*this);
+    m_bls_aggregator = std::make_unique<eth::BLSAggregator>(*this);
 
-    const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
-    const auto ethereum_provider = command_line::get_arg(vm, arg_ethereum_provider);
+    // FIXME: this is optional if we aren't a service node
+    m_l2_tracker = std::make_unique<eth::L2Tracker>(
+            *this,
+            as_duration<std::chrono::milliseconds>(command_line::get_arg(vm, arg_l2_refresh)));
+    m_l2_tracker->provider.setTimeout(as_duration<std::chrono::milliseconds>(
+            1000 * command_line::get_arg(vm, arg_l2_timeout)));
+    m_l2_tracker->GETLOGS_MAX_BLOCKS = command_line::get_arg(vm, arg_l2_max_logs);
+
+    const auto l2_provider = command_line::get_arg(vm, arg_l2_provider);
+    if (!l2_provider.empty()) {
+        auto provider_urls = tools::split_any(l2_provider, ", \t\n", /*trim=*/true);
+
+        try {
+            if (provider_urls.empty())
+                throw std::invalid_argument{"Ethereum L2 provider list is empty"};
+            for (size_t index = 0; index < provider_urls.size(); index++)
+                m_l2_tracker->provider.addClient(
+                        index == 0 ? "Primary L2 provider"s
+                                   : "Backup L2 provider #{}"_format(index),
+                        std::string{provider_urls[index]});
+        } catch (const std::exception& e) {
+            log::critical(
+                    logcat, "Invalid Ethereum L2 provider(s) '{}': {}", l2_provider, e.what());
+            return false;
+        }
+    }
+
     r = m_blockchain_storage.init(
-            db.release(),
-            ons_db,
-            std::move(sqliteDB),
+            std::move(db),
             m_nettype,
+            ons_db,
+            sqliteDB.release(),
+            m_l2_tracker.get(),
             m_offline,
             regtest ? &regtest_test_options : test_options,
-            fixed_difficulty,
-            ethereum_provider,
+            command_line::get_arg(vm, arg_fixed_difficulty),
             get_checkpoints);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
@@ -973,7 +1035,7 @@ bool core::init_service_keys() {
                     // Load from existing
 
                     try {
-                        bls_signer = std::make_shared<BLSSigner>(m_nettype, &sk);
+                        bls_signer = std::make_shared<eth::BLSSigner>(m_nettype, &sk);
                     } catch (const std::exception& e) {
                         log::critical(logcat, "Invalid BLS key: {}", e.what());
                         return false;
@@ -981,9 +1043,9 @@ bool core::init_service_keys() {
                     pk = bls_signer->getCryptoPubkey();
                     return true;
                 },
-                [this](crypto::bls_secret_key& sk, crypto::bls_public_key& pk, auto& bls_signer) {
+                [this](eth::bls_secret_key& sk, eth::bls_public_key& pk, auto& bls_signer) {
                     // Generate new one
-                    bls_signer = std::make_shared<BLSSigner>(m_nettype);
+                    bls_signer = std::make_shared<eth::BLSSigner>(m_nettype);
                     sk = bls_signer->getCryptoSeckey();
                     pk = bls_signer->getCryptoPubkey();
                 },
@@ -1145,9 +1207,9 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     quorumnet_init(*this, m_quorumnet_state);
 }
 
-std::vector<crypto::bls_public_key> core::get_removable_nodes() {
+std::vector<eth::bls_public_key> core::get_removable_nodes() {
     // FIXME: this feels out of place here; move to blockchain.h/cpp!
-    std::vector<crypto::bls_public_key> bls_pubkeys_in_snl;
+    std::vector<eth::bls_public_key> bls_pubkeys_in_snl;
     uint64_t l2_height;
 
     {
@@ -1172,9 +1234,9 @@ std::vector<crypto::bls_public_key> core::get_removable_nodes() {
     }
 
     auto bls_pubkeys_in_smart_contract =
-            m_blockchain_storage.m_l2_tracker->get_all_bls_public_keys(l2_height);
+            m_blockchain_storage.l2_tracker().get_all_bls_public_keys(l2_height);
 
-    std::vector<crypto::bls_public_key> removable_nodes;
+    std::vector<eth::bls_public_key> removable_nodes;
 
     // Find BLS keys that are in the smart contract but not in the service node list
     std::sort(bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end());
@@ -1188,13 +1250,13 @@ std::vector<crypto::bls_public_key> core::get_removable_nodes() {
     return removable_nodes;
 }
 
-bool core::is_node_removable(const crypto::bls_public_key& node_bls_pubkey) {
+bool core::is_node_removable(const eth::bls_public_key& node_bls_pubkey) {
     auto removable_nodes = get_removable_nodes();
     return std::find(removable_nodes.begin(), removable_nodes.end(), node_bls_pubkey) !=
            removable_nodes.end();
 }
 
-bool core::is_node_liquidatable(const crypto::bls_public_key& node_bls_pubkey) {
+bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
     return is_node_removable(node_bls_pubkey) &&
            !m_service_node_list.is_recently_expired(node_bls_pubkey);
 }
@@ -1443,11 +1505,6 @@ bool core::handle_parsed_txs(
     if (blink_rollback_height)
         *blink_rollback_height = 0;
     tx_pool_options tx_opts;
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session;
-    if (version >= cryptonote::feature::ETH_BLS) {
-        ethereum_transaction_review_session =
-                m_blockchain_storage.m_l2_tracker->initialize_mempool_review();
-    }
     for (size_t i = 0; i < parsed_txs.size(); i++) {
         auto& info = parsed_txs[i];
         if (!info.result) {
@@ -1476,12 +1533,13 @@ bool core::handle_parsed_txs(
                     info.tvc,
                     *local_opts,
                     version,
-                    ethereum_transaction_review_session,
                     blink_rollback_height)) {
             log::debug(logcat, "tx added: {}", info.tx_hash);
         } else {
             ok = false;
-            if (info.tvc.m_verifivation_failed)
+            if (info.tvc.m_duplicate_nonstandard)
+                log::debug(log::Cat("verify"), "Transaction is a duplicate non-standard tx (e.g. state change)");
+            else if (info.tvc.m_verifivation_failed)
                 log::error(log::Cat("verify"), "Transaction verification failed: {}", info.tx_hash);
             else if (info.tvc.m_verifivation_impossible)
                 log::error(
@@ -1817,7 +1875,6 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_service_node_time() {
-
     if (!is_active_sn()) {
         return true;
     }
@@ -2021,8 +2078,7 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> core::get_coinbase_tx_sum(
                         log::info(
                                 logcat,
                                 "Finishing cache build for get_coinbase_tx_sum in {} s",
-                                std::chrono::duration<double>{
-                                        std::chrono::steady_clock::now() - cache_build_started}
+                                dseconds{std::chrono::steady_clock::now() - cache_build_started}
                                         .count());
                     }
                     cache_to = 0;
@@ -2129,10 +2185,12 @@ bool core::handle_uptime_proof(
         // should be non-zero.
         if (m_nettype == network_type::DEVNET) {
             if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
-                throw std::runtime_error{"Invalid storage port(s) in proof: devnet storage ports must be 0"};
+                throw std::runtime_error{
+                        "Invalid storage port(s) in proof: devnet storage ports must be 0"};
         } else {
             if (proof->storage_omq_port == 0 || proof->storage_https_port == 0)
-                throw std::runtime_error{"Invalid storage port(s) in proof: storage ports cannot be 0"};
+                throw std::runtime_error{
+                        "Invalid storage port(s) in proof: storage ports cannot be 0"};
         }
 
     } catch (const std::exception& e) {
@@ -2761,23 +2819,23 @@ core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
-BLSRewardsResponse core::bls_rewards_request(const crypto::eth_address& address) {
+eth::BLSRewardsResponse core::bls_rewards_request(const eth::address& address) {
     return m_bls_aggregator->rewards_request(address);
 }
 //-----------------------------------------------------------------------------------------------
-AggregateExitResponse core::aggregate_exit_request(const crypto::bls_public_key& bls_pubkey) {
+eth::AggregateExitResponse core::aggregate_exit_request(const eth::bls_public_key& bls_pubkey) {
     const auto resp = m_bls_aggregator->aggregateExit(bls_pubkey);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------
-AggregateExitResponse core::aggregate_liquidation_request(
-        const crypto::bls_public_key& bls_pubkey) {
+eth::AggregateExitResponse core::aggregate_liquidation_request(
+        const eth::bls_public_key& bls_pubkey) {
     const auto resp = m_bls_aggregator->aggregateLiquidation(bls_pubkey);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------
-BLSRegistrationResponse core::bls_registration(
-        const crypto::eth_address& address, const uint64_t fee) const {
+eth::BLSRegistrationResponse core::bls_registration(
+        const eth::address& address, const uint64_t fee) const {
     const auto& keys = get_service_keys();
     auto resp = m_bls_aggregator->registration(address, keys.pub);
 

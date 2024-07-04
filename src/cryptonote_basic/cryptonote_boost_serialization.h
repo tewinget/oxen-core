@@ -43,6 +43,7 @@
 #include "common/unordered_containers_boost_serialization.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "cryptonote_basic.h"
 #include "ringct/rctOps.h"
 #include "ringct/rctTypes.h"
@@ -259,7 +260,6 @@ inline void serialize(
     if (ver < 20)
         return;
     a& b.l2_height;
-    a& b.l2_state;
 }
 
 template <class Archive>

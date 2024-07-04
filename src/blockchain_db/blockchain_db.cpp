@@ -52,8 +52,8 @@ const command_line::arg_descriptor<std::string> arg_db_sync_mode = {
 const command_line::arg_descriptor<bool> arg_db_salvage = {
         "db-salvage", "Try to salvage a blockchain database if it seems corrupted", false};
 
-BlockchainDB* new_db() {
-    return new BlockchainLMDB();
+std::unique_ptr<BlockchainDB> new_db() {
+    return std::make_unique<BlockchainLMDB>();
 }
 
 void BlockchainDB::init_options(boost::program_options::options_description& desc) {

@@ -70,20 +70,32 @@ T make_from_guts(const Spannable& s) {
     return x;
 }
 
+// Returns a span over the spannable value, removing a leading 0x/0X prefix from the span if
+// present.
+template <byte_spannable Spannable, typename Byte = Spannable::value_type>
+std::span<const Byte> hex_span(const Spannable& s) {
+    std::span<const Byte> span{s};
+    if (span.size() > 2 && span[0] == static_cast<Byte>('0') &&
+        (span[1] == static_cast<Byte>('x') || span[1] == static_cast<Byte>('X')))
+        span = span.subspan(2);
+    return span;
+}
+
 /// Loads from a span of hex digits into an existing instance.  If `check_hex` is true (the default)
 /// the span will be validated to make sure it is hex, but can be given as false if such validation
-/// has already been done.
+/// has already been done.  The hex value may optionally be prefixed with 0x or 0X.
 template <safe_to_memcpy T, byte_spannable Spannable>
 void load_from_hex_guts(const Spannable& s, T& x, bool check_hex = true) {
-    std::span<const typename Spannable::value_type> span{s};
-    if (s.size() != sizeof(T) * 2 || (check_hex && !oxenc::is_hex(span.begin(), span.end())))
+    auto span = hex_span(s);
+    if (span.size() != sizeof(T) * 2 || (check_hex && !oxenc::is_hex(span.begin(), span.end())))
         throw std::runtime_error{"Cannot reconstitute type from hex: wrong size or invalid hex"};
     oxenc::from_hex(span.begin(), span.end(), reinterpret_cast<char*>(&x));
 }
 
 /// Same as above, but loads the hex into an object of type T that is returned.  If `check_hex` is
 /// true (the default) the span will be validated to make sure it is hex, but can be given as false
-/// if such validation has already been done.
+/// if such validation has already been done.  The input hex may optionally be prefixed with 0x or
+/// 0X.
 template <safe_to_memcpy T, byte_spannable Spannable>
 T make_from_hex_guts(const Spannable& s, bool check_hex = true) {
     T x;
@@ -96,8 +108,8 @@ T make_from_hex_guts(const Spannable& s, bool check_hex = true) {
 // day.
 template <safe_to_memcpy T, byte_spannable Spannable>
 [[nodiscard]] bool try_load_from_hex_guts(const Spannable& s, T& x) {
-    std::span<const typename Spannable::value_type> span{s};
-    if (s.size() != 2 * sizeof(T) || !oxenc::is_hex(span.begin(), span.end()))
+    auto span = hex_span(s);
+    if (span.size() != 2 * sizeof(T) || !oxenc::is_hex(span.begin(), span.end()))
         return false;
     oxenc::from_hex(span.begin(), span.end(), reinterpret_cast<char*>(&x));
     return true;
@@ -263,7 +275,7 @@ constexpr detail::tuple_without_skips<T...> split_guts_into(const Spannable& s) 
     return result;
 }
 
-// Same as the above, but takes input as hex string instead of bytes span, with or without a 0x
+// Same as the above, but takes input as hex string instead of byte span, with or without a 0x
 // prefix.  If using a `skip<N>` type the `N` refers to bytes skipped, not hex characters (i.e.
 // skip<2> skips 4 hex characters of input).
 //

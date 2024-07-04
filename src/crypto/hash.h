@@ -32,6 +32,7 @@
 
 #include <cstddef>
 #include <span>
+#include <type_traits>
 
 #include "base.h"
 #include "hash-ops.h"
@@ -42,6 +43,8 @@ namespace crypto {
 struct hash8 : bytes<8, true> {
     explicit operator bool() const { return data_ != null<hash8>.data_; }
 };
+
+struct hash4 : bytes<4, true, uint32_t> {};
 
 struct hash : bytes<HASH_SIZE, true> {
     explicit operator bool() const { return data_ != null<hash>.data_; }
@@ -115,6 +118,21 @@ template <byte_span_convertible... T>
     requires(sizeof...(T) > 1)
 void keccak_update(KECCAK_CTX& ctx, T&&... piece) {
     (keccak_update(ctx, std::forward<T>(piece)), ...);
+}
+
+// Version of keccak that always does a 32-byte keccak but then truncates the results to fit into
+// the given Hash type.  This is used for some ETH smart contract functionality (such as calling
+// functions inside contracts) that does a 32-byte keccak but then keeps just the first 4 bytes of
+// it by using this with `Hash=crypto::hash4`.
+//
+// (This is in contract with the `keccak()` function above that does a `Hash`-sized keccak hash).
+template <typename Hash, byte_span_convertible... T>
+requires (std::is_trivially_copyable_v<Hash> && Hash::size() < crypto::hash::size())
+Hash keccak_prefix(T&&... piece) {
+    crypto::hash full = keccak(std::forward<T>(piece)...);
+    Hash result;
+    std::memcpy(result.data(), full.data(), result.size());
+    return result;
 }
 
 enum struct cn_slow_hash_type {

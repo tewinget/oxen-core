@@ -47,7 +47,6 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_tx_utils.h"
-#include "epee/int-util.h"
 #include "epee/warnings.h"
 
 DISABLE_VS_WARNINGS(4244 4345 4503)  //'boost::foreach_detail_::or_' : decorated name length
@@ -68,7 +67,6 @@ namespace {
     time_t const MIN_RELAY_TIME =
             (60 * 5);  // only start re-relaying transactions after that many seconds
     time_t const MAX_RELAY_TIME = (60 * 60 * 4);  // at most that many seconds between resends
-    float const ACCEPT_THRESHOLD = 1.0f;
 
     // a kind of increasing backoff within min/max bounds
     uint64_t get_relay_delay(time_t now, time_t received) {
@@ -89,10 +87,10 @@ namespace {
 //---------------------------------------------------------------------------------
 // warning: bchs is passed here uninitialized, so don't do anything but store it
 tx_memory_pool::tx_memory_pool(Blockchain& bchs) :
+        m_cookie(0),
         m_blockchain(bchs),
         m_txpool_max_weight(DEFAULT_MEMPOOL_MAX_WEIGHT),
-        m_txpool_weight(0),
-        m_cookie(0) {}
+        m_txpool_weight(0) {}
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::have_duplicated_non_standard_tx(
         transaction const& tx, hf hard_fork_version) const {
@@ -306,7 +304,6 @@ bool tx_memory_pool::add_tx(
         tx_verification_context& tvc,
         const tx_pool_options& opts,
         hf hf_version,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
         uint64_t* blink_rollback_height) {
     // this should already be called with that lock, but let's make it explicit for clarity
     std::unique_lock lock{m_transactions_lock};
@@ -426,6 +423,7 @@ bool tx_memory_pool::add_tx(
         log::info(logcat, "Transaction with id= {} already has a duplicate tx for height", id);
         tvc.m_verifivation_failed = true;
         tvc.m_double_spend = true;
+        tvc.m_duplicate_nonstandard = true;
         return false;
     }
 
@@ -447,7 +445,6 @@ bool tx_memory_pool::add_tx(
     bool inputs_okay = check_tx_inputs(
             [&tx]() -> cryptonote::transaction& { return tx; },
             id,
-            ethereum_transaction_review_session,
             max_used_block_height,
             max_used_block_id,
             tvc,
@@ -467,14 +464,16 @@ bool tx_memory_pool::add_tx(
             meta.last_failed_id = null<hash>;
             meta.kept_by_block = opts.kept_by_block;
             meta.receive_time = receive_time;
-            meta.last_relayed_time = time(NULL);
+            meta.last_relayed_time = receive_time;
             meta.relayed = opts.relayed;
             meta.do_not_relay = opts.do_not_relay;
+            meta.l2_height = opts.l2_height;
             meta.double_spend_seen =
                     (have_tx_keyimges_as_spent(tx) ||
                      have_duplicated_non_standard_tx(tx, hf_version));
             meta.bf_padding = 0;
-            memset(meta.padding, 0, sizeof(meta.padding));
+            memset(meta.padding1, 0, sizeof(meta.padding1));
+            memset(meta.padding2, 0, sizeof(meta.padding2));
             try {
                 m_parsed_tx_cache.insert(std::make_pair(id, tx));
                 std::unique_lock b_lock{m_blockchain};
@@ -511,12 +510,14 @@ bool tx_memory_pool::add_tx(
         meta.last_failed_height = 0;
         meta.last_failed_id = null<hash>;
         meta.receive_time = receive_time;
-        meta.last_relayed_time = time(NULL);
+        meta.last_relayed_time = receive_time;
         meta.relayed = opts.relayed;
         meta.do_not_relay = opts.do_not_relay;
+        meta.l2_height = opts.l2_height;
         meta.double_spend_seen = false;
         meta.bf_padding = 0;
-        memset(meta.padding, 0, sizeof(meta.padding));
+        memset(meta.padding1, 0, sizeof(meta.padding1));
+        memset(meta.padding2, 0, sizeof(meta.padding2));
 
         try {
             if (opts.kept_by_block)
@@ -571,10 +572,8 @@ bool tx_memory_pool::add_tx(
         transaction& tx,
         tx_verification_context& tvc,
         const tx_pool_options& opts,
-        hf version,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session) {
+        hf version) {
     crypto::hash h{};
-    size_t blob_size = 0;
     std::string bl;
     t_serializable_object_to_blob(tx, bl);
     if (bl.size() == 0 || !get_transaction_hash(tx, h))
@@ -586,8 +585,7 @@ bool tx_memory_pool::add_tx(
             get_transaction_weight(tx, bl.size()),
             tvc,
             opts,
-            version,
-            ethereum_transaction_review_session);
+            version);
 }
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::add_new_blink(
@@ -609,14 +607,11 @@ bool tx_memory_pool::add_new_blink(
 
     bool approved = blink.approved();
     auto hf_version = m_blockchain.get_network_version(blink.height);
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session =
-            m_blockchain.m_l2_tracker->initialize_mempool_review();
     bool result =
             add_tx(tx,
                    tvc,
                    tx_pool_options::new_blink(approved, hf_version),
-                   hf_version,
-                   ethereum_transaction_review_session);
+                   hf_version);
     if (result && approved) {
         auto lock = blink_unique_lock();
         m_blinks[txhash] = blink_ptr;
@@ -1158,10 +1153,8 @@ bool tx_memory_pool::get_relayable_transactions(
 
     const uint64_t now = time(NULL);
     txs.reserve(m_blockchain.get_txpool_tx_count());
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session =
-            m_blockchain.m_l2_tracker->initialize_mempool_review();
     m_blockchain.for_all_txpool_txes(
-            [this, now, &txs, &ethereum_transaction_review_session](
+            [this, now, &txs](
                     const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string*) {
                 if (!meta.do_not_relay &&
                     (!meta.relayed ||
@@ -1195,7 +1188,7 @@ bool tx_memory_pool::get_relayable_transactions(
                                 if (!m_blockchain.check_tx_inputs(
                                             tx,
                                             tvc,
-                                            ethereum_transaction_review_session,
+                                            nullptr /* tx review session */,
                                             max_used_block_id,
                                             max_used_block_height)) {
                                     log::info(
@@ -1275,7 +1268,7 @@ void tx_memory_pool::get_transactions(
 
     txs.reserve(m_blockchain.get_txpool_tx_count(include_unrelayed_txes));
     m_blockchain.for_all_txpool_txes(
-            [&txs](const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
+            [&txs](const crypto::hash& txid, const txpool_tx_meta_t&, const std::string* bd) {
                 transaction tx;
                 if (!parse_and_validate_tx_from_blob(*bd, tx)) {
                     log::error(logcat, "Failed to parse tx from txpool");
@@ -1299,7 +1292,7 @@ void tx_memory_pool::get_transaction_hashes(
     txs.reserve(m_blockchain.get_txpool_tx_count(include_unrelayed_txes));
     m_blockchain.for_all_txpool_txes(
             [&txs, include_only_blinked, this](
-                    const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
+                    const crypto::hash& txid, const txpool_tx_meta_t&, const std::string*) {
                 bool include_tx = true;
                 if (include_only_blinked)
                     include_tx = has_blink(txid);
@@ -1322,7 +1315,7 @@ tx_memory_pool::tx_stats tx_memory_pool::get_transaction_stats(bool include_unre
     weights.reserve(stats.txs_total);
     m_blockchain.for_all_txpool_txes(
             [&stats, &weights, now, &agebytes](
-                    const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
+                    const crypto::hash&, const txpool_tx_meta_t& meta, const std::string*) {
                 weights.push_back(meta.weight);
                 stats.bytes_total += meta.weight;
                 if (!stats.bytes_min || meta.weight < stats.bytes_min)
@@ -1584,7 +1577,6 @@ bool tx_memory_pool::have_tx_keyimg_as_spent(const crypto::key_image& key_im) co
 bool tx_memory_pool::check_tx_inputs(
         const std::function<cryptonote::transaction&()>& get_tx,
         const crypto::hash& txid,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
         uint64_t& max_used_block_height,
         crypto::hash& max_used_block_id,
         tx_verification_context& tvc,
@@ -1607,7 +1599,7 @@ bool tx_memory_pool::check_tx_inputs(
     bool ret = m_blockchain.check_tx_inputs(
             get_tx(),
             tvc,
-            ethereum_transaction_review_session,
+            nullptr /* tx review session */,
             max_used_block_id,
             max_used_block_height,
             blink_rollback_height ? &key_image_conflicts : nullptr,
@@ -1703,7 +1695,6 @@ bool tx_memory_pool::check_tx_inputs(
 bool tx_memory_pool::is_transaction_ready_to_go(
         txpool_tx_meta_t& txd,
         const crypto::hash& txid,
-        std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session,
         const std::string& txblob,
         transaction& tx) const {
     struct transction_parser {
@@ -1737,7 +1728,6 @@ bool tx_memory_pool::is_transaction_ready_to_go(
         if (!check_tx_inputs(
                     lazy_tx,
                     txid,
-                    ethereum_transaction_review_session,
                     txd.max_used_block_height,
                     txd.max_used_block_id,
                     tvc)) {
@@ -1758,7 +1748,6 @@ bool tx_memory_pool::is_transaction_ready_to_go(
             if (!check_tx_inputs(
                         lazy_tx,
                         txid,
-                        ethereum_transaction_review_session,
                         txd.max_used_block_height,
                         txd.max_used_block_id,
                         tvc)) {
@@ -1864,7 +1853,8 @@ bool tx_memory_pool::fill_block_template(
         uint64_t& raw_fee,
         uint64_t& expected_reward,
         hf version,
-        uint64_t height) {
+        uint64_t height,
+        std::optional<std::pair<uint64_t, uint64_t>> l2_range) {
     auto locks = tools::unique_locks(m_transactions_lock, m_blockchain);
 
     total_weight = 0;
@@ -1905,12 +1895,6 @@ bool tx_memory_pool::fill_block_template(
     uint64_t next_reward = 0;
     uint64_t net_fee = 0;
 
-    std::shared_ptr<TransactionReviewSession> ethereum_transaction_review_session;
-    if (version >= cryptonote::feature::ETH_BLS) {
-        ethereum_transaction_review_session =
-                m_blockchain.m_l2_tracker->initialize_mempool_review();
-    }
-
     for (auto sorted_it : m_txs_by_fee_and_receive_time) {
         txpool_tx_meta_t meta;
         if (!m_blockchain.get_txpool_tx_meta(sorted_it.second, meta)) {
@@ -1925,6 +1909,12 @@ bool tx_memory_pool::fill_block_template(
                 total_weight,
                 max_total_weight,
                 print_money(best_reward));
+
+        if (l2_range && meta.l2_height != 0 && (meta.l2_height < l2_range->first || meta.l2_height > l2_range->second)) {
+            log::debug(logcat, "  state change from L2 height {} is not in L2 range [{}, {}]",
+                    meta.l2_height, l2_range->first, l2_range->second);
+            continue;
+        }
 
         // Can not exceed maximum block weight
         if (max_total_weight < total_weight + meta.weight) {
@@ -1974,8 +1964,7 @@ bool tx_memory_pool::fill_block_template(
         const cryptonote::txpool_tx_meta_t original_meta = meta;
         bool ready = false;
         try {
-            ready = is_transaction_ready_to_go(
-                    meta, sorted_it.second, ethereum_transaction_review_session, txblob, tx);
+            ready = is_transaction_ready_to_go(meta, sorted_it.second, txblob, tx);
             // TODO oxen delete this after HF20 has occurred
             // after here
             if (ready)

@@ -3098,7 +3098,7 @@ SET_LOG_LEVEL::response wallet_rpc_server::invoke(SET_LOG_LEVEL::request&& req) 
 //------------------------------------------------------------------------------------------------------------------------------
 SET_LOG_CATEGORIES::response wallet_rpc_server::invoke(SET_LOG_CATEGORIES::request&& req) {
     SET_LOG_CATEGORIES::response res{};
-    oxen::logging::process_categories_string(req.categories.c_str());
+    oxen::logging::apply_categories_string(req.categories.c_str());
     return res;
 }
 //------------------------------------------------------------------------------------------------------------------------------

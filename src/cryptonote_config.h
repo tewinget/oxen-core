@@ -84,6 +84,33 @@ inline constexpr auto MEMPOOL_PRUNE_NON_STANDARD_TX_LIFETIME = 2h;
 // 3 days worth of full 300kB blocks:
 inline constexpr size_t DEFAULT_MEMPOOL_MAX_WEIGHT = 72h / TARGET_BLOCK_TIME * 300'000;
 
+// The default L2 provider refresh parameters (these can be changed via command-line or the config
+// file).
+//
+// How long between attempts to refresh the L2 provider state:
+inline constexpr auto ETH_L2_DEFAULT_REFRESH = 10s;
+// How long until we consider an L2 request to have timed out:
+inline constexpr auto ETH_L2_DEFAULT_REQUEST_TIMEOUT = 5s;
+// The maximum number of ethereum Logs we will request for updated smart contract state in a single
+// request.  If more than this are required multiple requests will be used to retrieve the logs.
+inline constexpr auto ETH_L2_DEFAULT_MAX_LOGS = 100;
+// How long between performing are-we-synced checks among all given L2 providers; only applies when
+// multiple L2 providers are in use.
+inline constexpr auto ETH_L2_DEFAULT_CHECK_INTERVAL = 2min;
+// How much an L2 provider must be behind the best L2 provider height before we consider that
+// provider out of sync and prefer a backup.  (120 blocks as the default corresponds to being 30s
+// out of sync on Arbitrum).
+inline constexpr int ETH_L2_DEFAULT_CHECK_THRESHOLD = 120;
+
+
+// How frequently the reward rate gets recomputed for inclusion into Oxen blocks.  An Oxen block
+// that has a l2_height of x must include the reward computed at the highest block height <= x that
+// is divisible by this number.  For instance, if this is 1000, an Oxen block with height
+// l2_height=12345678 must contain the reward value computed at height 12345000.  (The default
+// updates every 10 minutes with the Arbitrum 250ms block time).
+inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 10min / 250ms;
+
+
 // Fallback used in wallet if no fee is available from RPC:
 inline constexpr uint64_t FEE_PER_BYTE_V13 = 215;
 // 0.005 OXEN per tx output (in addition to the per-byte fee), starting in v18:
@@ -560,9 +587,9 @@ namespace config {
 #else
         inline constexpr uint32_t ETHEREUM_CHAIN_ID = 421614;
         inline constexpr auto ETHEREUM_REWARDS_CONTRACT =
-                "0xC75A34c31C2b8780a20AfCD75473Ac0Ad82352B6"sv;
+                "0xB333811db68888800a23E79b38E401451d97aEdD"sv;
         inline constexpr auto ETHEREUM_POOL_CONTRACT =
-                "0x821340A591C10492d7F494285BABFcc2645396a3"sv;
+                "0x8B11c5777EE7BFC1F1195A9ef0506Ae7846CC5b8"sv;
 #endif
     }  // namespace devnet
 
