@@ -369,6 +369,11 @@ contract_abi = json.loads("""
       "type": "error"
     },
     {
+      "inputs": [],
+      "name": "ArrayLengthMismatch",
+      "type": "error"
+    },
+    {
       "inputs": [
         {
           "internalType": "uint64",
@@ -657,6 +662,22 @@ contract_abi = json.loads("""
         }
       ],
       "name": "SignatureExpired",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "serviceNodeID",
+          "type": "uint64"
+        },
+        {
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        }
+      ],
+      "name": "SmallContributorLeaveTooEarly",
       "type": "error"
     },
     {
@@ -1079,6 +1100,32 @@ contract_abi = json.loads("""
     {
       "inputs": [],
       "name": "MAX_SERVICE_NODE_REMOVAL_WAIT_TIME",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "SMALL_CONTRIBUTOR_DIVISOR",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "SMALL_CONTRIBUTOR_LEAVE_DELAY",
       "outputs": [
         {
           "internalType": "uint256",
@@ -1749,50 +1796,19 @@ contract_abi = json.loads("""
     {
       "inputs": [
         {
-          "components": [
-            {
-              "components": [
-                {
-                  "internalType": "uint256",
-                  "name": "X",
-                  "type": "uint256"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "Y",
-                  "type": "uint256"
-                }
-              ],
-              "internalType": "struct BN256G1.G1Point",
-              "name": "pubkey",
-              "type": "tuple"
-            },
-            {
-              "internalType": "uint256",
-              "name": "deposit",
-              "type": "uint256"
-            },
-            {
-              "components": [
-                {
-                  "internalType": "address",
-                  "name": "addr",
-                  "type": "address"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "stakedAmount",
-                  "type": "uint256"
-                }
-              ],
-              "internalType": "struct IServiceNodeRewards.Contributor[]",
-              "name": "contributors",
-              "type": "tuple[]"
-            }
-          ],
-          "internalType": "struct IServiceNodeRewards.SeedServiceNode[]",
-          "name": "nodes",
-          "type": "tuple[]"
+          "internalType": "uint256[]",
+          "name": "pkX",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "pkY",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "amounts",
+          "type": "uint256[]"
         }
       ],
       "name": "seedPublicKeyList",
@@ -1862,6 +1878,11 @@ contract_abi = json.loads("""
               "internalType": "struct BN256G1.G1Point",
               "name": "pubkey",
               "type": "tuple"
+            },
+            {
+              "internalType": "uint256",
+              "name": "addedTimestamp",
+              "type": "uint256"
             },
             {
               "internalType": "uint256",
@@ -2556,7 +2577,7 @@ foundation_pool_abi = json.loads("""
     },
     {
       "inputs": [],
-      "name": "ANNUAL_INTEREST_RATE",
+      "name": "ANNUAL_SIMPLE_PAYOUT_RATE",
       "outputs": [
         {
           "internalType": "uint64",
@@ -2626,7 +2647,7 @@ foundation_pool_abi = json.loads("""
           "type": "uint256"
         }
       ],
-      "name": "calculateInterestAmount",
+      "name": "calculatePayoutAmount",
       "outputs": [
         {
           "internalType": "uint256",
@@ -2638,13 +2659,7 @@ foundation_pool_abi = json.loads("""
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "timestamp",
-          "type": "uint256"
-        }
-      ],
+      "inputs": [],
       "name": "calculateReleasedAmount",
       "outputs": [
         {
@@ -2741,13 +2756,7 @@ foundation_pool_abi = json.loads("""
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "timestamp",
-          "type": "uint256"
-        }
-      ],
+      "inputs": [],
       "name": "rewardRate",
       "outputs": [
         {

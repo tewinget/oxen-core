@@ -28,6 +28,7 @@
 
 #include "blockchain.h"
 #include "bls/bls_aggregator.h"
+#include "bls/bls_signer.h"
 #include "common/command_line.h"
 #include "common/exception.h"
 #include "crypto/crypto.h"

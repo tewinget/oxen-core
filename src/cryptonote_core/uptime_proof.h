@@ -6,7 +6,10 @@
 namespace service_nodes {
 struct service_node_keys;
 }
+
+namespace eth {
 class BLSSigner;
+};
 
 namespace uptime_proof {
 
@@ -64,7 +67,7 @@ class Proof {
           uint16_t quorumnet_port,
           std::array<uint16_t, 3> lokinet_version,
           const service_nodes::service_node_keys& keys,
-          const BLSSigner& bls_signer);
+          const eth::BLSSigner& bls_signer);
 
     Proof(cryptonote::hf hardfork, std::string_view serialized_proof);
     std::string bt_encode_uptime_proof(cryptonote::hf hardfork) const;

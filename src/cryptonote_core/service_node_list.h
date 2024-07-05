@@ -623,7 +623,7 @@ class service_node_list {
             std::array<uint16_t, 3> ss_version,
             uint16_t quorumnet_port,
             std::array<uint16_t, 3> lokinet_version,
-            const BLSSigner& signer) const;
+            const eth::BLSSigner& signer) const;
 
     bool handle_uptime_proof(
             std::unique_ptr<uptime_proof::Proof> proof,

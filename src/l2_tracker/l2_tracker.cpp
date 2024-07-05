@@ -329,7 +329,7 @@ void L2Tracker::add_to_mempool(
                             arg.bls_pubkey,
                             arg.eth_address,
                             arg.sn_pubkey,
-                            arg.sn_signature,
+                            arg.ed_signature,
                             arg.fee,
                             contributors};
                     add_new_service_node_to_tx_extra(tx.extra, new_service_node);

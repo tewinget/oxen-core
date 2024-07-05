@@ -34,7 +34,7 @@ Proof::Proof(
         uint16_t quorumnet_port,
         const std::array<uint16_t, 3> lokinet_version,
         const service_nodes::service_node_keys& keys,
-        const BLSSigner& bls_signer) :
+        const eth::BLSSigner& bls_signer) :
         version{OXEN_VERSION},
         storage_server_version{ss_version},
         lokinet_version{lokinet_version},

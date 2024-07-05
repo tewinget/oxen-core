@@ -330,7 +330,7 @@ bls_public_key BLSSigner::getCryptoPubkey() const {
     return bls_utils::to_crypto_pubkey(getPubkey());
 }
 
-bls_secret_key BLSSigner::getCryptoSeckey() {
+bls_secret_key BLSSigner::getCryptoSeckey() const {
     std::string sec_key = secretKey.getStr(mcl::IoSerialize | mcl::IoBigEndian);
     assert(sec_key.size() == sizeof(bls_secret_key));
 

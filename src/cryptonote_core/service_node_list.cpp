@@ -3697,7 +3697,7 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
         std::array<uint16_t, 3> ss_version,
         uint16_t quorumnet_port,
         std::array<uint16_t, 3> lokinet_version,
-        const BLSSigner& signer) const {
+        const eth::BLSSigner& signer) const {
     const auto& keys = *m_service_node_keys;
     return uptime_proof::Proof{
             hardfork,
@@ -3925,7 +3925,7 @@ bool service_node_list::handle_uptime_proof(
         }
 
         auto pop_hash = crypto::keccak(proof->pubkey_bls, proof->pubkey);
-        if (!BLSSigner::verifyMsg(
+        if (!eth::BLSSigner::verifyMsg(
                     m_blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop_hash)) {
             log::debug(
                     logcat,
@@ -3979,7 +3979,7 @@ bool service_node_list::handle_uptime_proof(
         bool reject_proof = true;
 #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
         if (vers.first == feature::ETH_TRANSITION)
-            reject_proof = it->second->bls_public_key != crypto::null<crypto::bls_public_key>;
+            reject_proof = it->second->bls_public_key != crypto::null<eth::bls_public_key>;
 #endif
 
         if (reject_proof) {

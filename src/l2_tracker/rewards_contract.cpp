@@ -4,6 +4,7 @@
 
 #include "common/bigint.h"
 #include "common/guts.h"
+#include "common/string_util.h"
 #include "contracts.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
@@ -42,7 +43,7 @@ using tools::skip_t;
 static std::string log_more_contributors_than_allowed(
         size_t num_contributors,
         size_t max_contributors,
-        const crypto::bls_public_key& bls_pk,
+        const bls_public_key& bls_pk,
         std::optional<uint64_t> block_number,
         std::optional<uint64_t> sn_index) {
     std::string result;
@@ -173,7 +174,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
                     contrib_hex) =
                     tools::split_hex_into<
                             skip<12>,
-                            eth::address,
+                            address,
                             bls_public_key,
                             crypto::public_key,
                             crypto::ed25519_signature,

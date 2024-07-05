@@ -8,6 +8,7 @@
 #include <common/string_util.h>
 #include <crypto/crypto.h>
 #include <cryptonote_core/cryptonote_core.h>
+#include <blockchain_db/sqlite/db_sqlite.h>
 
 #include <ethyl/utils.hpp>
 #include <logging/oxen_logger.h>
@@ -129,7 +130,7 @@ static bool extract_1part_msg(
     return false;
 }
 
-static std::vector<uint8_t> get_reward_balance_msg_to_sign(cryptonote::network_type nettype, const crypto::eth_address& eth_addr, std::array<std::byte, 32> amount_be)
+static std::vector<uint8_t> get_reward_balance_msg_to_sign(cryptonote::network_type nettype, const address& eth_addr, std::array<std::byte, 32> amount_be)
 {
     // TODO(doyle): See BLSSigner::proofOfPossession
     const auto tag = BLSSigner::buildTagHash(BLSSigner::rewardTag, nettype);
@@ -163,7 +164,7 @@ void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
     std::array<std::byte, 32> amount_be = tools::encode_integer_be<32>(amount);
 
     std::vector<uint8_t> msg = get_reward_balance_msg_to_sign(core.get_nettype(), eth_addr, amount_be);
-    crypto::bls_signature sig = signer.signMsg(msg);
+    bls_signature sig = signer.signMsg(msg);
 
     oxenc::bt_dict_producer d;
     // Address requesting balance
@@ -345,7 +346,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(
     return result;
 }
 
-static std::vector<uint8_t> get_exit_msg_to_sign(cryptonote::network_type nettype, BLSAggregator::ExitType type, const crypto::bls_public_key& exiting_pk, uint64_t unix_timestamp)
+static std::vector<uint8_t> get_exit_msg_to_sign(cryptonote::network_type nettype, BLSAggregator::ExitType type, const bls_public_key& exiting_pk, uint64_t unix_timestamp)
 {
     // TODO(doyle): See BLSSigner::proofOfPossession
     crypto::hash tag{};
@@ -370,7 +371,7 @@ static std::vector<uint8_t> get_exit_msg_to_sign(cryptonote::network_type nettyp
 struct BLSExitRequest
 {
     bool good;
-    crypto::bls_public_key exiting_pk;
+    bls_public_key exiting_pk;
     std::chrono::seconds timestamp;
 };
 
@@ -388,9 +389,9 @@ static BLSExitRequest extract_exit_request(oxenmq::Message& m)
     try {
         oxenc::bt_dict_consumer d{m.data[0]};
         result.exiting_pk =
-                tools::make_from_guts<crypto::bls_public_key>(d.require<std::string_view>("bls_"
-                                                                                          "pubke"
-                                                                                          "y"));
+                tools::make_from_guts<bls_public_key>(d.require<std::string_view>("bls_"
+                                                                                  "pubke"
+                                                                                  "y"));
         result.timestamp = std::chrono::seconds(
                 tools::make_from_guts<uint64_t>(d.require<std::string_view>("timestamp")));
     } catch (const std::exception& e) {
