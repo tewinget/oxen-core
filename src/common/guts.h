@@ -77,7 +77,7 @@ T make_from_guts(const Spannable& s) {
 template <byte_spannable Spannable, typename Byte = Spannable::value_type>
 std::span<const Byte> hex_span(const Spannable& s) {
     std::span<const Byte> span{s};
-    if (span.size() > 2 && span[0] == static_cast<Byte>('0') &&
+    if (span.size() >= 2 && span[0] == static_cast<Byte>('0') &&
         (span[1] == static_cast<Byte>('x') || span[1] == static_cast<Byte>('X')))
         span = span.subspan(2);
     return span;

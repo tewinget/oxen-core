@@ -269,28 +269,35 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
                 "0x{:x}"_format(contract::call::Pool_rewardRate),
                 [this, r_height, more = std::move(more)](
                         std::optional<nlohmann::json> result) mutable {
+
                     if (!result)
                         log::warning(logcat, "Failed to fetch reward rate for height {}", r_height);
                     else if (!result->is_string())
                         log::warning(logcat, "Unexpected reward rate result: {}", result->dump());
-                    else if (std::array<std::byte, 32> rate256; !tools::try_load_from_hex_guts(
-                                     result->get<std::string_view>(), rate256))
-                        log::warning(logcat, "Unparseable reward rate result: {}", result->dump());
                     else {
-                        try {
-                            auto reward = tools::decode_integer_be(rate256);
-                            {
-                                std::lock_guard lock{mutex};
-                                reward_rate[r_height] = reward;
+                        // NOTE: In certain conditions (like when intialising an empty reward pool)
+                        // the returned reward rate can be "0x" which we handle as 0.
+                        std::array<std::byte, 32> rate256{};
+                        std::span<const char> rate256_hex = tools::hex_span(result->get<std::string_view>());
+
+                        if (rate256_hex.empty() || tools::try_load_from_hex_guts(rate256_hex, rate256)) {
+                            try {
+                                auto reward = tools::decode_integer_be(rate256);
+                                {
+                                    std::lock_guard lock{mutex};
+                                    reward_rate[r_height] = reward;
+                                }
+                                log::debug(
+                                        logcat,
+                                        "Block reward for L2 heights {}-{} is {}",
+                                        r_height,
+                                        r_height + cryptonote::L2_REWARD_POOL_UPDATE_BLOCKS - 1,
+                                        reward);
+                            } catch (const std::exception& e) {
+                                log::warning(logcat, "Failed to parse reward rate: {}", e.what());
                             }
-                            log::debug(
-                                    logcat,
-                                    "Block reward for L2 heights {}-{} is {}",
-                                    r_height,
-                                    r_height + cryptonote::L2_REWARD_POOL_UPDATE_BLOCKS - 1,
-                                    reward);
-                        } catch (const std::exception& e) {
-                            log::warning(logcat, "Failed to parse reward rate: {}", e.what());
+                        } else {
+                            log::warning(logcat, "Unparseable reward rate result: {} {}", result->get<std::string_view>(), std::string_view(rate256_hex.data(), rate256_hex.size()));
                         }
                     }
 
