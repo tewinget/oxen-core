@@ -89,11 +89,14 @@ std::span<const Byte> hex_span(const Spannable& s) {
 template <safe_to_memcpy T, byte_spannable Spannable>
 void load_from_hex_guts(const Spannable& s, T& x, bool check_hex = true) {
     auto span = hex_span(s);
-    if (s.size() != sizeof(T) * 2)
-        throw oxen::traced<std::runtime_error>{"Cannot reconstitute type from hex: wrong size ({} vs {}) for type"_format(s.size(), sizeof(T) * 2)};
+    if (span.size() != sizeof(T) * 2)
+        throw oxen::traced<std::runtime_error>{"Cannot reconstitute type from hex: wrong size ({} vs {}) for type"_format(span.size(), sizeof(T) * 2)};
 
-    if (check_hex && !oxenc::is_hex(span.begin(), span.end()))
-        throw oxen::traced<std::runtime_error>{"Cannot reconstitute type from hex: invalid hex characters"_format(s)};
+    if (check_hex && !oxenc::is_hex(span.begin(), span.end())) {
+        std::string_view span_str = std::string_view(span.data(), span.size());
+        throw oxen::traced<std::runtime_error>{
+                "Cannot reconstitute type from hex: invalid hex characters in {}"_format(span_str)};
+    }
     oxenc::from_hex(span.begin(), span.end(), reinterpret_cast<char*>(&x));
 }
 
