@@ -131,7 +131,7 @@ int main(int argc, char* argv[]) {
     auto bdb = new_db();
     if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
-        throw oxen::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
 
     const fs::path filename = tools::utf8_path(opt_data_dir) / bdb->get_db_name();
@@ -268,10 +268,10 @@ int main(int argc, char* argv[]) {
         currsz += bd.size();
         for (const auto& tx_id : blk.tx_hashes) {
             if (!tx_id) {
-                throw oxen::runtime_error("Aborting: null txid");
+                throw oxen::traced<std::runtime_error>("Aborting: null txid");
             }
             if (!db.get_pruned_tx_blob(tx_id, bd)) {
-                throw oxen::runtime_error("Aborting: tx not found");
+                throw oxen::traced<std::runtime_error>("Aborting: tx not found");
             }
             transaction tx;
             if (!parse_and_validate_tx_base_from_blob(bd, tx)) {

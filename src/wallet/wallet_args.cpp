@@ -167,7 +167,7 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
             if (std::error_code ec; fs::exists(config, ec)) {
                 std::ifstream cfg{config};
                 if (!cfg.is_open())
-                    throw oxen::runtime_error{"Unable to open config file: {}"_format(config)};
+                    throw oxen::traced<std::runtime_error>{"Unable to open config file: {}"_format(config)};
                 po::store(po::parse_config_file<char>(cfg, desc_params), vm);
             } else {
                 log::error(logcat, "{}{}", wallet_args::tr("Can't find config file "), config);

@@ -103,7 +103,7 @@ struct tx_data_t {
                             cryptonote::relative_output_offsets_to_absolute(txin->key_offsets)));
                 else {
                     log::warning(logcat, "Bad vin type in txid {}", get_transaction_hash(tx));
-                    throw oxen::runtime_error("Bad vin type");
+                    throw oxen::traced<std::runtime_error>("Bad vin type");
                 }
             }
         }
@@ -113,7 +113,7 @@ struct tx_data_t {
                 vout.push_back(txout->key);
             } else {
                 log::warning(logcat, "Bad vout type in txid {}", get_transaction_hash(tx));
-                throw oxen::runtime_error("Bad vout type");
+                throw oxen::traced<std::runtime_error>("Bad vout type");
             }
         }
     }
@@ -210,7 +210,7 @@ static std::unordered_set<ancestor> get_ancestry(
             ancestry.find(txid);
     if (i == ancestry.end()) {
         // log::error(logcat, "txid ancestry not found: {}", txid);
-        // throw oxen::runtime_error("txid ancestry not found");
+        // throw oxen::traced<std::runtime_error>("txid ancestry not found");
         return std::unordered_set<ancestor>();
     }
     return i->second;
@@ -430,7 +430,7 @@ int main(int argc, char* argv[]) {
     auto bdb = new_db();
     if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
-        throw oxen::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 

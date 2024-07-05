@@ -234,7 +234,7 @@ int main(int argc, char const* argv[]) {
             try {
                 std::ifstream cfg{*load_config};
                 if (!cfg.is_open())
-                    throw oxen::runtime_error{"Unable to open file"};
+                    throw oxen::traced<std::runtime_error>{"Unable to open file"};
                 po::store(
                         po::parse_config_file<char>(
                                 cfg,
@@ -359,7 +359,7 @@ int main(int argc, char const* argv[]) {
                     rpc_addr = command_line::get_arg(
                             vm, cryptonote::rpc::http_server::arg_rpc_admin)[0];
                     if (rpc_addr == "none")
-                        throw oxen::runtime_error{
+                        throw oxen::traced<std::runtime_error>{
                                 "Cannot invoke oxend command: --rpc-admin is disabled"};
                 }
 

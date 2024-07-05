@@ -756,7 +756,7 @@ class core : public i_miner_handler {
     /// node.
     eth::BLSSigner& get_bls_signer() {
         if (!m_bls_signer)
-            throw oxen::logic_error{"Not a service node: no BLS Signer available"};
+            throw oxen::traced<std::logic_error>{"Not a service node: no BLS Signer available"};
         return *m_bls_signer;
     }
 
