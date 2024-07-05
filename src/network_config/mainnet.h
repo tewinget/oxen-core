@@ -25,7 +25,6 @@ inline constexpr uint64_t PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 115;
 inline constexpr uint64_t PUBLIC_SUBADDRESS_BASE58_PREFIX = 116;
 inline constexpr uint16_t P2P_DEFAULT_PORT = 22022;
 inline constexpr uint16_t RPC_DEFAULT_PORT = 22023;
-inline constexpr uint16_t ZMQ_RPC_DEFAULT_PORT = 22024;
 inline constexpr uint16_t QNET_DEFAULT_PORT = 22025;
 inline constexpr boost::uuids::uuid const NETWORK_ID = {
         {0x46,
@@ -108,7 +107,6 @@ inline constexpr network_config config{
         PUBLIC_SUBADDRESS_BASE58_PREFIX,
         P2P_DEFAULT_PORT,
         RPC_DEFAULT_PORT,
-        ZMQ_RPC_DEFAULT_PORT,
         QNET_DEFAULT_PORT,
         NETWORK_ID,
         GENESIS_TX,

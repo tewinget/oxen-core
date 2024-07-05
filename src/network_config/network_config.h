@@ -13,7 +13,6 @@ struct network_config {
     uint64_t PUBLIC_SUBADDRESS_BASE58_PREFIX;
     uint16_t P2P_DEFAULT_PORT;
     uint16_t RPC_DEFAULT_PORT;
-    uint16_t ZMQ_RPC_DEFAULT_PORT;
     uint16_t QNET_DEFAULT_PORT;
     boost::uuids::uuid NETWORK_ID;
     std::string_view GENESIS_TX;

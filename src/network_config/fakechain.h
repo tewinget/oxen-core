@@ -21,7 +21,6 @@ inline constexpr network_config config{
         mainnet::PUBLIC_SUBADDRESS_BASE58_PREFIX,
         mainnet::P2P_DEFAULT_PORT,
         mainnet::RPC_DEFAULT_PORT,
-        mainnet::ZMQ_RPC_DEFAULT_PORT,
         mainnet::QNET_DEFAULT_PORT,
         mainnet::NETWORK_ID,
         mainnet::GENESIS_TX,
