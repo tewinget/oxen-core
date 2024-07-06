@@ -70,21 +70,13 @@ inline constexpr uint64_t LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE = 100000;
 inline constexpr uint64_t SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR = 50;
 inline constexpr uint64_t COINBASE_BLOB_RESERVED_SIZE = 600;
 
-#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
-inline constexpr auto TARGET_BLOCK_TIME = 14s;
-#else
-inline constexpr auto TARGET_BLOCK_TIME = 2min;
-#endif
-inline constexpr uint64_t BLOCKS_PER_HOUR = 1h / TARGET_BLOCK_TIME;
-inline constexpr uint64_t BLOCKS_PER_DAY = 24h / TARGET_BLOCK_TIME;
-
 inline constexpr uint64_t LOCKED_TX_ALLOWED_DELTA_BLOCKS = 1;
 
 inline constexpr auto MEMPOOL_TX_LIVETIME = 3 * 24h;
 inline constexpr auto MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME = 7 * 24h;
 inline constexpr auto MEMPOOL_PRUNE_NON_STANDARD_TX_LIFETIME = 2h;
 // 3 days worth of full 300kB blocks:
-inline constexpr size_t DEFAULT_MEMPOOL_MAX_WEIGHT = 72h / TARGET_BLOCK_TIME * 300'000;
+inline constexpr size_t DEFAULT_MEMPOOL_MAX_WEIGHT = 72h / 2min * 300'000;
 
 // The default L2 provider refresh parameters (these can be changed via command-line or the config
 // file).
@@ -287,7 +279,7 @@ namespace feature {
     constexpr auto ETH_BLS = hf::hf21_eth;
 }  // namespace feature
 
-enum class network_type : uint8_t { MAINNET = 0, TESTNET, DEVNET, FAKECHAIN, UNDEFINED = 255 };
+enum class network_type : uint8_t { MAINNET = 0, TESTNET, DEVNET, STAGENET, LOCALDEV, FAKECHAIN, UNDEFINED = 255 };
 
 // Constants for older hard-forks that are mostly irrelevant now, but are still needed to sync the
 // older parts of the blockchain:

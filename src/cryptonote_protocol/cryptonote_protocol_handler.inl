@@ -446,7 +446,7 @@ namespace cryptonote
       int64_t diff = static_cast<int64_t>(hshd.current_height) - static_cast<int64_t>(curr_height);
       uint64_t abs_diff = std::abs(diff);
       std::string sync_msg = "{}Sync data returned a new top block candidate: {} -> {} [Your node is {} blocks ({} {})]\nSYNCHRONIZATION started"_format(
-              context, curr_height, hshd.current_height, abs_diff, tools::get_human_readable_timespan(abs_diff*TARGET_BLOCK_TIME), (0 <= diff ? "behind" : "ahead"));
+              context, curr_height, hshd.current_height, abs_diff, tools::get_human_readable_timespan(abs_diff*m_core.get_net_config().TARGET_BLOCK_TIME), (0 <= diff ? "behind" : "ahead"));
       if (is_initial)
         log::info(globallogcat, fg(fmt::terminal_color::cyan), "{}", sync_msg);
       else

@@ -444,36 +444,10 @@ class simple_wallet : public tools::i_wallet2_callback {
                 m_blockchain_height_update_time(),
                 m_print_time() {}
 
-        void update(uint64_t height, bool force = false) {
-            auto current_time = std::chrono::system_clock::now();
-            const auto node_update_threshold = TARGET_BLOCK_TIME / 2;
-            if (node_update_threshold < current_time - m_blockchain_height_update_time ||
-                m_blockchain_height <= height) {
-                update_blockchain_height();
-                m_blockchain_height = (std::max)(m_blockchain_height, height);
-            }
-
-            if (std::chrono::milliseconds(20) < current_time - m_print_time || force) {
-                std::cout << QT_TRANSLATE_NOOP("cryptonote::simple_wallet", "Height ") << height
-                          << " / " << m_blockchain_height << '\r' << std::flush;
-                m_print_time = current_time;
-            }
-        }
+        void update(uint64_t height, bool force = false);
 
       private:
-        void update_blockchain_height() {
-            std::string err;
-            uint64_t blockchain_height = m_simple_wallet.get_daemon_blockchain_height(err);
-            if (err.empty()) {
-                m_blockchain_height = blockchain_height;
-                m_blockchain_height_update_time = std::chrono::system_clock::now();
-            } else {
-                log::error(
-                        log::Cat("wallet.simplewallet"),
-                        "Failed to get current blockchain height: {}",
-                        err);
-            }
-        }
+        void update_blockchain_height();
 
       private:
         cryptonote::simple_wallet& m_simple_wallet;

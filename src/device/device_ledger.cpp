@@ -747,16 +747,6 @@ bool device_ledger::release() {
     return true;
 }
 
-static std::string nettype_string(cryptonote::network_type n) {
-    switch (n) {
-        case cryptonote::network_type::MAINNET: return "mainnet";
-        case cryptonote::network_type::TESTNET: return "testnet";
-        case cryptonote::network_type::DEVNET: return "devnet";
-        case cryptonote::network_type::FAKECHAIN: return "fakenet";
-        default: return "(unknown)";
-    }
-}
-
 void device_ledger::check_network_type() {
     auto locks = tools::unique_locks(device_locker, command_locker);
 
@@ -764,15 +754,15 @@ void device_ledger::check_network_type() {
 
     std::string coin{reinterpret_cast<const char*>(buffer_recv), 4};
     auto device_nettype = static_cast<cryptonote::network_type>(buffer_recv[4]);
-    log::debug(logcat, "Ledger wallet is set to {} {}", coin, nettype_string(device_nettype));
+    log::debug(
+            logcat, "Ledger wallet is set to {} {}", coin, network_type_to_string(device_nettype));
     if (coin != COIN_NETWORK)
         throw std::runtime_error{
                 "Invalid wallet app: expected " + std::string{COIN_NETWORK} + ", got " + coin};
     if (device_nettype != nettype)
         throw std::runtime_error{
-                "Ledger wallet is set to the wrong network type: expected " +
-                nettype_string(nettype) + " but the device is set to " +
-                nettype_string(device_nettype)};
+                "Ledger wallet is set to the wrong network type: expected {} but the device is set to {}"_format(
+                        network_type_to_string(nettype), network_type_to_string(device_nettype))};
 }
 
 void device_ledger::set_network_type(cryptonote::network_type set_nettype) {

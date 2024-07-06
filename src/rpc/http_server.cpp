@@ -666,14 +666,9 @@ void http_server::start() {
         throw std::logic_error{"Cannot call http_server::start() more than once"};
 
     auto net = m_server.nettype();
-    m_server_header =
-            "oxend/"s +
-            (m_restricted ? std::to_string(OXEN_VERSION[0]) : std::string{OXEN_VERSION_FULL}) +
-            (net == network_type::MAINNET     ? " mainnet"
-             : net == network_type::TESTNET   ? " testnet"
-             : net == network_type::DEVNET    ? " devnet"
-             : net == network_type::FAKECHAIN ? " fakenet"
-                                              : " unknown net");
+    m_server_header = "oxend/{} {}"_format(
+            (m_restricted ? std::to_string(OXEN_VERSION[0]) : std::string{OXEN_VERSION_FULL}),
+            network_type_to_string(net));
 
     m_startup_promise.set_value(true);
     m_sent_startup = true;

@@ -115,7 +115,7 @@ TEST(select_outputs, gamma)
   std::vector<uint64_t> offsets;
 
   MKOFFSETS(300000, 1);
-  tools::gamma_picker picker(offsets);
+  tools::gamma_picker picker(cryptonote::network_type::FAKECHAIN, offsets);
   std::vector<double> ages(100000);
   double age_scale = 120. * (offsets.size() / (double)n_outs);
   for (size_t i = 0; i < ages.size(); )
@@ -140,7 +140,7 @@ TEST(select_outputs, density)
   std::vector<uint64_t> offsets;
 
   MKOFFSETS(300000, 1 + (crypto::rand<size_t>() & 0x1f));
-  tools::gamma_picker picker(offsets);
+  tools::gamma_picker picker(cryptonote::network_type::FAKECHAIN, offsets);
 
   std::vector<int> picks(/*n_outs*/offsets.size(), 0);
   for (int i = 0; i < NPICKS; )
@@ -183,7 +183,7 @@ TEST(select_outputs, same_distribution)
   std::vector<uint64_t> offsets;
 
   MKOFFSETS(300000, 1 + (crypto::rand<size_t>() & 0x1f));
-  tools::gamma_picker picker(offsets);
+  tools::gamma_picker picker(cryptonote::network_type::FAKECHAIN, offsets);
 
   std::vector<int> chain_picks(offsets.size(), 0);
   std::vector<int> output_picks(n_outs, 0);

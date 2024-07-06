@@ -158,8 +158,9 @@ struct arg_descriptor {
             assert(cb_ptr && *cb_ptr);
             auto& cb = *cb_ptr;
             auto mainnet_default = cb(cryptonote::network_type::MAINNET);
-            std::string default_disp = "{}; {}/{} for test/dev networks"_format(
+            std::string default_disp = "{}; {}/{}/{} for stage/test/dev networks"_format(
                     arg_stringify(mainnet_default),
+                    arg_stringify(cb(cryptonote::network_type::STAGENET)),
                     arg_stringify(cb(cryptonote::network_type::TESTNET)),
                     arg_stringify(cb(cryptonote::network_type::DEVNET)));
             semantic->default_value(std::move(mainnet_default), std::move(default_disp));

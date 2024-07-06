@@ -281,10 +281,9 @@ struct service_node_info  // registration information
     uint16_t last_decommission_reason_consensus_any =
             0;  // The reason which the last (or current!) decommissioning occurred as voted by any
                 // of the SNs, or 0 if never decommissioned
-    int64_t recommission_credit =
-            DECOMMISSION_INITIAL_CREDIT;  // The number of blocks of credit you started with or kept
-                                          // when you were last activated (i.e. as of
-                                          // `active_since_height`)
+    int64_t recommission_credit = 0;  // The number of blocks of credit you started with or kept
+                                      // when you were last activated (i.e. as of
+                                      // `active_since_height`)
     std::vector<contributor_t> contributors;
     uint64_t total_contributed = 0;
     uint64_t total_reserved = 0;

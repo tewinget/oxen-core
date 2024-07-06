@@ -3039,6 +3039,7 @@ VALIDATE_ADDRESS::response wallet_rpc_server::invoke(VALIDATE_ADDRESS::request&&
             cryptonote::network_type::MAINNET,
             cryptonote::network_type::TESTNET,
             cryptonote::network_type::DEVNET,
+            cryptonote::network_type::STAGENET,
     };
     if (!req.any_net_type && !m_wallet)
         require_open();

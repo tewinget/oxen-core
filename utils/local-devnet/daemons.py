@@ -135,7 +135,7 @@ class RPCDaemon:
                     raise
 
 class Daemon(RPCDaemon):
-    base_args = ('--dev-allow-local-ips', '--fixed-difficulty=1', '--devnet', '--non-interactive')
+    base_args = ('--dev-allow-local-ips', '--fixed-difficulty=1', '--localdev', '--non-interactive')
 
     def __init__(self, *,
             oxend='oxend',
@@ -274,7 +274,7 @@ class Daemon(RPCDaemon):
 
 
 class Wallet(RPCDaemon):
-    base_args = ('--disable-rpc-login', '--non-interactive', '--password','', '--devnet', '--disable-rpc-long-poll',
+    base_args = ('--disable-rpc-login', '--non-interactive', '--password','', '--localdev', '--disable-rpc-long-poll',
  '--daemon-ssl=disabled')
 
     def __init__(

@@ -121,7 +121,8 @@ void add_timestamp_and_difficulty(
 difficulty_calc_mode difficulty_mode(cryptonote::network_type nettype, uint64_t height) {
     auto result = difficulty_calc_mode::normal;
 
-    if (nettype == network_type::DEVNET)
+    if (nettype == network_type::DEVNET || nettype == network_type::LOCALDEV ||
+        nettype == network_type::STAGENET)
         result = difficulty_calc_mode::devnet;
     else if (!is_hard_fork_at_least(nettype, hf::hf10_bulletproofs, height))
         result = difficulty_calc_mode::use_old_lwma;

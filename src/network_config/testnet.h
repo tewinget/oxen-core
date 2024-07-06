@@ -36,7 +36,7 @@ inline constexpr std::string_view GENESIS_TX =
         "656f247200000000000000000000000000000000000000000000000000000000000000000000"sv;
 inline constexpr uint32_t GENESIS_NONCE = 12345;
 
-inline constexpr uint64_t GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 1000;
+inline constexpr auto GOVERNANCE_REWARD_INTERVAL = 2000min;
 inline constexpr std::array GOVERNANCE_WALLET_ADDRESS = {
         // hardfork v7-9
         "T6Tnu9YUgVcSzswBgVioqFNTfcqGopvTrcYjs4YDLHUfU64DuHxFoEmbwoyipTidGiTXx5EuYdgzZhDLMTo9uEv82M482ypm7"sv,
@@ -49,8 +49,11 @@ inline constexpr auto UPTIME_PROOF_FREQUENCY = 10min;
 inline constexpr auto UPTIME_PROOF_VALIDITY = 21min;
 inline constexpr uint64_t BATCHING_INTERVAL = 20;
 inline constexpr uint64_t SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 4;
+
+inline constexpr size_t PULSE_MIN_SERVICE_NODES = 12;  // == pulse quorum size
+
 // Much shorter than mainnet so that you can test this more easily.
-inline constexpr uint64_t ETH_EXIT_BUFFER = 1 * cryptonote::BLOCKS_PER_HOUR;
+inline constexpr uint64_t ETH_EXIT_BUFFER = 1h / mainnet::TARGET_BLOCK_TIME;
 
 // FIXME!
 inline constexpr uint32_t ETHEREUM_CHAIN_ID = -1;
@@ -70,13 +73,19 @@ inline constexpr network_config config{
         NETWORK_ID,
         GENESIS_TX,
         GENESIS_NONCE,
-        GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
+        GOVERNANCE_REWARD_INTERVAL,
         GOVERNANCE_WALLET_ADDRESS,
         mainnet::UPTIME_PROOF_TOLERANCE,
         mainnet::UPTIME_PROOF_STARTUP_DELAY,
         mainnet::UPTIME_PROOF_CHECK_INTERVAL,
         UPTIME_PROOF_FREQUENCY,
         UPTIME_PROOF_VALIDITY,
+        true, // storage & lokinet
+        mainnet::TARGET_BLOCK_TIME,
+        mainnet::PULSE_STAGE_TIMEOUT,
+        mainnet::PULSE_ROUND_TIMEOUT,
+        mainnet::PULSE_MAX_START_ADJUSTMENT,
+        PULSE_MIN_SERVICE_NODES,
         BATCHING_INTERVAL,
         mainnet::MIN_BATCH_PAYMENT_AMOUNT,
         mainnet::LIMIT_BATCH_OUTPUTS,

@@ -124,6 +124,7 @@ bool parse_int(const std::string_view str, T& value, int base = 10) {
 }
 
 std::string lowercase_ascii_string(std::string_view src);
+std::string uppercase_ascii_string(std::string_view src);
 
 // Converts between basic_string_view<T> for different 1-byte T values
 template <oxenc::basic_char To, oxenc::basic_char From>

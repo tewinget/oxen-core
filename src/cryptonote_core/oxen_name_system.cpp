@@ -697,7 +697,8 @@ std::optional<uint64_t> expiry_blocks(cryptonote::network_type nettype, mapping_
         const bool testnet_short = nettype == cryptonote::network_type::TESTNET &&
                                    type != mapping_type::lokinet_10years;
 
-        result = cryptonote::BLOCKS_PER_DAY * REGISTRATION_YEAR_DAYS *
+        auto bpd = get_config(nettype).BLOCKS_PER_DAY();
+        result = bpd * REGISTRATION_YEAR_DAYS *
                  (type == mapping_type::lokinet           ? 1
                   : type == mapping_type::lokinet_2years  ? 2
                   : type == mapping_type::lokinet_5years  ? 5
@@ -710,7 +711,7 @@ std::optional<uint64_t> expiry_blocks(cryptonote::network_type nettype, mapping_
         else if (nettype == cryptonote::network_type::FAKECHAIN)  // For fakenet testing we shorten
                                                                   // 1/2/5/10 years to 2/4/10/20
                                                                   // blocks
-            *result /= (cryptonote::BLOCKS_PER_DAY * REGISTRATION_YEAR_DAYS / 2);
+            *result /= (bpd * REGISTRATION_YEAR_DAYS / 2);
     }
 
     return result;

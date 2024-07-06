@@ -126,7 +126,6 @@ namespace {
     constexpr float RECENT_OUTPUT_DAYS = 1.8f;  // last 1.8 day makes up the recent zone (taken from
                                                 // monerolink.pdf, Miller et al)
     constexpr time_t RECENT_OUTPUT_ZONE = RECENT_OUTPUT_DAYS * 86400;
-    constexpr uint64_t RECENT_OUTPUT_BLOCKS = RECENT_OUTPUT_DAYS * BLOCKS_PER_DAY;
 
     constexpr uint64_t FEE_ESTIMATE_GRACE_BLOCKS = 10;  // estimate fee valid for that many blocks
 
@@ -1210,14 +1209,19 @@ const char* wallet2::tr(const char* str) {
     return i18n_translate(str, "tools::wallet2");
 }
 
-gamma_picker::gamma_picker(const std::vector<uint64_t>& rct_offsets, double shape, double scale) :
+gamma_picker::gamma_picker(
+        network_type nettype,
+        const std::vector<uint64_t>& rct_offsets,
+        double shape,
+        double scale) :
         rct_offsets(rct_offsets) {
     gamma = std::gamma_distribution<double>(shape, scale);
     THROW_WALLET_EXCEPTION_IF(
             rct_offsets.size() <= DEFAULT_TX_SPENDABLE_AGE,
             error::wallet_internal_error,
             "Bad offset calculation");
-    const size_t blocks_in_a_year = BLOCKS_PER_DAY * 365;
+    auto& conf = get_config(nettype);
+    const size_t blocks_in_a_year = conf.BLOCKS_IN(365 * 24h);
     const size_t blocks_to_consider = std::min<size_t>(rct_offsets.size(), blocks_in_a_year);
     const double outputs_to_consider =
             rct_offsets.back() - (blocks_to_consider < rct_offsets.size()
@@ -1228,12 +1232,12 @@ gamma_picker::gamma_picker(const std::vector<uint64_t>& rct_offsets, double shap
     num_rct_outputs = *(end - 1);
     THROW_WALLET_EXCEPTION_IF(num_rct_outputs == 0, error::wallet_internal_error, "No rct outputs");
     average_output_time =
-            tools::to_seconds(TARGET_BLOCK_TIME) * blocks_to_consider /
+            tools::to_seconds(conf.TARGET_BLOCK_TIME) * blocks_to_consider /
             outputs_to_consider;  // this assumes constant target over the whole rct range
 };
 
-gamma_picker::gamma_picker(const std::vector<uint64_t>& rct_offsets) :
-        gamma_picker(rct_offsets, GAMMA_SHAPE, GAMMA_SCALE) {}
+gamma_picker::gamma_picker(network_type nettype, const std::vector<uint64_t>& rct_offsets) :
+        gamma_picker(nettype, rct_offsets, GAMMA_SHAPE, GAMMA_SCALE) {}
 
 uint64_t gamma_picker::pick() {
     double x = gamma(engine);
@@ -5040,10 +5044,12 @@ bool wallet2::load_keys_buf(
                 "{:s} wallet cannot be opened as {:s} wallet"_format(
                         field_nettype == 0   ? "Mainnet"
                         : field_nettype == 1 ? "Testnet"
-                                             : "Devnet",
+                        : field_nettype == 2 ? "Devnet"
+                                             : "Stagenet",
                         m_nettype == network_type::MAINNET   ? "mainnet"
                         : m_nettype == network_type::TESTNET ? "testnet"
-                                                             : "devnet"));
+                        : m_nettype == network_type::DEVNET  ? "devnet"
+                                                             : "stagenet"));
         GET_FIELD_FROM_JSON_RETURN_ON_ERROR(
                 json, segregate_pre_fork_outputs, int, Int, false, true);
         m_segregate_pre_fork_outputs = field_segregate_pre_fork_outputs;
@@ -5590,7 +5596,7 @@ crypto::secret_key wallet2::generate(
 }
 
 uint64_t wallet2::estimate_blockchain_height() {
-    const uint64_t blocks_per_month = BLOCKS_PER_DAY * 30;
+    const uint64_t blocks_per_month = get_config(m_nettype).BLOCKS_IN(30 * 24h);
 
     // try asking the daemon first
     std::string err;
@@ -7639,7 +7645,8 @@ bool wallet2::is_transfer_unlocked(
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_tx_spendtime_unlocked(uint64_t unlock_time, uint64_t block_height) const {
-    return cryptonote::rules::is_output_unlocked(unlock_time, get_blockchain_current_height());
+    return cryptonote::rules::is_output_unlocked(
+            nettype(), unlock_time, get_blockchain_current_height());
 }
 //----------------------------------------------------------------------------------------------------
 namespace {
@@ -9636,7 +9643,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
                 result.msg.append(" (about ");
                 result.msg.append(tools::get_human_readable_timespan(std::chrono::seconds(
                         (node_info["requested_unlock_height"].get<uint64_t>() - curr_height) *
-                        TARGET_BLOCK_TIME)));
+                        get_config(nettype()).TARGET_BLOCK_TIME)));
                 result.msg.append(")");
                 return result;
             }
@@ -9645,19 +9652,21 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
                     service_nodes::get_staking_requirement(nettype(), curr_height),
                     service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::num,
                     service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::den);
+            uint64_t small_contributor_unlock_blocks =
+                    get_config(nettype()).BLOCKS_IN(service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER);
             if (contribution["amount"] < small_contributor_amount_threshold &&
                 (curr_height - node_info["registration_height"].get<uint64_t>()) <
-                        service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER) {
+                        small_contributor_unlock_blocks) {
                 result.msg.append("You are requesting to unlock a stake of: ");
                 result.msg.append(cryptonote::print_money(contribution["amount"]));
                 result.msg.append(
                         " Oxen which is a small contributor stake.\nSmall contributors need to "
                         "wait ");
-                result.msg.append(std::to_string(service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER));
+                result.msg.append(std::to_string(small_contributor_unlock_blocks));
                 result.msg.append(" blocks before being allowed to unlock.");
                 result.msg.append("You will need to wait: ");
                 result.msg.append(std::to_string(
-                        service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER -
+                        small_contributor_unlock_blocks -
                         (curr_height - node_info["registration_height"].get<uint64_t>())));
                 result.msg.append(" more blocks.");
                 return result;
@@ -9684,7 +9693,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
             result.msg.append(std::to_string(unlock_height));
             result.msg.append(" (about ");
             result.msg.append(tools::get_human_readable_timespan(
-                    std::chrono::seconds((unlock_height - curr_height) * TARGET_BLOCK_TIME)));
+                    (unlock_height - curr_height) * get_config(nettype()).TARGET_BLOCK_TIME));
             result.msg.append(")");
 
             if (!tools::try_load_from_hex_guts(
@@ -10385,6 +10394,8 @@ void wallet2::get_outs(
             std::sort(req_t.amounts.begin(), req_t.amounts.end());
             auto end = std::unique(req_t.amounts.begin(), req_t.amounts.end());
             req_t.amounts.resize(std::distance(req_t.amounts.begin(), end));
+            const uint64_t RECENT_OUTPUT_BLOCKS =
+                    RECENT_OUTPUT_DAYS * get_config(m_nettype).BLOCKS_PER_DAY();
             req_t.from_height = std::max<uint64_t>(segregation_fork_height, RECENT_OUTPUT_BLOCKS) -
                                 RECENT_OUTPUT_BLOCKS;
             req_t.to_height = segregation_fork_height + 1;
@@ -10460,7 +10471,7 @@ void wallet2::get_outs(
 
         std::unique_ptr<gamma_picker> gamma;
         if (has_rct_distribution)
-            gamma.reset(new gamma_picker(rct_offsets));
+            gamma.reset(new gamma_picker(m_nettype, rct_offsets));
 
         size_t num_selected_transfers = 0;
         for (size_t idx : selected_transfers) {
@@ -15230,8 +15241,8 @@ uint64_t wallet2::get_approximate_blockchain_height() const {
     const time_t since_ts = time(nullptr) - netconf.HEIGHT_ESTIMATE_TIMESTAMP;
     uint64_t approx_blockchain_height =
             netconf.HEIGHT_ESTIMATE_HEIGHT +
-            (since_ts > 0 ? (uint64_t)since_ts / tools::to_seconds(TARGET_BLOCK_TIME) : 0) -
-            BLOCKS_PER_DAY * 7;  // subtract a week's worth of blocks to be conservative
+            (since_ts > 0 ? (uint64_t)since_ts / tools::to_seconds(netconf.TARGET_BLOCK_TIME) : 0) -
+            netconf.BLOCKS_IN(7 * 24h);  // subtract a week's worth of blocks to be conservative
     log::debug(logcat, "Calculated blockchain height: {}", approx_blockchain_height);
     return approx_blockchain_height;
 }

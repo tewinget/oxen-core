@@ -17,37 +17,11 @@ struct invalid_registration : std::invalid_argument {
 inline constexpr size_t PULSE_QUORUM_ENTROPY_LAG =
         21;  // How many blocks back from the tip of the Blockchain to source entropy for the Pulse
              // quorums.
-#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
-inline constexpr auto PULSE_ROUND_TIME = cryptonote::TARGET_BLOCK_TIME + 6s;
-inline constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION = 1s;
-inline constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 1s;
-inline constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION = 1s;
-inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_HASH_DURATION = 1s;
-inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_DURATION = 1s;
-inline constexpr auto PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION = 1s;
-#else
-inline constexpr auto PULSE_ROUND_TIME = 60s;
-inline constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION = 10s;
-inline constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 10s;
-inline constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION = 10s;
-inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_HASH_DURATION = 10s;
-inline constexpr auto PULSE_WAIT_FOR_RANDOM_VALUE_DURATION = 10s;
-inline constexpr auto PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION = 10s;
-#endif
 
 inline constexpr size_t PULSE_QUORUM_NUM_VALIDATORS = 11;
+inline constexpr size_t PULSE_QUORUM_SIZE = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
 inline constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES =
         7;  // A block must have exactly N signatures to be considered properly
-
-inline constexpr auto PULSE_MIN_TARGET_BLOCK_TIME = cryptonote::TARGET_BLOCK_TIME - 30s;
-inline constexpr auto PULSE_MAX_TARGET_BLOCK_TIME = cryptonote::TARGET_BLOCK_TIME + 30s;
-inline constexpr size_t PULSE_QUORUM_SIZE = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
-
-static_assert(
-        PULSE_ROUND_TIME >=
-        PULSE_WAIT_FOR_HANDSHAKES_DURATION + PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION +
-                PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION + PULSE_WAIT_FOR_RANDOM_VALUE_HASH_DURATION +
-                PULSE_WAIT_FOR_RANDOM_VALUE_DURATION + PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION);
 
 static_assert(PULSE_QUORUM_NUM_VALIDATORS >= PULSE_BLOCK_REQUIRED_SIGNATURES);
 static_assert(
@@ -56,11 +30,6 @@ static_assert(
         "if the amount of blocks to go back from the tip of the Blockchain is less than the blocks "
         "we need.");
 
-constexpr size_t pulse_min_service_nodes(cryptonote::network_type nettype) {
-    return (nettype == cryptonote::network_type::MAINNET) ? 50 : PULSE_QUORUM_SIZE;
-}
-static_assert(pulse_min_service_nodes(cryptonote::network_type::MAINNET) >= PULSE_QUORUM_SIZE);
-static_assert(pulse_min_service_nodes(cryptonote::network_type::TESTNET) >= PULSE_QUORUM_SIZE);
 
 constexpr uint16_t pulse_validator_bit_mask() {
     uint16_t result = 0;
@@ -71,9 +40,9 @@ constexpr uint16_t pulse_validator_bit_mask() {
 }
 
 // Service node decommissioning: as service nodes stay up they earn "credits" (measured in blocks)
-// towards a future outage.  A new service node starts out with INITIAL_CREDIT, and then builds up
-// CREDIT_PER_DAY for each day the service node remains active up to a maximum of
-// DECOMMISSION_MAX_CREDIT.
+// towards a future outage.  A new service node starts out with INITIAL_CREDIT, and then builds up 1
+// block every CREDIT_TIME worth of blocks as long as the service node remains active up to a
+// maximum of DECOMMISSION_MAX_CREDIT.
 //
 // If a service node stops sending uptime proofs, a quorum will consider whether the service node
 // has built up enough credits (at least MINIMUM): if so, instead of submitting a deregistration,
@@ -88,10 +57,10 @@ constexpr uint16_t pulse_validator_bit_mask() {
 // deregistration count down.  (Note that it is possible for a server to slightly exceed its
 // decommission time: the first quorum test after the credit expires determines whether the server
 // gets recommissioned or decommissioned).
-inline constexpr int64_t DECOMMISSION_CREDIT_PER_DAY = cryptonote::BLOCKS_PER_DAY / 30;
-inline constexpr int64_t DECOMMISSION_INITIAL_CREDIT = cryptonote::BLOCKS_PER_HOUR * 2;
-inline constexpr int64_t DECOMMISSION_MAX_CREDIT = cryptonote::BLOCKS_PER_DAY * 2;
-inline constexpr int64_t DECOMMISSION_MINIMUM = cryptonote::BLOCKS_PER_HOUR * 2;
+inline constexpr auto DECOMMISSION_CREDIT_PER_DAY = 24h / 30; // 24h credit per 30 days
+inline constexpr auto DECOMMISSION_INITIAL_CREDIT = 2h;
+inline constexpr auto DECOMMISSION_MAX_CREDIT = 48h;
+inline constexpr auto DECOMMISSION_MINIMUM = 2h;
 
 static_assert(
         DECOMMISSION_INITIAL_CREDIT <= DECOMMISSION_MAX_CREDIT,
@@ -114,36 +83,6 @@ static_assert(
 inline constexpr int64_t RECOMMISSION_CREDIT(int64_t credit_at_decomm, int64_t decomm_blocks) {
     return std::max<int64_t>(0, credit_at_decomm - 2 * decomm_blocks);
 }
-
-// Some sanity checks on the recommission credit value:
-static_assert(
-        RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 0) <= DECOMMISSION_MAX_CREDIT,
-        "Max recommission credit should not be higher than DECOMMISSION_MAX_CREDIT");
-
-// These are by no means exhaustive, but will at least catch simple mistakes
-static_assert(
-        RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT) <=
-                        RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT / 2) &&
-                RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT / 2) <=
-                        RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 0) &&
-                RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT / 2, DECOMMISSION_MAX_CREDIT / 2) <=
-                        RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT / 2, 0),
-        "Recommission credit should be (weakly) decreasing in the length of decommissioning");
-static_assert(
-        RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT / 2, 1) <=
-                        RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 1) &&
-                RECOMMISSION_CREDIT(0, 1) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT / 2, 1),
-        "Recommission credit should be (weakly) increasing in initial credit blocks");
-
-// This one actually could be supported (i.e. you can have negative credit and half to crawl out
-// of that hole), but the current code is entirely untested as to whether or not that actually
-// works.
-static_assert(
-        RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 0) >= 0 &&
-                RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT) >= 0 &&
-                RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 2 * DECOMMISSION_MAX_CREDIT) >=
-                        0,  // delayed recommission that overhangs your time
-        "Recommission credit should not be negative");
 
 inline constexpr uint64_t CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY =
         2;  // Number of consecutive checkpoints before, blocks preceeding the N checkpoints are
@@ -187,7 +126,7 @@ static_assert(
 // node on the network: temporary decommissioning, recommissioning, and permanent deregistration.
 inline constexpr size_t STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST = 100;
 inline constexpr size_t STATE_CHANGE_MIN_NODES_TO_TEST = 50;
-inline constexpr uint64_t VOTE_LIFETIME = cryptonote::BLOCKS_PER_HOUR * 2;
+inline constexpr auto VOTE_LIFETIME = 60; // blocks
 
 inline constexpr size_t STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE = 7;
 inline constexpr size_t STATE_CHANGE_QUORUM_SIZE = 10;
@@ -292,13 +231,7 @@ constexpr quorum_type max_quorum_type_for_hf(cryptonote::hf version) {
                                                          : quorum_type::pulse;
 }
 
-constexpr uint64_t staking_num_lock_blocks(cryptonote::network_type nettype) {
-    switch (nettype) {
-        case cryptonote::network_type::FAKECHAIN: return 30;
-        case cryptonote::network_type::TESTNET: return cryptonote::BLOCKS_PER_DAY * 2;
-        default: return cryptonote::BLOCKS_PER_DAY * 30;
-    }
-}
+uint64_t staking_num_lock_blocks(cryptonote::network_type nettype);
 
 // If a nodes timestamp varies by this amount of seconds they will be considered out of sync
 inline constexpr uint8_t THRESHOLD_SECONDS_OUT_OF_SYNC = 30;
@@ -312,7 +245,7 @@ inline constexpr uint64_t MINIMUM_OPERATOR_PORTION =
         cryptonote::old::STAKING_PORTIONS / oxen::MAX_CONTRIBUTORS_V1;
 
 // Small Stake prevented from unlocking stake until a certain number of blocks have passed
-constexpr uint64_t SMALL_CONTRIBUTOR_UNLOCK_TIMER = cryptonote::BLOCKS_PER_DAY * 30;
+constexpr auto SMALL_CONTRIBUTOR_UNLOCK_TIMER = 30 * 24h;
 using SMALL_CONTRIBUTOR_THRESHOLD = std::ratio<2499, 10000>;
 
 static_assert(

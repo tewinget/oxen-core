@@ -40,7 +40,6 @@
 #include <chrono>
 #include <ctime>
 #include <exception>
-#include <fstream>
 #include <iterator>
 #include <numeric>
 #include <stack>
@@ -580,11 +579,12 @@ bool rpc_command_executor::show_status() {
     if (height != net_height)
         msg.append("/{} ({:.1f}%)", net_height, get_sync_percentage(height, net_height));
 
-    auto net = info["nettype"].get<std::string_view>();
-    if (net == "testnet")
-        msg += " ON TESTNET";
-    else if (net == "devnet")
-        msg += " ON DEVNET";
+    auto nettype = cryptonote::network_type_from_string(info.value("nettype", ""));
+    if (nettype != cryptonote::network_type::MAINNET) {
+        msg += " ON ";
+        msg += tools::uppercase_ascii_string(cryptonote::network_type_to_string(nettype));
+    }
+    auto& netconf = cryptonote::get_config(nettype);
 
     if (height < net_height)
         msg += ", syncing";
@@ -631,17 +631,22 @@ bool rpc_command_executor::show_status() {
         else
             msg.append("DECOMMISSIONED ({} blocks credit)", my_decomm_remaining);
 
-        auto last_ss_ping = info["last_storage_server_ping"].get<uint64_t>();
-        auto last_lokinet_ping = info["last_lokinet_ping"].get<uint64_t>();
-
         msg.append(
-                ", proof: {}, last pings: {} (storage), {} (lokinet)",
-                my_sn_last_uptime ? get_human_time_ago(my_sn_last_uptime, now) : "(never)",
-                last_ss_ping > 0 ? get_human_time_ago(last_ss_ping, now, true /*abbreviate*/)
-                                 : "NOT RECEIVED",
-                last_lokinet_ping > 0
-                        ? get_human_time_ago(last_lokinet_ping, now, true /*abbreviate*/)
-                        : "NOT RECEIVED");
+                ", proof: {}",
+                my_sn_last_uptime ? get_human_time_ago(my_sn_last_uptime, now) : "(never)");
+
+        if (netconf.HAVE_STORAGE_AND_LOKINET) {
+            auto last_ss_ping = info["last_storage_server_ping"].get<uint64_t>();
+            auto last_lokinet_ping = info["last_lokinet_ping"].get<uint64_t>();
+
+            msg.append(
+                    ", last pings: {} (storage), {} (lokinet)",
+                    last_ss_ping > 0 ? get_human_time_ago(last_ss_ping, now, true /*abbreviate*/)
+                                     : "NOT RECEIVED",
+                    last_lokinet_ping > 0
+                            ? get_human_time_ago(last_lokinet_ping, now, true /*abbreviate*/)
+                            : "NOT RECEIVED");
+        }
 
         if (my_sn_registered && my_sn_staked && !my_sn_active && (my_reason_all | my_reason_any)) {
             msg.flush().append("Decomm reasons: ");
@@ -1150,8 +1155,7 @@ bool rpc_command_executor::print_transaction_pool_stats() {
     std::string backlog_message = "no backlog";
     if (bytes_total > *full_reward_zone) {
         uint64_t backlog = (bytes_total + *full_reward_zone - 1) / *full_reward_zone;
-        backlog_message = "estimated {} block ({} minutes) backlog"_format(
-                backlog, (backlog * cryptonote::TARGET_BLOCK_TIME / 1min));
+        backlog_message = "estimated {} block backlog"_format(backlog);
     }
 
     uint64_t fee_total = pstats["fee_total"].get<uint64_t>();
@@ -1427,11 +1431,16 @@ bool rpc_command_executor::print_coinbase_tx_sum(uint64_t height, uint64_t count
 
 bool rpc_command_executor::alt_chain_info(
         const std::string& tip, size_t above, uint64_t last_blocks) {
-    auto height = try_running(
-            [this] { return invoke<GET_INFO>().at("height").get<uint64_t>(); },
-            "Failed to retrieve node info");
+
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
+        return false;
+    auto& info = *maybe_info;
+    auto height = info.value("height", 0);
     if (!height)
         return false;
+    auto nettype = cryptonote::network_type_from_string(info.value("nettype", ""));
 
     auto maybe_chains = try_running(
             [this] { return invoke<GET_ALTERNATE_CHAINS>(); }, "Failed to retrieve node info");
@@ -1449,7 +1458,7 @@ bool rpc_command_executor::alt_chain_info(
             if (chain.length <= above)
                 continue;
             const uint64_t start_height = (chain.height - chain.length + 1);
-            if (last_blocks > 0 && *height - 1 - start_height >= last_blocks)
+            if (last_blocks > 0 && height - 1 - start_height >= last_blocks)
                 continue;
             display.push_back(i);
         }
@@ -1461,7 +1470,7 @@ bool rpc_command_executor::alt_chain_info(
                     "{} blocks long, from height {} ({} deep), diff {}: {}",
                     chain.length,
                     start_height,
-                    *height - start_height - 1,
+                    height - start_height - 1,
                     chain.difficulty,
                     chain.block_hash);
         }
@@ -1479,7 +1488,7 @@ bool rpc_command_executor::alt_chain_info(
                     "{} blocks long, from height {} ({} deep), diff {}:",
                     chain.length,
                     start_height,
-                    *height - start_height - 1,
+                    height - start_height - 1,
                     chain.difficulty);
             for (const std::string& block_id : chain.block_hashes)
                 msg.append("\n  {}", block_id);
@@ -1522,7 +1531,7 @@ bool rpc_command_executor::alt_chain_info(
                 if (start_difficulty > 0)
                     tools::msg_writer(
                             "Approximately {:.2f}% of network hash rate",
-                            100.0 * tools::to_seconds(cryptonote::TARGET_BLOCK_TIME) *
+                            100.0 * tools::to_seconds(get_config(nettype).TARGET_BLOCK_TIME) *
                                     chain.length / dt);
                 else
                     tools::fail_msg_writer("Bad cumulative difficulty reported by dameon");
@@ -1749,6 +1758,8 @@ static void append_printable_service_node_list_entry(
 
     std::ostringstream stream;
 
+    auto& conf = get_config(nettype);
+
     // Print Funding Status
     {
         stream << indent1 << "[" << entry_index << "] "
@@ -1784,7 +1795,7 @@ static void append_printable_service_node_list_entry(
             uint64_t delta_height =
                     (blockchain_height >= expiry_height) ? 0 : expiry_height - blockchain_height;
             auto expiry_epoch_time =
-                    now + (delta_height * tools::to_seconds(cryptonote::TARGET_BLOCK_TIME));
+                    now + (delta_height * tools::to_seconds(conf.TARGET_BLOCK_TIME));
             stream << expiry_height << " (in " << delta_height << ") blocks\n";
 
             stream << indent2 << "Expiry Date (estimated): "
@@ -1963,10 +1974,11 @@ static void append_printable_service_node_list_entry(
         stream << indent2 << "Current Status: ACTIVE\n";
         auto downtime = entry["earned_downtime_blocks"].get<uint64_t>();
         stream << indent2 << "Downtime Credits: " << downtime << " blocks"
-               << " (about " << to_string_rounded(downtime / (double)cryptonote::BLOCKS_PER_HOUR, 2)
+               << " (about " << to_string_rounded(downtime / (double)conf.BLOCKS_PER_HOUR(), 2)
                << " hours)";
-        if (downtime < service_nodes::DECOMMISSION_MINIMUM)
-            stream << " (Note: " << service_nodes::DECOMMISSION_MINIMUM
+        if (uint64_t min_blocks = conf.BLOCKS_IN(service_nodes::DECOMMISSION_MINIMUM);
+            downtime < min_blocks)
+            stream << " (Note: " << min_blocks
                    << " blocks required to enable deregistration delay)";
     } else if (is_funded) {
         stream << indent2 << "Current Status: DECOMMISSIONED";
@@ -2016,11 +2028,7 @@ bool rpc_command_executor::print_sn(const std::vector<std::string>& args, bool s
         return false;
     auto& info = *maybe_info;
 
-    cryptonote::network_type nettype =
-            info.value("mainnet", false)   ? cryptonote::network_type::MAINNET
-            : info.value("devnet", false)  ? cryptonote::network_type::DEVNET
-            : info.value("testnet", false) ? cryptonote::network_type::TESTNET
-                                           : cryptonote::network_type::UNDEFINED;
+    auto nettype = cryptonote::network_type_from_string(info.value("nettype", ""));
     uint64_t curr_height = info["height"].get<uint64_t>();
 
     std::vector<json> awaiting;
@@ -2286,7 +2294,10 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
         return true;
     }
 
-    if (!info.value("devnet", false))  // Devnet doesn't run storage-server / lokinet
+    auto nettype = cryptonote::network_type_from_string(info["nettype"].get<std::string_view>());
+    auto& netconf = get_config(nettype);
+
+    if (!netconf.HAVE_STORAGE_AND_LOKINET)  // Devnet/stagenet don't run storage-server / lokinet
     {
         auto now = std::chrono::system_clock::now();
         auto last_lokinet_ping_timet = info.value<std::time_t>("last_lokinet_ping", 0);
@@ -2317,13 +2328,6 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
 
     uint64_t block_height =
             std::max(info["height"].get<uint64_t>(), info["target_height"].get<uint64_t>());
-    cryptonote::network_type const nettype =
-            info.value("mainnet", false)   ? cryptonote::network_type::MAINNET
-            : info.value("devnet", false)  ? cryptonote::network_type::DEVNET
-            : info.value("testnet", false) ? cryptonote::network_type::TESTNET
-            : info["nettype"].get<std::string_view>() == "fakechain"
-                    ? cryptonote::network_type::FAKECHAIN
-                    : cryptonote::network_type::UNDEFINED;
 
     // Query the latest block we've synced and check that the timestamp is sensible, issue a warning
     // if not

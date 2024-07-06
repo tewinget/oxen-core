@@ -742,10 +742,10 @@ bool core::init(
     }
 
     cryptonote::test_options regtest_test_options{};
-    for (auto [it, end] = get_hard_forks(network_type::MAINNET); it != end; it++) {
+    for (auto& hf : get_hard_forks(network_type::MAINNET)) {
         regtest_test_options.hard_forks.push_back(hard_fork{
-                it->version,
-                it->snode_revision,
+                hf.version,
+                hf.snode_revision,
                 regtest_test_options.hard_forks.size(),
                 std::time(nullptr)});
     }
@@ -2149,9 +2149,9 @@ bool core::handle_uptime_proof(
         proof = std::make_unique<uptime_proof::Proof>(
                 get_network_version(m_nettype, get_current_blockchain_height()), req.proof);
 
-        // devnet doesn't have storage server or lokinet, so these should be 0; everywhere else they
-        // should be non-zero.
-        if (m_nettype == network_type::DEVNET) {
+        // devnet/stagenet don't have storage server or lokinet, so these should be 0; everywhere
+        // else they should be non-zero.
+        if (!get_config(m_nettype).HAVE_STORAGE_AND_LOKINET) {
             if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
                 throw std::runtime_error{
                         "Invalid storage port(s) in proof: devnet storage ports must be 0"};
@@ -2585,7 +2585,7 @@ void core::do_uptime_proof_call() {
                             if (pk != m_service_keys.pub &&
                                 proof.proof->public_ip == m_sn_public_ip &&
                                 (proof.proof->qnet_port == m_quorumnet_port ||
-                                 (m_nettype != network_type::DEVNET &&
+                                 (netconf.HAVE_STORAGE_AND_LOKINET &&
                                   (proof.proof->storage_https_port == storage_https_port() ||
                                    proof.proof->storage_omq_port == storage_omq_port()))))
                                 log::info(
@@ -2606,7 +2606,7 @@ void core::do_uptime_proof_call() {
                         });
             }
 
-            if (m_nettype != network_type::DEVNET) {
+            if (netconf.HAVE_STORAGE_AND_LOKINET) {
                 if (!check_external_ping(
                             m_last_storage_server_ping,
                             get_net_config().UPTIME_PROOF_FREQUENCY,

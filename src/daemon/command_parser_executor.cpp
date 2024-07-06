@@ -429,6 +429,9 @@ bool command_parser_executor::start_mining(const std::vector<std::string>& args)
     else if (cryptonote::get_account_address_from_str(
                      info, cryptonote::network_type::DEVNET, args.front()))
         nettype = cryptonote::network_type::DEVNET;
+    else if (cryptonote::get_account_address_from_str(
+                     info, cryptonote::network_type::STAGENET, args.front()))
+        nettype = cryptonote::network_type::STAGENET;
     else {
         std::cout << "target account address has wrong format" << std::endl;
         return true;

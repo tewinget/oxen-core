@@ -772,8 +772,9 @@ void Blockchain::pop_blocks(uint64_t nblocks) {
         pop_batching_rewards =
                 m_service_node_list.state_history_exists(blockchain_height - nblocks);
         std::chrono::steady_clock::time_point pop_blocks_started = std::chrono::steady_clock::now();
+        uint64_t bpd = get_config(m_nettype).BLOCKS_PER_DAY();
         for (int progress = 0; i < nblocks; ++i) {
-            if (nblocks >= BLOCKS_PER_DAY && (i != 0 && (i % blocks_per_update == 0))) {
+            if (nblocks >= bpd && (i != 0 && (i % blocks_per_update == 0))) {
                 log::info(
                         logcat,
                         "... popping blocks {}% completed, height: {} ({}s)",
@@ -1017,7 +1018,8 @@ difficulty_type Blockchain::get_difficulty_for_next_block(bool pulse) {
     // 1'000'000 such that, when we have to fallback to PoW difficulty is
     // a reasonable value to allow continuing the network onwards.
     if (pulse) {
-        if (m_nettype == network_type::DEVNET)
+        if (m_nettype == network_type::DEVNET || m_nettype == network_type::LOCALDEV ||
+            m_nettype == network_type::STAGENET)
             return std::min(PULSE_FIXED_DIFFICULTY, DEVNET_DIFF_CAP);
         return PULSE_FIXED_DIFFICULTY;
     }
@@ -1047,7 +1049,7 @@ difficulty_type Blockchain::get_difficulty_for_next_block(bool pulse) {
     uint64_t diff = next_difficulty_v2(
             m_cache.m_timestamps,
             m_cache.m_difficulties,
-            tools::to_seconds(TARGET_BLOCK_TIME),
+            tools::to_seconds(get_config(m_nettype).TARGET_BLOCK_TIME),
             difficulty_mode(m_nettype, chain_height));
 
     m_cache.m_timestamps_and_difficulties_height = chain_height;
@@ -1338,7 +1340,7 @@ difficulty_type Blockchain::get_difficulty_for_alternative_chain(
     return next_difficulty_v2(
             timestamps,
             cumulative_difficulties,
-            tools::to_seconds(TARGET_BLOCK_TIME),
+            tools::to_seconds(get_config(m_nettype).TARGET_BLOCK_TIME),
             difficulty_mode(m_nettype, height));
 }
 //------------------------------------------------------------------
@@ -1970,13 +1972,7 @@ bool Blockchain::create_next_pulse_block_template(
     std::string nonce = {};
 
     bool result = create_block_template_internal(
-            b,
-            nullptr /*from_block*/,
-            info,
-            diffic,
-            height,
-            expected_reward,
-            nonce);
+            b, nullptr /*from_block*/, info, diffic, height, expected_reward, nonce);
     b.pulse.round = round;
     b.pulse.validator_bitset = validator_bitset;
     return result;
@@ -4484,7 +4480,7 @@ byte_and_output_fees Blockchain::get_dynamic_base_fee_estimate(uint64_t grace_bl
 // a block index or a unix time.
 bool Blockchain::is_output_spendtime_unlocked(uint64_t unlock_time) const {
     log::trace(logcat, "Blockchain::{}", __func__);
-    return cryptonote::rules::is_output_unlocked(unlock_time, m_db->height());
+    return cryptonote::rules::is_output_unlocked(m_nettype, unlock_time, m_db->height());
 }
 //------------------------------------------------------------------
 // This function locates all outputs associated with a given input (mixins)
@@ -5843,7 +5839,8 @@ bool Blockchain::calc_batched_governance_reward(uint64_t height, uint64_t& rewar
     // 0 if it's not time to pay out the batched payments (in which case we
     // already returned, above).
 
-    size_t num_blocks = cryptonote::get_config(nettype()).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
+    auto& conf = get_config(m_nettype);
+    size_t num_blocks = conf.BLOCKS_IN(conf.GOVERNANCE_REWARD_INTERVAL);
 
     // Fixed reward starting at HF15
     if (hard_fork_version >= hf::hf15_ons) {

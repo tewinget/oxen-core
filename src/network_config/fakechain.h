@@ -12,6 +12,8 @@ inline constexpr auto UPTIME_PROOF_CHECK_INTERVAL = 5s;
 inline constexpr auto UPTIME_PROOF_FREQUENCY = 1min;
 inline constexpr auto UPTIME_PROOF_VALIDITY = 2min + 5s;
 
+inline constexpr auto GOVERNANCE_REWARD_INTERVAL = 200min;
+
 inline constexpr network_config config{
         network_type::FAKECHAIN,
         mainnet::HEIGHT_ESTIMATE_HEIGHT,
@@ -25,13 +27,19 @@ inline constexpr network_config config{
         mainnet::NETWORK_ID,
         mainnet::GENESIS_TX,
         mainnet::GENESIS_NONCE,
-        100,  //GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
+        GOVERNANCE_REWARD_INTERVAL,
         mainnet::GOVERNANCE_WALLET_ADDRESS,
         mainnet::UPTIME_PROOF_TOLERANCE,
         UPTIME_PROOF_STARTUP_DELAY,
         UPTIME_PROOF_CHECK_INTERVAL,
         UPTIME_PROOF_FREQUENCY,
         UPTIME_PROOF_VALIDITY,
+        false, // storage & lokinet
+        mainnet::TARGET_BLOCK_TIME,
+        mainnet::PULSE_STAGE_TIMEOUT,
+        mainnet::PULSE_ROUND_TIMEOUT,
+        mainnet::PULSE_MAX_START_ADJUSTMENT,
+        mainnet::PULSE_MIN_SERVICE_NODES,
         testnet::BATCHING_INTERVAL,
         mainnet::MIN_BATCH_PAYMENT_AMOUNT,
         mainnet::LIMIT_BATCH_OUTPUTS,

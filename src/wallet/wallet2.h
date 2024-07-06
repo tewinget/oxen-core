@@ -103,8 +103,12 @@ class Notify;
 class gamma_picker {
   public:
     uint64_t pick();
-    gamma_picker(const std::vector<uint64_t>& rct_offsets);
-    gamma_picker(const std::vector<uint64_t>& rct_offsets, double shape, double scale);
+    gamma_picker(cryptonote::network_type nettype, const std::vector<uint64_t>& rct_offsets);
+    gamma_picker(
+            cryptonote::network_type nettype,
+            const std::vector<uint64_t>& rct_offsets,
+            double shape,
+            double scale);
 
   private:
     struct gamma_engine {

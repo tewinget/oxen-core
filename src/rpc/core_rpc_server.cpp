@@ -236,7 +236,7 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
     else
         info.response["difficulty"] = bs.get_difficulty_for_next_block(next_block_is_pulse);
 
-    info.response["target"] = tools::to_seconds(TARGET_BLOCK_TIME);
+    info.response["target"] = tools::to_seconds(m_core.get_net_config().TARGET_BLOCK_TIME);
     // This count seems broken: blocks with no outputs (after batching) shouldn't be subtracted, and
     // 0-output txes (SN state changes) arguably shouldn't be, either.
     info.response["tx_count"] =
@@ -254,16 +254,7 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
 
     cryptonote::network_type nettype = m_core.get_nettype();
     info.response["mainnet"] = nettype == network_type::MAINNET;
-    if (nettype == network_type::TESTNET)
-        info.response["testnet"] = true;
-    else if (nettype == network_type::DEVNET)
-        info.response["devnet"] = true;
-    else if (nettype != network_type::MAINNET)
-        info.response["fakechain"] = true;
-    info.response["nettype"] = nettype == network_type::MAINNET ? "mainnet"
-                             : nettype == network_type::TESTNET ? "testnet"
-                             : nettype == network_type::DEVNET  ? "devnet"
-                                                                : "fakechain";
+    info.response["nettype"] = network_type_to_string(nettype);
 
     try {
         auto cd = db.get_block_cumulative_difficulty(top_height);
@@ -1268,7 +1259,8 @@ void core_rpc_server::invoke(STOP_MINING& stop_mining, [[maybe_unused]] rpc_cont
 void core_rpc_server::invoke(MINING_STATUS& mining_status, [[maybe_unused]] rpc_context context) {
     const miner& lMiner = m_core.get_miner();
     mining_status.response["active"] = lMiner.is_mining();
-    mining_status.response["block_target"] = tools::to_seconds(TARGET_BLOCK_TIME);
+    mining_status.response["block_target"] =
+            tools::to_seconds(m_core.get_net_config().TARGET_BLOCK_TIME);
     mining_status.response["difficulty"] =
             m_core.get_blockchain_storage().get_difficulty_for_next_block(false /*pulse*/);
     if (lMiner.is_mining()) {
@@ -2401,7 +2393,7 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
         uint8_t pulse_round = 0;
         if (pulse::get_round_timings(blockchain, curr_height, top_header.timestamp, next_timings) &&
             pulse::convert_time_to_round(
-                    pulse::clock::now(), next_timings.r0_timestamp, &pulse_round)) {
+                    nettype(), pulse::clock::now(), next_timings.r0_timestamp, &pulse_round)) {
             auto entropy = service_nodes::get_pulse_entropy_for_next_block(
                     blockchain.get_db(), pulse_round);
             auto& sn_list = m_core.get_service_node_list();
@@ -2674,7 +2666,7 @@ void core_rpc_server::fill_sn_response_entry(
                                                                : info.active_since_height)
                                    : info.last_reward_block_height,
             "earned_downtime_blocks",
-            service_nodes::quorum_cop::calculate_decommission_credit(info, top_height),
+            service_nodes::quorum_cop::calculate_decommission_credit(nettype(), info, top_height),
             "decommission_count",
             info.decommission_count,
             "total_contributed",

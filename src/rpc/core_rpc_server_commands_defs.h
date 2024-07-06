@@ -519,13 +519,7 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 /// - `tx_count` -- Total number of non-coinbase transaction in the chain.
 /// - `tx_pool_size` -- Number of transactions that have been broadcast but not included in a block.
 /// - `mainnet` -- Indicates whether the node is on the main network (`true`) or not (`false`).
-/// - `testnet` -- Indicates that the node is on the test network (`true`). Will be omitted for
-///   non-testnet.
-/// - `devnet` -- Indicates that the node is on the dev network (`true`). Will be omitted for
-///   non-devnet.
-/// - `fakechain` -- States that the node is running in "fakechain" mode (`true`).  Omitted
-///   otherwise.
-/// - `nettype` -- String value of the network type (mainnet, testnet, devnet, or fakechain).
+/// - `nettype` -- String value of the network type (mainnet, stagenet, testnet, devnet, localdev, or fakechain).
 /// - `top_block_hash` -- Hash of the highest block in the chain.  Will be hex for JSON requests,
 ///   32-byte binary value for bt requests.
 /// - `immutable_block_hash` -- Hash of the highest block in the chain that can not be reorganized.

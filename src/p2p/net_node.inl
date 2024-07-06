@@ -570,14 +570,16 @@ std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes(
         full_addrs.insert("144.76.164.202:38156");  // public-eu.optf.ngo
     } else if (nettype == cryptonote::network_type::DEVNET) {
         full_addrs.insert("144.76.164.202:38856");
-    } else if (nettype == cryptonote::network_type::FAKECHAIN) {
-    } else {
+    } else if (nettype == cryptonote::network_type::STAGENET) {
+        full_addrs.insert("104.243.40.38:11022");  // angus.oxen.io
+    } else if (nettype == cryptonote::network_type::MAINNET) {
         full_addrs.insert("116.203.196.12:22022");  // Hetzner seed node
         full_addrs.insert("185.150.191.32:22022");  // Jason's seed node
         full_addrs.insert("199.127.60.6:22022");    // Oxen Foundation server "holstein"
         full_addrs.insert("23.88.6.250:22022");     // Official Session open group server
         full_addrs.insert("104.194.8.115:22000");   // Oxen Foundation server "brahman"
     }
+    // LOCALDEV and FAKECHAIN don't have seed nodes
     return full_addrs;
 }
 //-----------------------------------------------------------------------------------
@@ -585,11 +587,7 @@ template <class t_payload_net_handler>
 std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes() {
     if (!m_exclusive_peers.empty() || m_offline)
         return {};
-    if (m_nettype == cryptonote::network_type::TESTNET)
-        return get_seed_nodes(cryptonote::network_type::TESTNET);
-    if (m_nettype == cryptonote::network_type::DEVNET)
-        return get_seed_nodes(cryptonote::network_type::DEVNET);
-    return get_seed_nodes(cryptonote::network_type::MAINNET);
+    return get_seed_nodes(m_nettype);
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>

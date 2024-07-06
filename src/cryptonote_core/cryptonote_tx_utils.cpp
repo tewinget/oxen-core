@@ -178,7 +178,8 @@ bool height_has_governance_output(network_type nettype, hf hard_fork_version, ui
     if (hard_fork_version <= hf::hf9_service_nodes || hard_fork_version >= hf::hf19_reward_batching)
         return true;
 
-    if (height % cryptonote::get_config(nettype).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS != 0) {
+    auto& conf = get_config(nettype);
+    if (height % conf.BLOCKS_IN(conf.GOVERNANCE_REWARD_INTERVAL) != 0) {
         return false;
     }
 

@@ -34,7 +34,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <functional>
 
 extern "C" {
 #include <sodium.h>
@@ -85,9 +84,8 @@ static_assert(
 static uint64_t short_term_state_cull_height(hf hf_version, uint64_t block_height) {
     size_t constexpr DEFAULT_SHORT_TERM_STATE_HISTORY = 6 * STATE_CHANGE_TX_LIFETIME_IN_BLOCKS;
     static_assert(
-            DEFAULT_SHORT_TERM_STATE_HISTORY >=
-                    12 * cryptonote::BLOCKS_PER_HOUR,  // Arbitrary, but raises a compilation
-                                                       // failure if it gets shortened.
+            DEFAULT_SHORT_TERM_STATE_HISTORY >= 360,  // Arbitrary, but raises a compilation
+                                                      // failure if it gets shortened.
             "not enough short term state storage for blink quorum retrieval!");
     uint64_t result = (block_height < DEFAULT_SHORT_TERM_STATE_HISTORY)
                             ? 0
@@ -990,7 +988,7 @@ bool service_node_list::state_t::process_state_change_tx(
             // To figure out how much credit the node gets at recommissioned we need to know how
             // much it had when it got decommissioned, and how long it's been decommisioned.
             int64_t credit_at_decomm =
-                    quorum_cop::calculate_decommission_credit(info, info.last_decommission_height);
+                    quorum_cop::calculate_decommission_credit(nettype, info, info.last_decommission_height);
             int64_t decomm_blocks = block_height - info.last_decommission_height;
 
             info.active_since_height = block_height;
@@ -1123,18 +1121,19 @@ bool service_node_list::state_t::process_ethereum_exit_tx(
         block_delay = staking_num_lock_blocks(nettype);
         stake_reduction = staking_requirement - exit_data.amount;
     }
-    auto node = std::find_if(service_nodes_infos.begin(), service_nodes_infos.end(),
-        [&exit_data](const auto& pair) {
-            const auto& [key, info] = pair;
-            return info->bls_public_key == exit_data.bls_pubkey;
-        });
+    auto node = std::find_if(
+            service_nodes_infos.begin(), service_nodes_infos.end(), [&exit_data](const auto& pair) {
+                const auto& [key, info] = pair;
+                return info->bls_public_key == exit_data.bls_pubkey;
+            });
     std::vector<cryptonote::batch_sn_payment> returned_stakes;
     for (const auto& contributor : node->second->contributors)
         returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
 
     returned_stakes[0].amount -= stake_reduction;
 
-    return sn_list->m_blockchain.sqlite_db().return_staked_amount_to_user(returned_stakes, block_delay);
+    return sn_list->m_blockchain.sqlite_db().return_staked_amount_to_user(
+            returned_stakes, block_delay);
 }
 
 bool service_node_list::state_t::process_key_image_unlock_tx(
@@ -1173,6 +1172,9 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
         return false;
     }
 
+    uint64_t small_contributor_unlock_blocks =
+            get_config(nettype).BLOCKS_IN(SMALL_CONTRIBUTOR_UNLOCK_TIMER);
+
     uint64_t unlock_height = get_locked_key_image_unlock_height(
             nettype, node_info.registration_height, block_height);
     uint64_t small_contributor_amount_threshold = mul128_div64(
@@ -1190,26 +1192,26 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
             if (hf_version >= feature::ETH_BLS) {
                 if (cit->amount < small_contributor_amount_threshold &&
                     (block_height - node_info.registration_height) <
-                            service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER) {
+                            small_contributor_unlock_blocks) {
                     log::info(
                             logcat,
                             "Unlock TX: small contributor trying to unlock node before {} blocks "
                             "have passed, rejected on height: {} for tx: {}",
-                            std::to_string(service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER),
+                            small_contributor_unlock_blocks,
                             block_height,
                             get_transaction_hash(tx));
                     return false;
                 }
             }
-            // TODO oxen remove this whole if block after HF20 has occurred
+            // TODO oxen remove this whole if block after HF21 has occurred
             if (hf_version == hf::hf19_reward_batching) {
                 if (cit->amount < 3749 && (block_height - node_info.registration_height) <
-                                                  service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER) {
+                                                  small_contributor_unlock_blocks) {
                     log::info(
                             logcat,
                             "Unlock TX: small contributor trying to unlock node before {} blocks "
                             "have passed, rejected on height: {} for tx: {}",
-                            std::to_string(service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER),
+                            small_contributor_unlock_blocks,
                             block_height,
                             get_transaction_hash(tx));
                     return false;
@@ -1302,6 +1304,8 @@ bool service_node_list::state_t::is_premature_unlock(
     if (!cryptonote::get_field_from_tx_extra(tx.extra, unlock))
         return false;
 
+    uint64_t small_contributor_unlock_blocks =
+            get_config(nettype).BLOCKS_IN(SMALL_CONTRIBUTOR_UNLOCK_TIMER);
     uint64_t unlock_height = get_locked_key_image_unlock_height(
             nettype, node_info.registration_height, block_height);
     uint64_t small_contributor_amount_threshold = mul128_div64(
@@ -1317,8 +1321,7 @@ bool service_node_list::state_t::is_premature_unlock(
                 });
         if (cit != contributor.locked_contributions.end())
             return cit->amount < small_contributor_amount_threshold &&
-                   (block_height - node_info.registration_height) <
-                           service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER;
+                   (block_height - node_info.registration_height) < small_contributor_unlock_blocks;
     }
     return false;
 }
@@ -1429,6 +1432,7 @@ bool is_registration_tx(
 
     key = reg.service_node_pubkey;
 
+    info.recommission_credit = get_config(nettype).BLOCKS_IN(DECOMMISSION_INITIAL_CREDIT);
     info.staking_requirement = staking_requirement;
     info.operator_address = reg.reserved[0].first;
 
@@ -1487,8 +1491,6 @@ validate_and_get_ethereum_registration(
         uint64_t block_timestamp,
         uint64_t block_height,
         uint32_t index) {
-    auto info = std::make_shared<service_node_info>();
-
     auto maybe_reg = eth_reg_tx_extract_fields(hf_version, tx);
     if (!maybe_reg)
         throw std::runtime_error("Could not extract registration details from transaction");
@@ -1499,16 +1501,19 @@ validate_and_get_ethereum_registration(
     validate_registration(hf_version, nettype, staking_requirement, block_timestamp, reg);
     validate_registration_signature(reg);
 
-    info->staking_requirement = staking_requirement;
-    info->operator_ethereum_address = reg.eth_contributions[0].first;
-    info->bls_public_key = reg.bls_pubkey;
-    info->portions_for_operator = staking_requirement;
-    info->registration_height = block_height;
-    info->registration_hf_version = hf_version;
-    info->last_reward_block_height = block_height;
-    info->last_reward_transaction_index = index;
-    info->swarm_id = UNASSIGNED_SWARM_ID;
-    info->last_ip_change_height = block_height;
+    auto result = std::make_pair(reg.service_node_pubkey, std::make_shared<service_node_info>());
+    auto& info = *result.second;
+    info.recommission_credit = get_config(nettype).BLOCKS_IN(DECOMMISSION_INITIAL_CREDIT);
+    info.staking_requirement = staking_requirement;
+    info.operator_ethereum_address = reg.eth_contributions[0].first;
+    info.bls_public_key = reg.bls_pubkey;
+    info.portions_for_operator = staking_requirement;
+    info.registration_height = block_height;
+    info.registration_hf_version = hf_version;
+    info.last_reward_block_height = block_height;
+    info.last_reward_transaction_index = index;
+    info.swarm_id = UNASSIGNED_SWARM_ID;
+    info.last_ip_change_height = block_height;
 
     for (auto it = reg.eth_contributions.begin(); it != reg.eth_contributions.end(); ++it) {
         auto& [addr, amount] = *it;
@@ -1522,16 +1527,16 @@ validate_and_get_ethereum_registration(
             }
         }
 
-        auto& contributor = info->contributors.emplace_back();
+        auto& contributor = info.contributors.emplace_back();
         contributor.reserved = amount;
         contributor.amount = amount;
 
         contributor.ethereum_address = addr;
-        info->total_reserved += contributor.reserved;
-        info->total_contributed += contributor.reserved;
+        info.total_reserved += contributor.reserved;
+        info.total_contributed += contributor.reserved;
     }
 
-    return {reg.service_node_pubkey, info};
+    return result;
 }
 
 bool service_node_list::state_t::process_registration_tx(
@@ -1985,9 +1990,10 @@ static bool verify_block_components(
         // TODO(doyle): Core tests need to generate coherent timestamps with
         // Pulse. So we relax the rules here for now.
         if (nettype != cryptonote::network_type::FAKECHAIN) {
+            auto round_timeout = get_config(nettype).PULSE_ROUND_TIMEOUT;
             auto round_begin_timestamp =
-                    timings.r0_timestamp + (block.pulse.round * PULSE_ROUND_TIME);
-            auto round_end_timestamp = round_begin_timestamp + PULSE_ROUND_TIME;
+                    timings.r0_timestamp + (block.pulse.round * round_timeout);
+            auto round_end_timestamp = round_begin_timestamp + round_timeout;
 
             uint64_t begin_time = tools::to_seconds(round_begin_timestamp.time_since_epoch());
             uint64_t end_time = tools::to_seconds(round_end_timestamp.time_since_epoch());
@@ -2292,8 +2298,9 @@ void service_node_list::block_add(
         uint64_t const block_height = cryptonote::get_block_height(block);
         bool newest_block = m_blockchain.get_current_blockchain_height() == (block_height + 1);
         auto now = pulse::clock::now().time_since_epoch();
-        auto earliest_time = std::chrono::seconds(block.timestamp) - cryptonote::TARGET_BLOCK_TIME;
-        auto latest_time = std::chrono::seconds(block.timestamp) + cryptonote::TARGET_BLOCK_TIME;
+        const auto target_block_time = get_config(m_blockchain.nettype()).TARGET_BLOCK_TIME;
+        auto earliest_time = std::chrono::seconds(block.timestamp) - target_block_time;
+        auto latest_time = std::chrono::seconds(block.timestamp) + target_block_time;
 
         if (newest_block && (now >= earliest_time && now <= latest_time)) {
             std::shared_ptr<const quorum> quorum =
@@ -2515,7 +2522,7 @@ service_nodes::quorum generate_pulse_quorum(
         std::vector<crypto::hash> const& pulse_entropy,
         uint8_t pulse_round) {
     service_nodes::quorum result = {};
-    if (active_snode_list.size() < pulse_min_service_nodes(nettype)) {
+    if (active_snode_list.size() < get_config(nettype).PULSE_MIN_SERVICE_NODES) {
         log::debug(
                 logcat,
                 "Insufficient active Service Nodes for Pulse: {}",
@@ -4212,10 +4219,11 @@ service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& s
             // 0 for a recommission.
 
             auto was = info.recommission_credit;
-            if (info.decommission_count <=
-                info.is_decommissioned())  // Has never been decommissioned (or is currently in the
-                                           // first decommission), so add initial starting credit
-                info.recommission_credit = DECOMMISSION_INITIAL_CREDIT;
+            if (info.decommission_count <= info.is_decommissioned())
+                // Has never been decommissioned (or is currently in the first decommission), so add
+                // initial starting credit
+                info.recommission_credit = get_config(sn_list->m_blockchain.nettype())
+                                                   .BLOCKS_IN(DECOMMISSION_INITIAL_CREDIT);
             else
                 info.recommission_credit = 0;
 

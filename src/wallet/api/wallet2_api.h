@@ -44,7 +44,7 @@
 //  Public interface for libwallet library
 namespace Wallet {
 
-enum NetworkType : uint8_t { MAINNET = 0, TESTNET, DEVNET };
+enum NetworkType : uint8_t { MAINNET = 0, TESTNET, DEVNET, STAGENET };
 
 namespace Utils {
     bool isAddressLocal(const std::string& hostaddr);
@@ -432,6 +432,7 @@ struct Wallet {
     bool mainnet() const { return nettype() == MAINNET; }
     bool testnet() const { return nettype() == TESTNET; }
     bool devnet() const { return nettype() == DEVNET; }
+    bool stagenet() const { return nettype() == STAGENET; }
     //! returns current hard fork info
     virtual void hardForkInfo(uint8_t& version, uint64_t& earliest_height) const = 0;
     virtual std::optional<uint8_t> hardForkVersion() const = 0;
