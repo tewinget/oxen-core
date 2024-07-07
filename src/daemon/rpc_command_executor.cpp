@@ -60,6 +60,8 @@
 #include "oxen_economy.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 
+#include <cpr/cpr.h>
+
 using namespace cryptonote::rpc;
 using cryptonote::hf;
 
@@ -2702,6 +2704,75 @@ The Service Node will not activate until the entire stake has been contributed.
     }
 
     return false;
+}
+
+bool rpc_command_executor::prepare_eth_registration(std::string_view operator_address, std::string_view contract_address, bool print_only)
+{
+    for (size_t i = 0; i < (contract_address.empty() ? 1 : 2); i++)
+    {
+        auto eth_arg = (i == 0) ? operator_address : contract_address;
+        if (eth_arg.starts_with("0x"))
+            eth_arg.remove_prefix(2);
+
+        auto maybe_reg_info = try_running([this, &eth_arg]() {
+                return invoke<BLS_REGISTRATION>(json{{"address", eth_arg}});
+                },
+                "Failed to generate the service node registration info");
+        if (!maybe_reg_info)
+            return false;
+        auto& reg_info = *maybe_reg_info;
+
+        auto snode_pubkey = reg_info["service_node_pubkey"].get<std::string>();
+        auto ed_sig = reg_info["service_node_signature"].get<std::string>();
+        auto bls_pubkey = reg_info["bls_pubkey"].get<std::string>();
+        auto bls_sig = reg_info["proof_of_possession"].get<std::string>();
+        auto reg_type_str = (i == 0) ? "operator-only"sv : "multi-contributor"sv;
+        tools::msg_writer("Printing info for {} staking\n", reg_type_str);
+        tools::msg_writer("ed25519_pubkey: {}\n"
+                                  "bls_pubkey: {}\n"
+                                  "ed25519_signature: {}\n"
+                                  "bls_signature: {}\n"
+                                  "operator_address: {}\n"
+                                  "multi-contributor contract address: {}\n",
+                                  snode_pubkey,
+                                  bls_pubkey,
+                                  ed_sig,
+                                  bls_sig,
+                                  operator_address,
+                                  contract_address);
+        if (print_only)
+            continue;
+
+        std::string BASE_URL = "https://ssb.oxen.observer/api/"; // TODO: make config option
+
+        tools::msg_writer("Submitting {} information to the staking website, please wait.", reg_type_str);
+        auto url = cpr::Url{BASE_URL + "store/" + snode_pubkey};
+
+        auto msg = cpr::Multipart{{"sig_ed25519"s, ed_sig},
+            {"pubkey_bls"s, bls_pubkey},
+            {"sig_bls"s, bls_sig},
+            {"operator"s, std::string{operator_address}}};
+
+        if (i == 1)
+            msg.parts.emplace_back("contract", std::string{contract_address});
+
+        auto response = cpr::Post(url, msg);
+
+        if (response.status_code != 200)
+        {
+            tools::fail_msg_writer("Something went wrong submitting {} information to the staking website: {}",
+                    reg_type_str,
+                    response.status_line);
+        }
+        else
+        {
+            tools::success_msg_writer("Submitted {} information to the staking website successfully!\n"
+                    "View your registrations at: {}",
+                    reg_type_str, BASE_URL + "registrations/" + snode_pubkey);
+        }
+    }
+
+    return true;
 }
 
 bool rpc_command_executor::prune_blockchain() {

@@ -751,9 +751,9 @@ class core : public i_miner_handler {
     /// Returns a reference to the BLSSigner, if this is a service node.  Throws if not a service
     /// node.
     eth::BLSSigner& get_bls_signer() {
-        if (!m_bls_signer)
+        if (!m_service_keys.bls_signer)
             throw std::logic_error{"Not a service node: no BLS Signer available"};
-        return *m_bls_signer;
+        return *m_service_keys.bls_signer;
     }
 
     /**
@@ -1251,7 +1251,6 @@ class core : public i_miner_handler {
 
     std::unique_ptr<eth::L2Tracker> m_l2_tracker;
 
-    std::shared_ptr<eth::BLSSigner> m_bls_signer;
     std::unique_ptr<eth::BLSAggregator> m_bls_aggregator;
 
     i_cryptonote_protocol* m_pprotocol;        //!< cryptonote protocol instance

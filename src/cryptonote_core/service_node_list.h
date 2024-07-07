@@ -460,7 +460,7 @@ struct service_node_keys {
     /// staking contract.
     eth::bls_secret_key key_bls;
     eth::bls_public_key pub_bls;
-    std::shared_ptr<eth::BLSSigner> bls_signer;
+    std::optional<eth::BLSSigner> bls_signer;
 };
 
 class service_node_list {
