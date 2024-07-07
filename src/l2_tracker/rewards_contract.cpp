@@ -313,6 +313,8 @@ std::vector<bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumb
     // Iterate over the linked list of service nodes
     while (currentNodeId != service_node_sentinel_id) {
         ContractServiceNode serviceNode = serviceNodes(currentNodeId, blockNumber);
+        if (!serviceNode.good)
+            break;
         blsPublicKeys.push_back(serviceNode.pubkey);
         currentNodeId = serviceNode.next;
     }
@@ -433,6 +435,8 @@ std::vector<uint64_t> RewardsContract::getNonSigners(
 
     while (service_node_id != service_node_sentinel_id) {
         ContractServiceNode service_node = serviceNodes(service_node_id);
+        if (!service_node.good)
+            break;
         if (!bls_public_keys.count(service_node.pubkey))
             non_signers.push_back(service_node_id);
         service_node_id = service_node.next;
