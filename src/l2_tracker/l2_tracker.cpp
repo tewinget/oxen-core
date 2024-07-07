@@ -484,7 +484,11 @@ uint64_t L2Tracker::get_reward_rate(uint64_t height) const {
 TransactionReviewSession L2Tracker::initialize_review(uint64_t l2_height) const {
     std::shared_lock lock{mutex};
 
-    uint64_t start_height = confirmed_height + 1;
+    // NOTE: In local devnet we bootstrap from height 0 which means it's
+    // possible to get a l2_height and confirmed height that can be equal
+    // (e.g l2 = confirmed = 0). If this is the case adding +1 to the confirmed
+    // height will break the bounds check for `active`.
+    uint64_t start_height = l2_height == confirmed_height ? l2_height : confirmed_height + 1;
 
     TransactionReviewSession session;
     session.active = provider.numClients() > 0 && start_height <= l2_height &&
@@ -538,7 +542,7 @@ uint64_t L2Tracker::get_latest_height() const {
 
 uint64_t L2Tracker::get_safe_height() const {
     std::shared_lock lock{mutex};
-    return latest_height - SAFE_BLOCKS;
+    return SAFE_BLOCKS >= latest_height ? 0 : latest_height;
 }
 
 uint64_t L2Tracker::get_confirmed_height() const {
