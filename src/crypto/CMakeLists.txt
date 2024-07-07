@@ -55,7 +55,7 @@ add_library(cncrypto
   rx-slow-hash.c
   tree-hash.c)
 
-option(MONERO_SLOW_HASH "Enable support for Monero CNv0/CNv1 hashing (currently only used in the Android wallet). Defaults to disabled because this causes many false alarms in virus/malware detection software." OFF)
+option(MONERO_SLOW_HASH "Enable support for Monero CNv0/CNv1 hashing (currently only used in the Android wallet). Defaults to disabled because this causes many false alarms in virus/malware detection software." ${BUILD_EVERYTHING})
 if(MONERO_SLOW_HASH)
   target_sources(cncrypto PRIVATE cn_monero_slow_hash.c)
   target_compile_definitions(cncrypto PUBLIC ENABLE_MONERO_SLOW_HASH)

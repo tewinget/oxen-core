@@ -45,6 +45,7 @@ local debian_pipeline(name,
                       lto=false,
                       werror=false,  // FIXME
                       build_tests=true,
+                      build_everything=false,
                       test_oxend=true,  // Simple oxend offline startup test
                       run_tests=false,  // Runs full test suite
                       cmake_extra='',
@@ -85,7 +86,7 @@ local debian_pipeline(name,
         'cd build',
         'cmake .. -G Ninja -DCMAKE_CXX_FLAGS=-fdiagnostics-color=always -DCMAKE_BUILD_TYPE=' + build_type + ' ' +
         '-DLOCAL_MIRROR=https://builds.lokinet.dev/deps '
-        + cmake_options({ USE_LTO: lto, WARNINGS_AS_ERRORS: werror, BUILD_TESTS: build_tests || run_tests })
+        + cmake_options({ USE_LTO: lto, WARNINGS_AS_ERRORS: werror, BUILD_TESTS: build_tests || run_tests, BUILD_EVERYTHING: build_everything })
         + cmake_extra,
       ] + (
         if arch == 'arm64' && jobs > 1 then
@@ -113,7 +114,8 @@ local clang(version, lto=false) = debian_pipeline(
   docker_base + 'debian-sid-clang',
   deps=['clang-' + version] + default_deps_nocxx,
   cmake_extra='-DCMAKE_C_COMPILER=clang-' + version + ' -DCMAKE_CXX_COMPILER=clang++-' + version + ' ',
-  lto=lto
+  lto=lto,
+  build_everything=true
 );
 
 // Macos build
@@ -256,8 +258,8 @@ local gui_wallet_step_darwin = {
   },
 
   // Various debian builds
-  debian_pipeline('Debian sid (w/ tests) (amd64)', docker_base + 'debian-sid', lto=true, run_tests=true),
-  debian_pipeline('Debian sid Debug (amd64)', docker_base + 'debian-sid', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
+  debian_pipeline('Debian sid (w/ tests) (amd64)', docker_base + 'debian-sid', lto=true, run_tests=true, build_everything=true),
+  debian_pipeline('Debian sid Debug (amd64)', docker_base + 'debian-sid', build_type='Debug', build_everything=true, cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
   clang(14),
   debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386', cmake_extra='-DDOWNLOAD_SODIUM=ON -DARCH_ID=i386 -DARCH=i686'),
   debian_pipeline('Debian buster (amd64)', docker_base + 'debian-buster', cmake_extra='-DDOWNLOAD_SODIUM=ON'),
