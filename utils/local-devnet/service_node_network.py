@@ -48,6 +48,15 @@ def vprint(*args, timestamp=True, **kwargs):
             print(datetime.now(), end=" ")
         print(*args, **kwargs)
 
+def all_service_nodes_proofed(sn):
+    service_nodes = sn.json_rpc("get_n_service_nodes", {"fields": {"quorumnet_port": True, "pubkey_bls": True}}).json()['result']['service_node_states']
+    result = True
+    vprint("  {}".format(service_nodes), timestamp=False)
+    for x in service_nodes:
+        if x['quorumnet_port'] <= 0 or 'pubkey_bls' not in x or x['pubkey_bls'] is None:
+            result = False
+    return result
+
 class SNNetwork:
     def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3):
 
@@ -223,15 +232,9 @@ class SNNetwork:
         for sn in self.sns:
             sn.send_uptime_proof()
 
-        vprint(self.sns[0].json_rpc("get_n_service_nodes", {"fields":{"quorumnet_port":True, "pubkey_bls":True,}}).json()['result']['service_node_states'])
-
-        all_service_nodes_proofed = lambda sn: all(x['quorumnet_port'] > 0 and x['pubkey_bls'] is not None for x in
-                                                   sn.json_rpc("get_n_service_nodes", {"fields":{"quorumnet_port":True, "pubkey_bls":True,}}).json()['result']['service_node_states'])
-
-        vprint("Waiting for proofs to propagate: ", end="", flush=True)
+        vprint("Waiting for proofs to propagate:", flush=True)
         for sn in self.sns:
             wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
-            vprint(".", end="", flush=True, timestamp=False)
         vprint(timestamp=False)
 
         # This commented out code will register the last SN through Mikes wallet (Has done every other SN)
