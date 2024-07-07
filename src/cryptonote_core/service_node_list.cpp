@@ -3979,7 +3979,7 @@ bool service_node_list::handle_uptime_proof(
         bool reject_proof = true;
 #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
         if (vers.first == feature::ETH_TRANSITION)
-            reject_proof = it->second->bls_public_key != crypto::null<eth::bls_public_key>;
+            reject_proof = it->second->bls_public_key != crypto::null<eth::bls_public_key> && proof->qnet_port != 0;
 #endif
 
         if (reject_proof) {
