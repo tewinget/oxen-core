@@ -47,6 +47,7 @@ add_subdirectory(randomx EXCLUDE_FROM_ALL)
 add_subdirectory(date EXCLUDE_FROM_ALL)
 
 set(BLS_ETH ON CACHE BOOL "" FORCE)
+set(MCL_STATIC_LIB ON CACHE BOOL "" FORCE)
 add_subdirectory(bls EXCLUDE_FROM_ALL)
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
