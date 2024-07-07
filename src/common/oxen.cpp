@@ -459,7 +459,7 @@ double oxen::round(double x) {
             /* Round to the next integer (nearest or up or down, doesn't
                matter).  */
             z = z + TWO_MANT_DIG;
-            z = z + TWO_MANT_DIG;
+            z = z - TWO_MANT_DIG;
             /* Enforce rounding down.  */
             if (z > y)
                 z = z - 1.0;
