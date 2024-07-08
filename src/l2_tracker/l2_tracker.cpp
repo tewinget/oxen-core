@@ -248,13 +248,13 @@ void L2Tracker::update_height() {
 }
 
 void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) {
-    std::shared_lock lock{mutex};
 
     // NOTE: Initial case of update_rewards from all entry-points has a nullopt
     // for `more`, e.g. this branch executes. After calling into
     // callReadFunctionJSONAsync to get the reward rate, `more` is populated and
     // this function is called again.
     if (!more) {
+        std::shared_lock lock{mutex};
         // Check that we have the rewards for all heights we need to cover both the current and the
         // last MAX_HIST_FETCH L2 block heights.
         auto r_height = reward_height(latest_height);
@@ -272,6 +272,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
     }
 
     if (more && !more->empty()) {
+        std::shared_lock lock{mutex};
         auto r_height = more->front();
         more->pop_front();
         oxen::log::debug(logcat, "Starting query for reward height {}", r_height);
