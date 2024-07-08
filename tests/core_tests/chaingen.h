@@ -972,9 +972,9 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
 //--------------------------------------------------------------------------
 template<typename t_test_class>
 struct get_test_options {
-  const std::vector<cryptonote::hard_fork> hard_forks = {{cryptonote::hf::hf7, 0, 0, 0}};
+  std::vector<cryptonote::hard_fork> hard_forks = {{cryptonote::hf::hf7, 0, 0, 0}};
   const cryptonote::test_options test_options = {
-    hard_forks, 0
+      std::move(hard_forks), 0
   };
 };
 //--------------------------------------------------------------------------
