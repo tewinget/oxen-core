@@ -17,7 +17,7 @@ inline constexpr size_t PULSE_QUORUM_ENTROPY_LAG =
         21;  // How many blocks back from the tip of the Blockchain to source entropy for the Pulse
              // quorums.
 #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
-inline constexpr auto PULSE_ROUND_TIME = cryptonote::TARGET_BLOCK_TIME + 6s;
+inline constexpr auto PULSE_ROUND_TIME = std::max(cryptonote::TARGET_BLOCK_TIME, 6s);
 inline constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION = 1s;
 inline constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 1s;
 inline constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION = 1s;

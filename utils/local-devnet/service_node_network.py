@@ -261,32 +261,22 @@ class SNNetwork:
         hardhat_account_no_0x = hardhat_account[2:42]
         assert len(hardhat_account) == 42, "Expected Eth address w/ 0x prefix + 40 hex characters. Account was {} ({} chars)".format(hardhat_account, len(hardhat_account))
 
-        # TODO: This is the new seed public key list code which is not merged into the contracts
-        # yet, see seedPublicKeyListNew()
-        #
         # Construct the seed list for initiating the smart contract.
         # Note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
-        # seed_node_list = []
-        # for sn in self.sns:
-        #     deposit   = coins(100)
-        #     node      = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey, deposit)
-        #     assert node.pubkey is not None
-        #     contributors = sn.sn_status()["service_node_state"]["contributors"]
-        #     for entry in contributors:
-        #         contributor              = ContractServiceNodeContributor()
-        #         contributor.addr         = hardhat_account # Default to the hardhat account
-        #         contributor.stakedAmount = entry["amount"]    # Use the oxen amount as the SENT amount
-        #         node.contributors.append(contributor)
-        #     seed_node_list.append(node)
-        # self.sn_contract.seedPublicKeyListOld(seed_node_list)
-
-        # TODO: This is the old code to seed a public key list.
         seed_node_list = []
         for sn in self.sns:
-            vprint(sn.get_service_keys().bls_pubkey)
-            seed_node_list.append([sn.get_service_keys().bls_pubkey, coins(100)])
-        self.sn_contract.seedPublicKeyListOld(seed_node_list)
+            deposit   = coins(100)
+            node      = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey, deposit)
+            assert node.pubkey is not None
+            contributors = sn.sn_status()["service_node_state"]["contributors"]
+            for entry in contributors:
+                contributor              = ContractServiceNodeContributor()
+                contributor.addr         = hardhat_account # Default to the hardhat account
+                contributor.stakedAmount = entry["amount"]    # Use the oxen amount as the SENT amount
+                node.contributors.append(contributor)
+            seed_node_list.append(node)
 
+        self.sn_contract.seedPublicKeyList(seed_node_list)
         vprint("Seeded BLS public keys into contract. Contract has {} SNs".format(self.sn_contract.numberServiceNodes()))
 
         # Start the rewards contract after seeding the BLS public keys
@@ -313,7 +303,7 @@ class SNNetwork:
         assert self.sn_contract.numberServiceNodes() == 13, f"Expected 13 service nodes, received {contract_sn_count}"
 
         # Sleep and let pulse quorum do work
-        sleep_time = 40
+        sleep_time = 120
         vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
         time.sleep(sleep_time)
         vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");

@@ -34,21 +34,22 @@ L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_f
     // object starts (which hasn't happened yet when we get constructed).  In the first call, we
     // kick off a state update then replace the timer with one that fires updates at the slower
     // `update_frequency` rate.
+    oxenmq::TaggedThreadID dedicated_thread = core.get_omq().add_tagged_thread("L2 Tracker");
     core.get_omq().add_timer(
             updater,
-            [this, update_frequency] {
+            [this, update_frequency, dedicated_thread] {
                 update_state();
                 auto& omq = core.get_omq();
                 omq.cancel_timer(updater);
-                updater = omq.add_timer([this] { update_state(); }, update_frequency);
+                updater = omq.add_timer([this] { update_state(); }, update_frequency, /*squelch*/ true, dedicated_thread);
             },
-            1ms);
+            1ms, /*squelch*/ true, dedicated_thread);
 }
 
 void L2Tracker::prune_old_states(bool to_fetch_limit) {
-    const auto hist_size = to_fetch_limit ? std::min(MAX_HIST_FETCH, HIST_SIZE) : HIST_SIZE;
+    auto hist_size = to_fetch_limit ? std::min(MAX_HIST_FETCH, HIST_SIZE) : HIST_SIZE;
     if (latest_height < hist_size)
-        return;
+        hist_size = latest_height;
     auto min_to_keep = latest_height - hist_size + 1;
     if (earliest_height >= min_to_keep)
         return;
@@ -80,6 +81,7 @@ void L2Tracker::update_state() {
     if (update_in_progress)
         return;
     update_in_progress = true;
+    log::trace(logcat, "L2 update state commencing");
     if (provider.numClients() > 1 && std::chrono::steady_clock::now() >= next_provider_check) {
         log::debug(logcat, "update_state initiating all-providers sync check");
         provider.getAllHeightsAsync([this](std::vector<ethyl::HeightInfo> height_info) {
@@ -240,6 +242,7 @@ void L2Tracker::update_height() {
             // nothing else further in the update chain we can do, so just stop here.
             std::unique_lock lock{mutex};
             update_in_progress = false;
+            oxen::log::trace(logcat, "L2 update step finished");
         }
     });
 }
@@ -247,23 +250,31 @@ void L2Tracker::update_height() {
 void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) {
     std::shared_lock lock{mutex};
 
+    // NOTE: Initial case of update_rewards from all entry-points has a nullopt
+    // for `more`, e.g. this branch executes. After calling into
+    // callReadFunctionJSONAsync to get the reward rate, `more` is populated and
+    // this function is called again.
     if (!more) {
         // Check that we have the rewards for all heights we need to cover both the current and the
         // last MAX_HIST_FETCH L2 block heights.
         auto r_height = reward_height(latest_height);
+        uint64_t earliest_height_to_get_rewards = latest_height - std::min(latest_height, MAX_HIST_FETCH);
+        log::debug(logcat, "Earliest height to get rewards {} (reward height is {})", earliest_height_to_get_rewards, r_height);
         do {
             if (!reward_rate.count(r_height)) {
                 if (!more)
                     more.emplace();
                 more->push_front(r_height);
+                oxen::log::debug(logcat, "Pushed height: {}", r_height);
             }
-            r_height -= cryptonote::L2_REWARD_POOL_UPDATE_BLOCKS;
-        } while (r_height > latest_height - MAX_HIST_FETCH);
+            r_height -= std::min(cryptonote::L2_REWARD_POOL_UPDATE_BLOCKS, r_height);
+        } while (r_height > earliest_height_to_get_rewards);
     }
 
     if (more && !more->empty()) {
         auto r_height = more->front();
         more->pop_front();
+        oxen::log::debug(logcat, "Starting query for reward height {}", r_height);
         provider.callReadFunctionJSONAsync(
                 contract::pool_address(core.get_nettype()),
                 "0x{:x}"_format(contract::call::Pool_rewardRate),
@@ -301,6 +312,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
                         }
                     }
 
+                    oxen::log::debug(logcat, "Finished querying reward for height {}, there is more {}", r_height, more->empty() ? "no" : "yes");
                     if (!more->empty())
                         update_rewards(std::move(more));
                     else
@@ -308,6 +320,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
                 },
                 "0x{:x}"_format(r_height));
     } else {
+        oxen::log::debug(logcat, "No more rewards to walk, updating logs");
         update_logs();
     }
 }
@@ -390,10 +403,13 @@ void L2Tracker::update_logs() {
     // about if the previous one is too old.
     uint64_t from = std::max(
             synced_height + 1, latest_height >= HIST_SIZE ? latest_height - HIST_SIZE + 1 : 0);
+    oxen::log::trace(logcat, "L2Tracker::{} synced_height={}, latest_height={}, HIST_SIZE={}, from={}", __func__, synced_height, latest_height, HIST_SIZE, from);
 
     if (latest_height < from) {
+        oxen::log::trace(logcat, "L2Tracker upgrading shared lock to exclusive");
         auto ex_lock = tools::upgrade_lock(lock);
         update_in_progress = false;
+        oxen::log::debug(logcat, "L2 update step finished");
         return;
     }
 
@@ -401,9 +417,11 @@ void L2Tracker::update_logs() {
         // We are too far behind to fetch the full HIST_SIZE, so prune anything more than
         // MAX_HIST_FETCH ago and resync from there (so that we don't leave a gap).  (This is also
         // our "starting up" case to only fetch MAX_HIST_FETCH).
+        oxen::log::debug(logcat, "Begin pruning of state {} >= ({} + {})", latest_height, from, MAX_HIST_FETCH);
         auto ex_lock = tools::upgrade_lock(lock);
         prune_old_states(true);
         from = latest_height - MAX_HIST_FETCH + 1;
+        oxen::log::trace(logcat, "End pruning of old states", from);
     }
 
     uint64_t to = std::min(latest_height, from + GETLOGS_MAX_BLOCKS);
@@ -426,6 +444,7 @@ void L2Tracker::update_logs() {
                     if (!logs) {
                         log::warning(logcat, "Failed to retrieve L2 logs for {}-{}", from, to);
                         update_in_progress = false;
+                        oxen::log::debug(logcat, "L2 update step finished");
                         return;
                     }
                     log::debug(
@@ -469,8 +488,11 @@ void L2Tracker::update_logs() {
                 }
                 if (keep_going)
                     update_logs();
-                else
+                else {
+                    std::lock_guard lock{mutex};
                     update_in_progress = false;
+                    oxen::log::debug(logcat, "L2 update step finished");
+                }
             });
 }
 
@@ -542,7 +564,7 @@ uint64_t L2Tracker::get_latest_height() const {
 
 uint64_t L2Tracker::get_safe_height() const {
     std::shared_lock lock{mutex};
-    return SAFE_BLOCKS >= latest_height ? 0 : latest_height;
+    return SAFE_BLOCKS >= latest_height ? 0 : latest_height - SAFE_BLOCKS;
 }
 
 uint64_t L2Tracker::get_confirmed_height() const {

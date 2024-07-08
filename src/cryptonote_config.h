@@ -70,7 +70,7 @@ inline constexpr uint64_t SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR = 50;
 inline constexpr uint64_t COINBASE_BLOB_RESERVED_SIZE = 600;
 
 #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
-inline constexpr auto TARGET_BLOCK_TIME = 14s;
+inline constexpr auto TARGET_BLOCK_TIME = 6s;
 #else
 inline constexpr auto TARGET_BLOCK_TIME = 2min;
 #endif
@@ -109,7 +109,11 @@ inline constexpr int ETH_L2_DEFAULT_CHECK_THRESHOLD = 120;
 // is divisible by this number.  For instance, if this is 1000, an Oxen block with height
 // l2_height=12345678 must contain the reward value computed at height 12345000.  (The default
 // updates every 10 minutes with the Arbitrum 250ms block time).
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 4;
+#else
 inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 10min / 250ms;
+#endif
 
 
 // Fallback used in wallet if no fee is available from RPC:

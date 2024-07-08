@@ -221,31 +221,7 @@ class ServiceNodeRewardContract:
         tx_hash = self.submitSignedTX("Liquidate BLS public key w/ signature", signed_tx)
         return tx_hash
 
-    def seedPublicKeyListOld(self, args):
-        pkX = []
-        pkY = []
-        amounts = []
-        for item in args:
-            pkX.append(int(str(item[0][:64]), 16))  # First 32 bytes as pkX
-            pkY.append(int(str(item[0][64:]), 16))  # Last 32 bytes as pkY
-            amounts.append(item[1])  # Corresponding amount
-
-        print(pkX)
-        print(pkY)
-        print(amounts)
-
-        unsent_tx = self.contract.functions.seedPublicKeyList(pkX, pkY, amounts).build_transaction({
-            "from": self.acc.address,
-            'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
-        })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.submitSignedTX("Seed public key list old w/ signature", signed_tx)
-
-    # TODO: The new seed public key list requires
-    # https://github.com/oxen-io/eth-sn-contracts/pull/48 to be merged in but this will also break
-    # the C++ migration code hence I'm holding off on merging it in.
-    def seedPublicKeyListNew(self, seed_nodes):
+    def seedPublicKeyList(self, seed_nodes):
         contract_seed_nodes = []
         for item in seed_nodes:
             entry = {
@@ -265,9 +241,11 @@ class ServiceNodeRewardContract:
 
             contract_seed_nodes.append(entry)
 
+        print(contract_seed_nodes)
+
         unsent_tx = self.contract.functions.seedPublicKeyList(contract_seed_nodes).build_transaction({
             "from":  self.acc.address,
-            'gas':   3000000,  # Adjust gas limit as necessary
+            'gas':   6000000,  # Adjust gas limit as necessary
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
         })
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
@@ -355,6 +333,9 @@ class ServiceNodeRewardContract:
         result.pubkey_y              = call_result[index][1]
         index += 1;
 
+        result.addedTimestamp        = call_result[index]
+        index += 1;
+
         result.leaveRequestTimestamp = call_result[index]
         index += 1;
 
@@ -390,11 +371,6 @@ contract_abi = json.loads("""
         }
       ],
       "name": "AddressInsufficientBalance",
-      "type": "error"
-    },
-    {
-      "inputs": [],
-      "name": "ArrayLengthMismatch",
       "type": "error"
     },
     {
@@ -1820,19 +1796,50 @@ contract_abi = json.loads("""
     {
       "inputs": [
         {
-          "internalType": "uint256[]",
-          "name": "pkX",
-          "type": "uint256[]"
-        },
-        {
-          "internalType": "uint256[]",
-          "name": "pkY",
-          "type": "uint256[]"
-        },
-        {
-          "internalType": "uint256[]",
-          "name": "amounts",
-          "type": "uint256[]"
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "uint256",
+                  "name": "X",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "Y",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct BN256G1.G1Point",
+              "name": "pubkey",
+              "type": "tuple"
+            },
+            {
+              "internalType": "uint256",
+              "name": "deposit",
+              "type": "uint256"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "addr",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "stakedAmount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IServiceNodeRewards.Contributor[]",
+              "name": "contributors",
+              "type": "tuple[]"
+            }
+          ],
+          "internalType": "struct IServiceNodeRewards.SeedServiceNode[]",
+          "name": "nodes",
+          "type": "tuple[]"
         }
       ],
       "name": "seedPublicKeyList",
@@ -2121,6 +2128,7 @@ contract_abi = json.loads("""
     }
 ]
 """)
+
 erc20_contract_abi = json.loads("""
 [
     {
