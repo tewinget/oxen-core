@@ -34,6 +34,7 @@ add_library(common
   command_line.cpp
   error.cpp
   expect.cpp
+  exception.cpp
   file.cpp
   i18n.cpp
   json_binary_proxy.cpp
@@ -62,6 +63,7 @@ endif()
 
 target_link_libraries(common
   PUBLIC
+    $<$<CONFIG:Debug>:cpptrace::cpptrace>
     cncrypto
     oxenmq::oxenmq
     oxen::logging

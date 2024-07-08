@@ -1,25 +1,25 @@
 #pragma once
 
-#include <oxenmq/oxenmq.h>
-
-#include <span>
 #include <string>
 #include <vector>
 
-#include "bls_signer.h"
 #include "crypto/crypto.h"
 #include "cryptonote_core/service_node_list.h"
 
-namespace eth {
+namespace oxenmq {
+class OxenMq;
+}
 
+namespace eth {
 struct AggregateSigned {
-    crypto::hash signed_hash;
+    std::vector<uint8_t> msg_to_sign;
     std::vector<bls_public_key> signers_bls_pubkeys;
     bls_signature signature;
 };
 
 struct AggregateExitResponse : AggregateSigned {
     bls_public_key exit_pubkey;
+    uint64_t timestamp;
 };
 
 struct BLSRewardsResponse : AggregateSigned {
@@ -65,6 +65,12 @@ class BLSAggregator {
     BLSRegistrationResponse registration(
             const eth::address& sender, const crypto::public_key& serviceNodePubkey) const;
 
+    enum class ExitType
+    {
+        Normal,
+        Liquidate,
+    };
+
   private:
     void get_reward_balance(oxenmq::Message& m);
     void get_exit(oxenmq::Message& m);
@@ -72,7 +78,7 @@ class BLSAggregator {
 
     AggregateExitResponse aggregateExitOrLiquidate(
             const bls_public_key& bls_pubkey,
-            std::string_view hash_tag,
+            ExitType type,
             std::string_view endpoint,
             std::string_view pubkey_key);
 

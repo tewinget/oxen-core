@@ -47,6 +47,7 @@
 #include <type_traits>
 
 #include "checkpoints/checkpoints.h"
+#include "common/exception.h"
 #include "common/median.h"
 #include "common/password.h"
 #include "common/pruning.h"
@@ -266,11 +267,11 @@ json rpc_command_executor::invoke(
                 [&result_p](bool success, auto data) {
                     try {
                         if (!success)
-                            throw std::runtime_error{"Request timed out"};
+                            throw oxen::traced<std::runtime_error>{"Request timed out"};
                         if (data.size() >= 2 && data[0] == "200")
                             result_p.set_value(json::parse(data[1]));
                         else
-                            throw std::runtime_error{
+                            throw oxen::traced<std::runtime_error>{
                                     "RPC method failed: " +
                                     (data.empty() ? "empty response" : tools::join(" ", data))};
                     } catch (...) {
@@ -285,7 +286,7 @@ json rpc_command_executor::invoke(
     if (check_status_ok) {
         if (auto it = result.find("status");
             it == result.end() || it->get<std::string_view>() != cryptonote::rpc::STATUS_OK)
-            throw std::runtime_error{
+            throw oxen::traced<std::runtime_error>{
                     "Received status " +
                     (it == result.end() ? "(empty)" : it->get_ref<const std::string&>()) +
                     " != OK"};

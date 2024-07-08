@@ -28,7 +28,9 @@
 
 #include "blockchain.h"
 #include "bls/bls_aggregator.h"
+#include "bls/bls_signer.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/connection_context.h"
@@ -752,7 +754,7 @@ class core : public i_miner_handler {
     /// node.
     eth::BLSSigner& get_bls_signer() {
         if (!m_service_keys.bls_signer)
-            throw std::logic_error{"Not a service node: no BLS Signer available"};
+            throw oxen::traced<std::logic_error>{"Not a service node: no BLS Signer available"};
         return *m_service_keys.bls_signer;
     }
 

@@ -30,26 +30,25 @@
 #define __STDC_FORMAT_MACROS  // NOTE(oxen): Explicitly define the SCNu64 macro on Mingw
 #endif
 
-#include <fmt/std.h>
+#include <common/command_line.h>
+#include <common/signal_handler.h>
+#include <common/unordered_containers_boost_serialization.h>
+#include <common/exception.h>
+
+#include "blockchain_db/blockchain_db.h"
+#include "blockchain_objects.h"
+#include "cryptonote_basic/cryptonote_boost_serialization.h"
+#include "cryptonote_core/cryptonote_core.h"
+#include "serialization/boost_std_variant.h"
+#include "version.h"
 
 #include <boost/archive/portable_binary_iarchive.hpp>
 #include <boost/archive/portable_binary_oarchive.hpp>
 #include <cinttypes>
 #include <fstream>
+#include <fmt/std.h>
 #include <unordered_map>
 #include <unordered_set>
-
-#include "blockchain_db/blockchain_db.h"
-#include "blockchain_objects.h"
-#include "common/command_line.h"
-#include "common/signal_handler.h"
-#include "common/unordered_containers_boost_serialization.h"
-#include "common/varint.h"
-#include "cryptonote_basic/cryptonote_boost_serialization.h"
-#include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_core/uptime_proof.h"
-#include "serialization/boost_std_variant.h"
-#include "version.h"
 
 namespace po = boost::program_options;
 using namespace cryptonote;
@@ -104,7 +103,7 @@ struct tx_data_t {
                             cryptonote::relative_output_offsets_to_absolute(txin->key_offsets)));
                 else {
                     log::warning(logcat, "Bad vin type in txid {}", get_transaction_hash(tx));
-                    throw std::runtime_error("Bad vin type");
+                    throw oxen::traced<std::runtime_error>("Bad vin type");
                 }
             }
         }
@@ -114,7 +113,7 @@ struct tx_data_t {
                 vout.push_back(txout->key);
             } else {
                 log::warning(logcat, "Bad vout type in txid {}", get_transaction_hash(tx));
-                throw std::runtime_error("Bad vout type");
+                throw oxen::traced<std::runtime_error>("Bad vout type");
             }
         }
     }
@@ -211,7 +210,7 @@ static std::unordered_set<ancestor> get_ancestry(
             ancestry.find(txid);
     if (i == ancestry.end()) {
         // log::error(logcat, "txid ancestry not found: {}", txid);
-        // throw std::runtime_error("txid ancestry not found");
+        // throw oxen::traced<std::runtime_error>("txid ancestry not found");
         return std::unordered_set<ancestor>();
     }
     return i->second;
@@ -422,7 +421,7 @@ int main(int argc, char* argv[]) {
     auto bdb = new_db();
     if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 

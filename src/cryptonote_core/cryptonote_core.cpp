@@ -40,6 +40,7 @@
 #include <csignal>
 #include <iomanip>
 #include <unordered_set>
+#include "common/exception.h"
 
 #include "common/guts.h"
 
@@ -51,7 +52,7 @@ extern "C" {
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
-#include "bls/bls_utils.h"
+#include "bls/bls_signer.h"
 #include "checkpoints/checkpoints.h"
 #include "common/base58.h"
 #include "common/command_line.h"
@@ -215,7 +216,7 @@ static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
 // Loads stubs that fail if invoked.  The stubs are replaced in the
 // cryptonote_protocol/quorumnet.cpp glue code.
 [[noreturn]] static void need_core_init(std::string_view stub_name) {
-    throw std::logic_error(
+    throw oxen::traced<std::logic_error>(
             "Internal error: core callback initialization was not performed for "s +
             std::string(stub_name));
 }
@@ -1015,7 +1016,7 @@ bool core::init_service_keys() {
                     sk = bls_signer->getCryptoSeckey();
                     pk = bls_signer->getCryptoPubkey();
                 },
-                keys.bls_signer))
+                m_bls_signer))
         return false;
 
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
@@ -1041,9 +1042,9 @@ bool core::init_service_keys() {
             sc_reduce32(pk_sh_data);
             std::memcpy(keys.key.data(), pk_sh_data, 32);
             if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
-                throw std::runtime_error{"Failed to derive primary key from ed25519 key"};
+                throw oxen::traced<std::runtime_error>{"Failed to derive primary key from ed25519 key"};
             if (std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32))
-                throw std::runtime_error{
+                throw oxen::traced<std::runtime_error>{
                         "Internal error: unexpected primary pubkey and ed25519 pubkey mismatch"};
         } else if (!init_key(
                            m_config_folder / "key",
@@ -1051,7 +1052,7 @@ bool core::init_service_keys() {
                            keys.pub,
                            crypto::secret_key_to_public_key,
                            [](crypto::secret_key& key, crypto::public_key& pubkey) {
-                               throw std::runtime_error{
+                               throw oxen::traced<std::runtime_error>{
                                        "Internal error: old-style public keys are no longer "
                                        "generated"};
                            }))
@@ -1194,7 +1195,7 @@ std::vector<eth::bls_public_key> core::get_removable_nodes() {
                     "Failed to get the latest block at {} to determine the removable Service Nodes"_format(
                             oxen_height);
             log::error(logcat, "{}", msg);
-            throw std::runtime_error{msg};
+            throw oxen::traced<std::runtime_error>{std::move(msg)};
         }
         l2_height = blocks[0].l2_height;
     }
@@ -2113,6 +2114,7 @@ bool core::submit_uptime_proof() {
     if (!m_service_node)
         return true;
 
+    assert(m_bls_signer.get() && "Service Nodes have a BLS signer defined");
     try {
         cryptonote_connection_context fake_context{};
         bool relayed;
@@ -2126,7 +2128,8 @@ bool core::submit_uptime_proof() {
                 storage_omq_port(),
                 ss_version,
                 m_quorumnet_port,
-                lokinet_version);
+                lokinet_version,
+                *m_bls_signer.get());
         auto req = proof.generate_request(hf_version);
         relayed = get_protocol()->relay_uptime_proof(req, fake_context);
 
@@ -2153,12 +2156,10 @@ bool core::handle_uptime_proof(
         // else they should be non-zero.
         if (!get_config(m_nettype).HAVE_STORAGE_AND_LOKINET) {
             if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
-                throw std::runtime_error{
-                        "Invalid storage port(s) in proof: devnet storage ports must be 0"};
+                throw oxen::traced<std::runtime_error>{"Invalid storage port(s) in proof: devnet storage ports must be 0"};
         } else {
             if (proof->storage_omq_port == 0 || proof->storage_https_port == 0)
-                throw std::runtime_error{
-                        "Invalid storage port(s) in proof: storage ports cannot be 0"};
+                throw oxen::traced<std::runtime_error>{"Invalid storage port(s) in proof: storage ports cannot be 0"};
         }
 
     } catch (const std::exception& e) {
@@ -2315,7 +2316,7 @@ block_complete_entry get_block_complete_entry(block& b, tx_memory_pool& pool) {
         std::string txblob;
         if (!pool.get_transaction(tx_hash, txblob) || txblob.size() == 0) {
             oxen::log::error(logcat, "Transaction {} not found in pool", tx_hash);
-            throw std::runtime_error("Transaction not found in pool");
+            throw oxen::traced<std::runtime_error>("Transaction not found in pool");
         }
         bce.txs.push_back(txblob);
     }

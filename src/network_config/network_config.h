@@ -116,6 +116,12 @@ struct network_config final {
     const std::string_view ETHEREUM_REWARDS_CONTRACT;
     const std::string_view ETHEREUM_POOL_CONTRACT;
 
+    // How frequently the reward rate gets recomputed for inclusion into Oxen blocks.  An Oxen block
+    // that has a l2_height of x must include the reward computed at the highest block height <= x
+    // that is divisible by this number.  For instance, if this is 1000, an Oxen block with height
+    // l2_height=12345678 must contain the reward value computed at height 12345000.
+    const uint64_t L2_REWARD_POOL_UPDATE_BLOCKS;
+
     constexpr std::string_view governance_wallet_address(hf hard_fork_version) const {
         const auto wallet_switch =
                 (NETWORK_TYPE == network_type::MAINNET || NETWORK_TYPE == network_type::FAKECHAIN)

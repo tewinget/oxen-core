@@ -32,10 +32,12 @@
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
-#include "common/command_line.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "serialization/crypto.h"
 #include "version.h"
+
+#include <common/exception.hpp>
+#include <common/command_line.h>
 
 namespace po = boost::program_options;
 using namespace cryptonote;
@@ -92,6 +94,7 @@ static std::map<uint64_t, uint64_t> load_outputs(const fs::path& filename) {
 }
 
 int main(int argc, char* argv[]) {
+    std::set_terminate(oxen::on_terminate_handler);
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -159,7 +162,7 @@ int main(int argc, char* argv[]) {
     BlockchainDB* db = new_db();
     if (db == NULL) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
 
     const fs::path filename =

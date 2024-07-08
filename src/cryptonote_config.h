@@ -37,8 +37,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <ratio>
-#include <stdexcept>
 #include <string_view>
+
+#include <common/exception.h>
 
 using namespace std::literals;
 
@@ -102,7 +103,11 @@ inline constexpr int ETH_L2_DEFAULT_CHECK_THRESHOLD = 120;
 // is divisible by this number.  For instance, if this is 1000, an Oxen block with height
 // l2_height=12345678 must contain the reward value computed at height 12345000.  (The default
 // updates every 10 minutes with the Arbitrum 250ms block time).
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 4;
+#else
 inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 10min / 250ms;
+#endif
 
 
 // Fallback used in wallet if no fee is available from RPC:

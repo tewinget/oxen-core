@@ -29,7 +29,10 @@
 
 #include <oxenc/hex.h>
 
+#include <cpptrace/cpptrace.hpp>
+
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/blockchain.h"
@@ -165,6 +168,7 @@ static void print_extra_fields(const std::vector<cryptonote::tx_extra_field>& fi
 }
 
 int main(int argc, char* argv[]) {
+    std::set_terminate(oxen::on_terminate_handler);
     uint32_t default_log_level = 0;
     std::string input;
 

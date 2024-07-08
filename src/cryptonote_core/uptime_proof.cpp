@@ -1,15 +1,17 @@
 #include "uptime_proof.h"
+#include "service_node_list.h"
+
+
+#include <common/guts.h>
+#include <common/exception.h>
+#include <crypto/crypto.h>
+#include <cryptonote_config.h>
+#include <epee/string_tools.h>
+#include <logging/oxen_logger.h>
+#include <version.h>
+#include <bls/bls_signer.h>
 
 #include <oxenc/bt_producer.h>
-
-#include "common/guts.h"
-#include "common/string_util.h"
-#include "crypto/crypto.h"
-#include "cryptonote_config.h"
-#include "epee/string_tools.h"
-#include "logging/oxen_logger.h"
-#include "service_node_list.h"
-#include "version.h"
 
 extern "C" {
 #include <sodium/crypto_sign.h>
@@ -31,7 +33,8 @@ Proof::Proof(
         const std::array<uint16_t, 3> ss_version,
         uint16_t quorumnet_port,
         const std::array<uint16_t, 3> lokinet_version,
-        const service_nodes::service_node_keys& keys) :
+        const service_nodes::service_node_keys& keys,
+        const eth::BLSSigner& bls_signer) :
         version{OXEN_VERSION},
         storage_server_version{ss_version},
         lokinet_version{lokinet_version},
@@ -46,7 +49,7 @@ Proof::Proof(
 
     if (hardfork == feature::ETH_TRANSITION) {
         assert(keys.pub_bls);
-        pop_bls = keys.bls_signer->signHash(crypto::keccak(keys.pub_bls, keys.pub));
+        pop_bls = bls_signer.signMsg(crypto::keccak(keys.pub_bls, keys.pub));
     }
 
     serialized_proof = bt_encode_uptime_proof(hardfork);
@@ -85,7 +88,7 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
 
     if (auto ip = proof.require<std::string>("ip");
         !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)
-        throw std::runtime_error{"Invalid IP address in proof"};
+        throw oxen::traced<std::runtime_error>{"Invalid IP address in proof"};
 
     lokinet_version = proof.require<std::array<uint16_t, 3>>("lv");
 
@@ -100,7 +103,7 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
 
     qnet_port = proof.require<uint16_t>("q");
     if (qnet_port == 0)
-        throw std::runtime_error{"Invalid omq port in proof"};
+        throw oxen::traced<std::runtime_error>{"Invalid omq port in proof"};
 
     // Unlike qnet_port, these *can* be zero (on devnet); but this is checked elsewhere.
     storage_https_port = proof.require<uint16_t>("shp");

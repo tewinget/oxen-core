@@ -31,6 +31,7 @@
 
 #include "common/lock.h"
 #include "common/string_util.h"
+#include "common/exception.h"
 #include "epee/memwipe.h"
 
 namespace hw::trezor {
@@ -577,7 +578,7 @@ void device_trezor_base::load_device(
         bool skip_checksum,
         bool expand) {
     if (m_features && m_features->initialized()) {
-        throw std::runtime_error(
+        throw oxen::traced<std::runtime_error>(
                 "Device is initialized already. Call device.wipe() and try again.");
     }
 

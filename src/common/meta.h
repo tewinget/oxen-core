@@ -1,5 +1,6 @@
 #pragma once
 #include <oxenc/variant.h>
+#include "common/exception.h"
 
 #include <array>
 #include <string>
@@ -65,7 +66,7 @@ const std::type_info& variant_type(const std::variant<T...>& v) {
 #ifndef BROKEN_APPLE_VARIANT
     throw std::bad_variant_access{};
 #else
-    throw std::runtime_error{"Bad variant access"};
+    throw oxen::traced<std::runtime_error>{"Bad variant access"};
 #endif
 }
 

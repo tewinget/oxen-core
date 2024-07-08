@@ -15,6 +15,7 @@ extern "C" {
 #include <string>
 #include <string_view>
 
+#include "common/exception.h"
 #include "common/fs.h"
 
 std::string_view arg0;
@@ -396,6 +397,7 @@ int restore(bool ed25519, std::list<std::string_view> args) {
 }
 
 int main(int argc, char* argv[]) {
+    std::set_terminate(oxen::on_terminate_handler);
     arg0 = argv[0];
     if (argc < 2)
         return usage(1, "No command specified!");

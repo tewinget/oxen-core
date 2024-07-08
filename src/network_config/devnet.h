@@ -85,6 +85,7 @@ inline constexpr network_config config{
         ETHEREUM_CHAIN_ID,
         ETHEREUM_REWARDS_CONTRACT,
         ETHEREUM_POOL_CONTRACT,
+        mainnet::L2_REWARD_POOL_UPDATE_BLOCKS,
 };
 
 }  // namespace cryptonote::config::devnet

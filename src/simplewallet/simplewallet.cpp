@@ -65,6 +65,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <thread>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/base58.h"
 #include "common/command_line.h"
@@ -10148,6 +10149,7 @@ void simple_wallet::commit_or_save(
 
 //----------------------------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
+    std::set_terminate(oxen::on_terminate_handler);
     TRY_ENTRY();
 
     setlocale(LC_CTYPE, "");

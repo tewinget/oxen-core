@@ -35,7 +35,6 @@
 #include <span>
 #include <string_view>
 
-#include "bls/bls_signer.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -460,7 +459,6 @@ struct service_node_keys {
     /// staking contract.
     eth::bls_secret_key key_bls;
     eth::bls_public_key pub_bls;
-    std::optional<eth::BLSSigner> bls_signer;
 };
 
 class service_node_list {
@@ -602,7 +600,7 @@ class service_node_list {
                            .pubkey_x25519);  // Should always be set to non-null if we have a proof
             *out++ = service_node_address{
                     pk_info.first,
-                    proof.pubkey_bls,
+                    pk_info.second->bls_public_key,
                     it->second.pubkey_x25519,
                     proof.public_ip,
                     proof.qnet_port};
@@ -625,7 +623,8 @@ class service_node_list {
             uint16_t storage_omq_port,
             std::array<uint16_t, 3> ss_version,
             uint16_t quorumnet_port,
-            std::array<uint16_t, 3> lokinet_version) const;
+            std::array<uint16_t, 3> lokinet_version,
+            const eth::BLSSigner& signer) const;
 
     bool handle_uptime_proof(
             std::unique_ptr<uptime_proof::Proof> proof,

@@ -1,11 +1,13 @@
 #include "bls_utils.h"
 
 #include <oxenc/hex.h>
+#include <oxenc/endian.h>
 
 #include <cstring>
 #include <type_traits>
 
 #include "common/guts.h"
+#include "common/exception.h"
 #include "crypto/crypto.h"
 
 #define BLS_ETH
@@ -84,9 +86,9 @@ static CryptoT to_normalized_crypto(const BLS_T& in) {
     Gx point = *point_in;
     point.normalize();
     if (point.x.serialize(x.data(), x.size(), BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of x is zero");
+        throw oxen::traced<std::runtime_error>("size of x is zero");
     if (point.y.serialize(y.data(), y.size(), BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of y is zero");
+        throw oxen::traced<std::runtime_error>("size of y is zero");
 
     return serialized;
 }
@@ -142,7 +144,7 @@ static BLS_T from_normalized_crypto(const CryptoT& in) {
 
     assert(readZ == z.size());
     if (bool x_fail = readX != x.size(); x_fail || readY != x.size())
-        throw std::runtime_error{
+        throw oxen::traced<std::runtime_error>{
                 "Failed to deserialize BLS {} component from input value '{:x}'"_format(
                         x_fail ? 'x' : 'y', in)};
     return bls;
@@ -155,23 +157,4 @@ bls::Signature from_crypto_signature(const eth::bls_signature& sig) {
 bls::PublicKey from_crypto_pubkey(const eth::bls_public_key& pk) {
     return from_normalized_crypto<bls::PublicKey, mcl::bn::G1>(pk);
 }
-
-[[nodiscard]] bool verify(
-        const eth::bls_signature& sig,
-        const crypto::hash& hash,
-        const eth::bls_public_key& pk) {
-    init();
-
-    return from_crypto_signature(sig).verifyHash(from_crypto_pubkey(pk), hash.data(), hash.size());
-}
-
-std::string PublicKeyToHex(const bls::PublicKey& publicKey) {
-    auto pk = to_crypto_pubkey(publicKey);
-    return oxenc::to_hex(pk.begin(), pk.end());
-}
-std::string SignatureToHex(const bls::Signature& sig) {
-    auto s = to_crypto_signature(sig);
-    return oxenc::to_hex(s.begin(), s.end());
-}
-
 }  // namespace bls_utils
