@@ -2638,6 +2638,10 @@ void core_rpc_server::fill_sn_response_entry(
     set_if_requested(reqed, binary, "service_node_pubkey", sn_info.pubkey);
     if (info.bls_public_key) {
         set_if_requested(reqed, binary, "pubkey_bls", info.bls_public_key);
+        // FIXME: these calls are failing, but also we can't do this in the middle of an rpc
+        // request, so we either need to pre-cache the info, or else just leave it off (and you can
+        // fetch it via arbitrum calls instead).
+        /*
         set_if_requested(
                 reqed,
                 entry,
@@ -2645,6 +2649,7 @@ void core_rpc_server::fill_sn_response_entry(
                 m_core.is_node_removable(info.bls_public_key),
                 "is_liquidatable",
                 m_core.is_node_liquidatable(info.bls_public_key));
+        */
     }
     set_if_requested(
             reqed,
