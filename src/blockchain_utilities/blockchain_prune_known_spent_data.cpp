@@ -94,7 +94,7 @@ static std::map<uint64_t, uint64_t> load_outputs(const fs::path& filename) {
 }
 
 int main(int argc, char* argv[]) {
-    std::set_terminate(oxen::on_terminate_handler);
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);

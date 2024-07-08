@@ -42,7 +42,7 @@ namespace po = boost::program_options;
 using namespace blockchain_utils;
 
 int main(int argc, char* argv[]) {
-    std::set_terminate(oxen::on_terminate_handler);
+    oxen::set_terminate_handler();
     using namespace oxen;
     auto logcat = log::Cat("bcutil");
 

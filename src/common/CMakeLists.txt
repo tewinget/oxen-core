@@ -34,7 +34,7 @@ add_library(common
   command_line.cpp
   error.cpp
   expect.cpp
-  exception.cpp
+  $<$<CONFIG:Debug>:exception.cpp>
   file.cpp
   i18n.cpp
   json_binary_proxy.cpp

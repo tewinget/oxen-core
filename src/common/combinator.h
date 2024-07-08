@@ -30,11 +30,12 @@
 
 #pragma once
 
-#include "exception.h"
-
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
+
+#include "exception.h"
 
 namespace tools {
 

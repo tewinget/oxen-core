@@ -32,7 +32,6 @@
 
 #include <fstream>
 #include <sstream>
-#include <cpptrace/cpptrace.hpp>
 
 #include "common/command_line.h"
 #include "common/file.h"

@@ -13,7 +13,6 @@
 #include <type_traits>
 #include <variant>
 #include <vector>
-#include <cpptrace/cpptrace.hpp>
 
 #include "common/oxen.h"
 #include "common/exception.h"

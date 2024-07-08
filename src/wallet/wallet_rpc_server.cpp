@@ -3746,7 +3746,7 @@ void wallet_rpc_server::stop() {
 }  // namespace tools
 
 int main(int argc, char** argv) {
-    std::set_terminate(oxen::on_terminate_handler);
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     namespace po = boost::program_options;

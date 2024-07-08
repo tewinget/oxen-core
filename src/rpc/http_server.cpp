@@ -6,7 +6,6 @@
 #include <chrono>
 #include <exception>
 #include <variant>
-#include <cpptrace/cpptrace.hpp>
 
 #include "common/exception.h"
 #include "common/command_line.h"

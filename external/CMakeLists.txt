@@ -127,4 +127,4 @@ add_subdirectory(ethyl)
 # On this codebase libdward segfaults trying to handle our stack-traces so we
 # switch to a more primitive method, addr2line which does work.
 set(CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE ON CACHE BOOL "")
-add_subdirectory(cpptrace)
+add_subdirectory(cpptrace EXCLUDE_FROM_ALL)

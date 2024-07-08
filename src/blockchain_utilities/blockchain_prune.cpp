@@ -506,7 +506,7 @@ static bool parse_db_sync_mode(std::string db_sync_mode, uint64_t& db_flags) {
 }
 
 int main(int argc, char* argv[]) {
-    std::set_terminate(oxen::on_terminate_handler);
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);

@@ -1,34 +1,45 @@
 #pragma once
 
+#include <concepts>
 #include <exception>
+
+#ifdef NDEBUG
+
+namespace oxen {
+
+// For a release build `traced<E>` is just a typedef for `E`:
+template <std::derived_from<std::exception> StdExcept>
+using traced = StdExcept;
+
+// Release build: set_terminate_handler() is a no-op
+inline void set_terminate_handler() {}
+
+}
+
+#else
+
 #include <string>
 #include <string_view>
 
-#if 1
 #include <cpptrace/cpptrace.hpp>
-#endif
 
 namespace oxen {
 
 std::string make_traced_msg(std::string_view what, const cpptrace::raw_trace& trace);
 
-// Catches application termination and dumps a stack-trace where possible.
-// It must be registered as the handler on startup, preferrably in main() e.g.
+// Sets a termination handler that dumps a stack-trace where possible.  It should be called on
+// startup, main() e.g.:
 //
-//   std::set_terminate(oxen::on_terminate_handler)
+//   oxen::set_terminate_handler()
 //
-// This implementation is mostly copied from cpptrace's
-// `register_terminate_handler` except that we look for `oxen::` exceptions
-// thrown from one of the types in this file.
-void on_terminate_handler();
+// This implementation is mostly copied from cpptrace's `register_terminate_handler` except that we
+// look for `oxen::` exceptions thrown from one of the types in this file.
+//
+// This call does nothing (i.e. leaves the current terminate handler intact) on a release build.
+void set_terminate_handler();
 
 // oxen::exception extends a standard exception object adding stack trace
-// information to it, when in a debug build.  For release builds, the
-// oxen::exception<T> is simply a typedef for a T.
-#if 0
-template <std::derived_from<std::exception> StdExcept>
-using exception = StdExcept;
-#else
+// information to it, when in a debug build.
 template <std::derived_from<std::exception> StdExcept>
 class exception : public StdExcept {
   public:
@@ -57,5 +68,6 @@ class exception : public StdExcept {
 template <std::derived_from<std::exception> StdExcept>
 using traced = exception<StdExcept>;
 
-#endif
 }  // namespace oxen
+
+#endif

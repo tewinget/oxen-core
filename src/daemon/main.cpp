@@ -71,7 +71,7 @@ constexpr auto CYAN = "\033[36;1m";
 #include <crypto/crypto.h>
 
 int main(int argc, char const* argv[]) {
-    std::set_terminate(oxen::on_terminate_handler);
+    oxen::set_terminate_handler();
     bool logs_initialized = false;
     try {
         // TODO parse the debug options like set log level right here at start

@@ -28,7 +28,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <map>
-#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain_db/lmdb/db_lmdb.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -61,7 +60,7 @@ class size_logger {
 #define SL(type) sl.add(#type, sizeof(type))
 
 int main(int argc, char* argv[]) {
-    std::set_terminate(oxen::on_terminate_handler);
+    oxen::set_terminate_handler();
     size_logger sl;
 
     tools::on_startup();

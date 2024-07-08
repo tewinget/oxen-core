@@ -37,7 +37,6 @@
 #include <fmt/core.h>
 #include <fmt/std.h>
 
-#include <cpptrace/cpptrace.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 #include <iostream>
@@ -173,7 +172,7 @@ static bool generate_multisig(
 }
 
 int main(int argc, char* argv[]) {
-    std::set_terminate(oxen::on_terminate_handler);
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     po::options_description desc_params(wallet_args::tr("Wallet options"));

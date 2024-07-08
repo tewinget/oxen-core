@@ -46,7 +46,7 @@ using namespace cryptonote;
 static bool stop_requested = false;
 
 int main(int argc, char* argv[]) {
-    std::set_terminate(oxen::on_terminate_handler);
+    oxen::set_terminate_handler();
     static auto logcat = log::Cat("bcutil");
 
     TRY_ENTRY();
