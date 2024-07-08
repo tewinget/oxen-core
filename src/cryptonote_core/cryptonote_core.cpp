@@ -2114,7 +2114,7 @@ bool core::submit_uptime_proof() {
     if (!m_service_node)
         return true;
 
-    assert(m_bls_signer.get() && "Service Nodes have a BLS signer defined");
+    assert(m_bls_signer && "Service Nodes have a BLS signer defined");
     try {
         cryptonote_connection_context fake_context{};
         bool relayed;
@@ -2129,7 +2129,7 @@ bool core::submit_uptime_proof() {
                 ss_version,
                 m_quorumnet_port,
                 lokinet_version,
-                *m_bls_signer.get());
+                *m_bls_signer);
         auto req = proof.generate_request(hf_version);
         relayed = get_protocol()->relay_uptime_proof(req, fake_context);
 
@@ -2810,7 +2810,7 @@ eth::BLSRegistrationResponse core::bls_registration(
 
     service_nodes::registration_details reg{};
     reg.service_node_pubkey = keys.pub;
-    reg.bls_pubkey = keys.bls_signer->getCryptoPubkey();
+    reg.bls_pubkey = m_bls_signer->getCryptoPubkey();
 
     // If we're constructing a BLS registration then dual keys should have been unified in our own
     // keys:
