@@ -221,7 +221,31 @@ class ServiceNodeRewardContract:
         tx_hash = self.submitSignedTX("Liquidate BLS public key w/ signature", signed_tx)
         return tx_hash
 
-    def seedPublicKeyList(self, seed_nodes):
+    def seedPublicKeyListOld(self, args):
+        pkX = []
+        pkY = []
+        amounts = []
+        for item in args:
+            pkX.append(int(str(item[0][:64]), 16))  # First 32 bytes as pkX
+            pkY.append(int(str(item[0][64:]), 16))  # Last 32 bytes as pkY
+            amounts.append(item[1])  # Corresponding amount
+
+        print(pkX)
+        print(pkY)
+        print(amounts)
+
+        unsent_tx = self.contract.functions.seedPublicKeyList(pkX, pkY, amounts).build_transaction({
+            "from": self.acc.address,
+            'gas': 3000000,  # Adjust gas limit as necessary
+            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+        })
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        tx_hash = self.submitSignedTX("Seed public key list old w/ signature", signed_tx)
+
+    # TODO: The new seed public key list requires
+    # https://github.com/oxen-io/eth-sn-contracts/pull/48 to be merged in but this will also break
+    # the C++ migration code hence I'm holding off on merging it in.
+    def seedPublicKeyListNew(self, seed_nodes):
         contract_seed_nodes = []
         for item in seed_nodes:
             entry = {
