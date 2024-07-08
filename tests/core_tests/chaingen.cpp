@@ -93,7 +93,7 @@ oxen_generate_hard_fork_table(hf hf_version, uint64_t pos_delay)
 
   // TODO: Not thread-safe, we should just have hardfork functions that take in
   // a list of hardfork entries ...
-  static auto thread_id = std::this_thread::get_id();
+  [[maybe_unused]] static auto thread_id = std::this_thread::get_id();
   assert(thread_id == std::this_thread::get_id());
 
   cryptonote::fakechain_hardforks = result;
