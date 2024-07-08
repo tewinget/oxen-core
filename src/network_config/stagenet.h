@@ -49,8 +49,8 @@ inline constexpr auto UPTIME_PROOF_STARTUP_DELAY = 5s;
 inline constexpr uint64_t ETH_EXIT_BUFFER = 2h / mainnet::TARGET_BLOCK_TIME;
 
 inline constexpr uint32_t ETHEREUM_CHAIN_ID = 421614;
-inline constexpr auto ETHEREUM_REWARDS_CONTRACT = "0x4EFEB7547f666A19959F50248293F67fdDd66CD0"sv;
-inline constexpr auto ETHEREUM_POOL_CONTRACT = "0x3cBBA25980B1eeac9B946a5154b9372E3774f819"sv;
+inline constexpr auto ETHEREUM_REWARDS_CONTRACT = "0xEF43cd64528eA89966E251d4FE17c660222D2c9d"sv;
+inline constexpr auto ETHEREUM_POOL_CONTRACT = "0x408bCc6C9b942ECc4F289C080d2A1a2a3617Aff8"sv;
 
 inline constexpr network_config config{
         network_type::STAGENET,
