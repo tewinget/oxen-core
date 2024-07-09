@@ -3793,8 +3793,7 @@ bool service_node_list::handle_uptime_proof(
     }
 
     for (auto const& min : MIN_UPTIME_PROOF_VERSIONS) {
-        if (vers >= min.hardfork_revision &&
-            m_blockchain.nettype() != cryptonote::network_type::DEVNET) {
+        if (vers >= min.hardfork_revision) {
             if (proof->version < min.oxend) {
                 log::debug(
                         logcat,
@@ -3806,27 +3805,29 @@ bool service_node_list::handle_uptime_proof(
                         vers.second);
                 return false;
             }
-            if (proof->lokinet_version < min.lokinet) {
-                log::debug(
-                        logcat,
-                        "Rejecting uptime proof from {}: v{}+ lokinet version is required for "
-                        "v{}.{}+ network proofs",
-                        proof->pubkey,
-                        tools::join(".", min.lokinet),
-                        static_cast<int>(vers.first),
-                        vers.second);
-                return false;
-            }
-            if (proof->storage_server_version < min.storage_server) {
-                log::debug(
-                        logcat,
-                        "Rejecting uptime proof from {}: v{}+ storage server version is required "
-                        "for v{}.{}+ network proofs",
-                        proof->pubkey,
-                        tools::join(".", min.storage_server),
-                        static_cast<int>(vers.first),
-                        vers.second);
-                return false;
+            if (netconf.HAVE_STORAGE_AND_LOKINET) {
+                if (proof->lokinet_version < min.lokinet) {
+                    log::debug(
+                            logcat,
+                            "Rejecting uptime proof from {}: v{}+ lokinet version is required for "
+                            "v{}.{}+ network proofs",
+                            proof->pubkey,
+                            tools::join(".", min.lokinet),
+                            static_cast<int>(vers.first),
+                            vers.second);
+                    return false;
+                }
+                if (proof->storage_server_version < min.storage_server) {
+                    log::debug(
+                            logcat,
+                            "Rejecting uptime proof from {}: v{}+ storage server version is "
+                            "required for v{}.{}+ network proofs",
+                            proof->pubkey,
+                            tools::join(".", min.storage_server),
+                            static_cast<int>(vers.first),
+                            vers.second);
+                    return false;
+                }
             }
         }
     }
