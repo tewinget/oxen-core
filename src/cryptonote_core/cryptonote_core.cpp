@@ -2564,9 +2564,9 @@ void core::do_uptime_proof_call() {
             auto pubkey = m_service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
             if (pubkey && pubkey != m_service_keys.pub &&
                 m_service_node_list.is_service_node(pubkey, false /*don't require active*/)) {
-                log::info(
-                        logcat,
-                        fg(fmt::terminal_color::red),
+                log::error(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                         "Failed to submit uptime proof: another service node on the network is "
                         "using the same ed/x25519 keys as this service node. This typically means "
                         "both have the same 'key_ed25519' private key file.");
@@ -2588,9 +2588,9 @@ void core::do_uptime_proof_call() {
                                  (netconf.HAVE_STORAGE_AND_LOKINET &&
                                   (proof.proof->storage_https_port == storage_https_port() ||
                                    proof.proof->storage_omq_port == storage_omq_port()))))
-                                log::info(
-                                        logcat,
-                                        fg(fmt::terminal_color::red),
+                                log::error(
+                                        globallogcat,
+                                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                                         "Another service node ({}) is broadcasting the same public "
                                         "IP and ports as this service node ({}:{}[qnet], "
                                         ":{}[SS-HTTP], :{}[SS-OMQ]). This will lead to "
@@ -2611,9 +2611,9 @@ void core::do_uptime_proof_call() {
                             m_last_storage_server_ping,
                             get_net_config().UPTIME_PROOF_FREQUENCY,
                             "the storage server")) {
-                    log::info(
-                            logcat,
-                            fg(fmt::terminal_color::red),
+                    log::error(
+                            globallogcat,
+                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                             "Failed to submit uptime proof: have not heard from the storage server "
                             "recently. Make sure that it is running! It is required to run "
                             "alongside the Loki daemon");
@@ -2623,9 +2623,9 @@ void core::do_uptime_proof_call() {
                             m_last_lokinet_ping,
                             get_net_config().UPTIME_PROOF_FREQUENCY,
                             "Lokinet")) {
-                    log::info(
-                            logcat,
-                            fg(fmt::terminal_color::red),
+                    log::error(
+                            globallogcat,
+                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                             "Failed to submit uptime proof: have not heard from lokinet recently. "
                             "Make sure that it is running! It is required to run alongside the "
                             "Loki daemon");
