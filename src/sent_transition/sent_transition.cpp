@@ -98,7 +98,8 @@ void transition(
     // Pass one: convert all stakes (of registered users) to our SENT bucket.  We'll leave the
     // values in place for now; we come back and update everything later.
     for (const auto& [pubkey, info] : snl_state.service_nodes_infos) {
-        for (auto& contributor : info->contributors) {
+        auto& old_stakes = std::get<std::vector<service_nodes::service_node_info::oxen_contributor>>(info->contributors);
+        for (auto& contributor : old_stakes) {
             if (auto it = sent_addrs.find(contributor.address); it != sent_addrs.end()) {
                 // Although the sum of .locked_contributions.amount is *usually* the same as
                 // .amount, it's possible for a small over-contribution to have been accepted which
@@ -159,6 +160,7 @@ void transition(
     const auto& staking_ratio = net == network_type::MAINNET ? OXEN_SENT_STAKING_RATIO
                                                              : OXEN_SENT_TESTNET_STAKING_RATIO;
 
+    std::vector<crypto::key_image> permanent_stakes;
     for (const auto& [pk, sni] : sorted_sns) {
         bool zombie = false;
 
@@ -193,7 +195,7 @@ void transition(
         if (!zombie) {
             auto* stakers =
                     std::get_if<std::vector<service_nodes::service_node_info::oxen_contributor>>(
-                            &sni->stakes);
+                            &sni->contributors);
             if (!stakers)
                 throw std::runtime_error{
                         "Unable to perform SENT transition: SN {} has unexpected lack of OXEN contributions!"_format(
@@ -257,7 +259,7 @@ void transition(
         sn.portions_for_operator = sni->portions_for_operator / 184467440737095;
 
         auto& stakers =
-                sn.stakes.emplace<std::vector<service_nodes::service_node_info::sent_stake>>();
+                sn.contributors.emplace<std::vector<service_nodes::service_node_info::sent_contribution>>();
 
         if (!zombie) {
             sn.total_contributed = staking_requirement;
@@ -269,7 +271,7 @@ void transition(
             {
                 auto it = sent_stake.find(sn_op);
                 assert(it != sent_stake.end());
-                stakers.emplace_back(it->first, it->second);
+                stakers.emplace_back(it->second, it->first);
                 sent_stake.erase(it);
             }
             std::vector<std::pair<eth::address, uint64_t>> stakes_desc{
@@ -280,8 +282,17 @@ void transition(
                 return a.first <
                        b.first;  // same value: a comes first if the *address* is "smaller"
             });
-            for (const auto& [eth, stake] : stakes_desc)
-                stakers.emplace_back(eth, stake);
+            for (const auto& [address, amount] : stakes_desc)
+                stakers.emplace_back(amount, address);
+
+            auto& old_stakes = std::get<std::vector<service_nodes::service_node_info::oxen_contributor>>(sni->contributors);
+            for (const auto& contributor : old_stakes) {
+                for (const auto& contribution : contributor.locked_contributions)
+                {
+                    permanent_stakes.push_back(contribution.key_image);
+                }
+            }
+
         } else {
             // This SN is a zombie, i.e. its dying and will get deregged shortly after the fork.
             // We're leaving it technically registered, but just a husk: it has no contributors and
@@ -293,6 +304,15 @@ void transition(
         }
     }
 
+    for (const crypto::key_image& img : permanent_stakes)
+    {
+        // TODO: need a reference to blockchain db
+
+        // TODO: open blockchain db tx
+
+        // db_tx.add_spent_key(img);
+    }
+
     // TODO: set BLS keys
     // TODO: replace primary pubkey with ed25519 pubkey if different
 }
@@ -300,6 +320,5 @@ void transition(
 // TODO: *permanently* blacklist the key images of all converted stakes (but not
 // unconverted ones), so that you can't go back to the OXEN wallet and then convert
 // them through the external SENT conversion process.
-}
 
 }  // namespace oxen::sent
