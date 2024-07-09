@@ -10,6 +10,10 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_list.h"
 
+namespace eth {
+using address = crypto::eth_address;
+}
+
 namespace oxen::sent {
 
 using cryptonote::network_type;
