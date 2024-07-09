@@ -539,7 +539,7 @@ bool rpc_command_executor::show_status() {
         }
     }
 
-    std::string my_sn_key;
+    std::string my_sn_key, my_bls;
     int64_t my_decomm_remaining = 0;
     uint64_t my_sn_last_uptime = 0;
     bool my_sn_registered = false, my_sn_staked = false, my_sn_active = false;
@@ -552,6 +552,7 @@ bool rpc_command_executor::show_status() {
             return false;
 
         my_sn_key = (*maybe_service_keys)["service_node_pubkey"];
+        my_bls = (*maybe_service_keys)["service_node_bls_pubkey"];
 
         auto maybe_sns = try_running(
                 [&] {
@@ -662,6 +663,8 @@ bool rpc_command_executor::show_status() {
                 msg.append("{}{}", my_reason_all ? ", " : "", fmt::join(reasons, ", "));
             }
         }
+
+        msg.flush().append("BLS pk: {}", my_bls);
     }
 
     return true;

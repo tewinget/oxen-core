@@ -1926,6 +1926,7 @@ void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, [[maybe_unused]] rpc_
         rhex["service_node_pubkey"] = keys.pub;
         rhex["pubkey_ed25519"] = keys.pub_ed25519;
         rhex["pubkey_x25519"] = keys.pub_x25519;
+        rhex["pubkey_bls"] = keys.pub_bls;
     }
 }
 
