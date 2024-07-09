@@ -224,7 +224,8 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
         next_block_is_pulse = pulse::clock::now() < t.miner_fallback_timestamp;
     }
 
-    if (cryptonote::checkpoint_t checkpoint; db.get_immutable_checkpoint(&checkpoint, top_block.height)) {
+    if (cryptonote::checkpoint_t checkpoint;
+        db.get_immutable_checkpoint(&checkpoint, top_block.height)) {
         info.response["immutable_height"] = checkpoint.height;
         info.response_hex["immutable_block_hash"] = checkpoint.block_hash;
     }
@@ -258,8 +259,8 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
         auto cd = db.get_block_cumulative_difficulty(top_block.height);
         info.response["cumulative_difficulty"] = cd;
     } catch (std::exception const& e) {
-        info.response["status"] =
-                "Error retrieving cumulative difficulty at height " + std::to_string(top_block.height);
+        info.response["status"] = "Error retrieving cumulative difficulty at height " +
+                                  std::to_string(top_block.height);
         return;
     }
 
@@ -860,12 +861,14 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, [[maybe_unused]] rpc_context
             auto split_mempool_tx = [](std::pair<const crypto::hash, tx_info>& info) {
                 cryptonote::transaction tx;
                 if (!cryptonote::parse_and_validate_tx_from_blob(info.second.tx_blob, tx))
-                    throw oxen::traced<std::runtime_error>{"Unable to parse and validate tx from blob"};
+                    throw oxen::traced<std::runtime_error>{
+                            "Unable to parse and validate tx from blob"};
                 serialization::binary_string_archiver ba;
                 try {
                     tx.serialize_base(ba);
                 } catch (const std::exception& e) {
-                    throw oxen::traced<std::runtime_error>{"Failed to serialize transaction base: "s + e.what()};
+                    throw oxen::traced<std::runtime_error>{
+                            "Failed to serialize transaction base: "s + e.what()};
                 }
                 std::string pruned = ba.str();
                 std::string pruned2{info.second.tx_blob, pruned.size()};
@@ -3003,7 +3006,7 @@ namespace {
                                lifetime;  // Print loudly for the first ping after startup/expiry
             auto msg = "Received ping from {} {}"_format(name, fmt::join(cur_version, "."));
             if (significant)
-                log::info(logcat, fg(fmt::terminal_color::green), "{}", msg);
+                log::info(globallogcat, fg(fmt::terminal_color::green) | fmt::emphasis::bold, "{}", msg);
             else
                 log::debug(logcat, "{}", msg);
             success(significant);

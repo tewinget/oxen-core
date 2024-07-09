@@ -29,6 +29,7 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include <common/exception.h>
 #include <fmt/color.h>
 #include <oxenmq/oxenmq.h>
 
@@ -36,7 +37,6 @@
 #include <memory>
 #include <stdexcept>
 #include <utility>
-#include <common/exception.h>
 
 #include "common/command_line.h"
 #include "cryptonote_config.h"
@@ -114,7 +114,10 @@ daemon::daemon(boost::program_options::variables_map vm_) :
                 *core, command_line::get_arg(vm, cryptonote::arg_offline))},
         p2p{std::make_unique<node_server>(*protocol)},
         rpc{std::make_unique<cryptonote::rpc::core_rpc_server>(*core, *p2p)} {
-    log::info(logcat, fg(fmt::terminal_color::blue), "Initializing daemon objects...");
+    log::info(
+            logcat,
+            fg(fmt::terminal_color::blue) | fmt::emphasis::bold,
+            "Initializing daemon objects...");
 
     log::info(logcat, "- cryptonote protocol");
     if (!protocol->init(vm))
@@ -154,7 +157,7 @@ daemon::daemon(boost::program_options::variables_map vm_) :
     if (deprecated_rpc_options) {
         log::info(
                 logcat,
-                fg(fmt::terminal_color::red),
+                fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                 "{} options are deprecated and will be removed from a future oxend version; use "
                 "--rpc-public/--rpc-admin instead",
                 deprecated_option_names);
@@ -237,11 +240,17 @@ daemon::daemon(boost::program_options::variables_map vm_) :
                 *rpc, rpc_config, true /*restricted*/, std::move(rpc_listen_public));
     }
 
-    log::info(logcat, fg(fmt::terminal_color::blue), "Done daemon object initialization");
+    log::info(
+            logcat,
+            fg(fmt::terminal_color::blue) | fmt::emphasis::bold,
+            "Done daemon object initialization");
 }
 
 daemon::~daemon() {
-    log::info(logcat, fg(fmt::terminal_color::blue), "Deinitializing daemon objects...");
+    log::info(
+            logcat,
+            fg(fmt::terminal_color::blue) | fmt::emphasis::bold,
+            "Deinitializing daemon objects...");
 
     if (http_rpc_public) {
         log::info(logcat, "- public HTTP RPC server");
@@ -316,7 +325,10 @@ bool daemon::run(bool interactive) {
     });
 
     try {
-        log::info(logcat, fg(fmt::terminal_color::blue), "Starting up oxend services...");
+        log::info(
+                logcat,
+                fg(fmt::terminal_color::blue) | fmt::emphasis::bold,
+                "Starting up oxend services...");
         cryptonote::GetCheckpointsCallback get_checkpoints;
 #if defined(PER_BLOCK_CHECKPOINT)
         get_checkpoints = blocks::GetCheckpointsData;
@@ -360,17 +372,23 @@ bool daemon::run(bool interactive) {
             rpc_commands->start_handling([this] { stop(); });
         }
 
-        log::info(logcat, fg(fmt::terminal_color::green), "Starting up main network");
+        log::info(
+                globallogcat,
+                fg(fmt::terminal_color::green) | fmt::emphasis::bold,
+                "Starting up main network");
 
 #ifdef ENABLE_SYSTEMD
         sd_notify(0, ("READY=1\nSTATUS=" + core->get_status_string()).c_str());
 #endif
 
         p2p->run();  // blocks until p2p goes down
-        log::info(logcat, fg(fmt::terminal_color::yellow), "Main network stopped");
+        log::info(
+                globallogcat,
+                fg(fmt::terminal_color::yellow) | fmt::emphasis::bold,
+                "Main network stopped");
 
         if (rpc_commands) {
-            log::info(logcat, "Stopping RPC command processor");
+            log::info(globallogcat, "Stopping RPC command processor");
             rpc_commands->stop_handling();
             rpc_commands.reset();
         }

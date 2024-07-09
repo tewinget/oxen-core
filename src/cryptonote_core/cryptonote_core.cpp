@@ -40,8 +40,8 @@
 #include <csignal>
 #include <iomanip>
 #include <unordered_set>
-#include "common/exception.h"
 
+#include "common/exception.h"
 #include "common/guts.h"
 
 extern "C" {
@@ -625,7 +625,7 @@ bool core::init(
     auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
 
     folder /= db->get_db_name();
-    log::info(logcat, "Loading blockchain from folder {} ...", folder);
+    log::info(globallogcat, "Loading blockchain from folder {} ...", folder);
 
     // default to fast:async:1 if overridden
     blockchain_db_sync_mode sync_mode = db_defaultsync;
@@ -843,7 +843,7 @@ bool core::init(
                 "Error --block-sync-size cannot be greater than {}",
                 BLOCKS_SYNCHRONIZING_MAX_COUNT);
 
-    log::info(logcat, "Loading checkpoints");
+    log::info(globallogcat, "Loading checkpoints");
     CHECK_AND_ASSERT_MES(
             update_checkpoints_from_json_file(),
             false,
@@ -858,7 +858,7 @@ bool core::init(
     if (prune_blockchain) {
         // display a message if the blockchain is not pruned yet
         if (!m_blockchain_storage.get_blockchain_pruning_seed()) {
-            log::info(logcat, "Pruning blockchain...");
+            log::info(globallogcat, "Pruning blockchain...");
             CHECK_AND_ASSERT_MES(
                     m_blockchain_storage.prune_blockchain(), false, "Failed to prune blockchain");
         } else {
@@ -1042,7 +1042,8 @@ bool core::init_service_keys() {
             sc_reduce32(pk_sh_data);
             std::memcpy(keys.key.data(), pk_sh_data, 32);
             if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
-                throw oxen::traced<std::runtime_error>{"Failed to derive primary key from ed25519 key"};
+                throw oxen::traced<std::runtime_error>{
+                        "Failed to derive primary key from ed25519 key"};
             if (std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32))
                 throw oxen::traced<std::runtime_error>{
                         "Internal error: unexpected primary pubkey and ed25519 pubkey mismatch"};
@@ -1062,24 +1063,20 @@ bool core::init_service_keys() {
         keys.pub.zero();
     }
 
+    auto style = fg(fmt::terminal_color::yellow) | fmt::emphasis::bold;
     if (m_service_node) {
-        log::info(logcat, fg(fmt::terminal_color::yellow), "Service node public keys:");
-        log::info(logcat, fg(fmt::terminal_color::yellow), "- primary: {:x}", keys.pub);
-        log::info(logcat, fg(fmt::terminal_color::yellow), "- ed25519: {:x}", keys.pub_ed25519);
+        log::info(globallogcat, fg(fmt::terminal_color::cyan) | fmt::emphasis::bold, "Service node public keys:");
+        log::info(globallogcat, style, "- primary: {:x}", keys.pub);
+        log::info(globallogcat, style, "- ed25519: {:x}", keys.pub_ed25519);
         // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
-        log::info(
-                logcat, fg(fmt::terminal_color::yellow), "- lokinet: {:a}.snode", keys.pub_ed25519);
-        log::info(logcat, fg(fmt::terminal_color::yellow), "- x25519: {:x}", keys.pub_x25519);
-        log::info(logcat, fg(fmt::terminal_color::yellow), "- bls: {:x}", keys.pub_bls);
+        log::info(globallogcat, style, "- lokinet: {:a}.snode", keys.pub_ed25519);
+        log::info(globallogcat, style, "- x25519: {:x}", keys.pub_x25519);
+        log::info(globallogcat, style, "- bls: {:x}", keys.pub_bls);
 
     } else {
         // Only print the x25519 version because it's the only thing useful for a non-SN (for
         // encrypted OMQ RPC connections).
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "x25519 public key: {:x}",
-                keys.pub_x25519);
+        log::info(globallogcat, style, "x25519 public key: {:x}", keys.pub_x25519);
     }
 
     return true;
@@ -1131,7 +1128,6 @@ oxenmq::AuthLevel core::omq_allow(
 
 void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     using namespace oxenmq;
-    log::info(omqlogcat, "Starting oxenmq");
     m_omq = std::make_shared<OxenMQ>(
             tools::copy_guts(m_service_keys.pub_x25519),
             tools::copy_guts(m_service_keys.key_x25519),
@@ -1160,7 +1156,7 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
         if (listen_ip.empty())
             listen_ip = "0.0.0.0";
         std::string qnet_listen = "tcp://" + listen_ip + ":" + std::to_string(m_quorumnet_port);
-        log::info(logcat, "- listening on {} (quorumnet)", qnet_listen);
+        log::info(globallogcat, "OxenMQ/quorumnet listening on {} (quorumnet)", qnet_listen);
         m_omq->listen_curve(
                 qnet_listen,
                 [this, public_ = command_line::get_arg(vm, arg_omq_quorumnet_public)](
@@ -2135,7 +2131,8 @@ bool core::submit_uptime_proof() {
 
         if (relayed)
             log::info(
-                    logcat,
+                    globallogcat,
+                    fg(fmt::terminal_color::cyan),
                     "Submitted uptime-proof for Service Node (yours): {}",
                     m_service_keys.pub);
     } catch (const std::exception& e) {
@@ -2156,10 +2153,12 @@ bool core::handle_uptime_proof(
         // else they should be non-zero.
         if (!get_config(m_nettype).HAVE_STORAGE_AND_LOKINET) {
             if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
-                throw oxen::traced<std::runtime_error>{"Invalid storage port(s) in proof: devnet storage ports must be 0"};
+                throw oxen::traced<std::runtime_error>{
+                        "Invalid storage port(s) in proof: devnet storage ports must be 0"};
         } else {
             if (proof->storage_omq_port == 0 || proof->storage_https_port == 0)
-                throw oxen::traced<std::runtime_error>{"Invalid storage port(s) in proof: storage ports cannot be 0"};
+                throw oxen::traced<std::runtime_error>{
+                        "Invalid storage port(s) in proof: storage ports cannot be 0"};
         }
 
     } catch (const std::exception& e) {
@@ -2655,7 +2654,7 @@ bool core::on_idle() {
                     "The daemon will start synchronizing with the network. This may take a long "
                     "time to complete.";
         log::info(
-                logcat,
+                globallogcat,
                 fg(fmt::terminal_color::yellow),
                 R"(
 **********************************************************************

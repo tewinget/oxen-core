@@ -1796,7 +1796,9 @@ bool node_server<t_payload_net_handler>::check_incoming_connections() {
         get_incoming_connections_count(public_zone->second) == 0) {
         if (m_hide_my_port ||
             public_zone->second.m_config.m_net_config.max_in_connection_count == 0) {
-            log::info(logcat, "Incoming connections disabled, enable them for full connectivity");
+            log::warning(
+                    globallogcat,
+                    "Incoming connections disabled, enable them for full connectivity");
         } else {
             log::warning(
                     logcat,

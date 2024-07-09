@@ -1,12 +1,12 @@
 
 #include "omq_server.h"
 
+#include <common/exception.h>
 #include <fmt/core.h>
 #include <fmt/std.h>
 #include <oxenc/bt.h>
 #include <oxenmq/fmt.h>
 #include <oxenmq/oxenmq.h>
-#include <common/exception.h>
 
 #include "cryptonote_config.h"
 #include "rpc/common/param_parser.hpp"
@@ -126,7 +126,7 @@ omq_rpc::omq_rpc(
     // have the quorumnet listener set up in cryptonote_core).
     for (const auto& addr : command_line::get_arg(vm, arg_omq_public)) {
         check_omq_listen_addr(addr);
-        log::info(logcat, "OMQ listening on {} (public unencrypted)", addr);
+        log::info(globallogcat, "OMQ listening on {} (public unencrypted)", addr);
         omq.listen_plain(addr, [&core](std::string_view ip, std::string_view pk, bool /*sn*/) {
             return core.omq_allow(ip, pk, AuthLevel::basic);
         });
@@ -134,7 +134,7 @@ omq_rpc::omq_rpc(
 
     for (const auto& addr : command_line::get_arg(vm, arg_omq_curve_public)) {
         check_omq_listen_addr(addr);
-        log::info(logcat, "OMQ listening on {} (public curve)", addr);
+        log::info(globallogcat, "OMQ listening on {} (public curve)", addr);
         omq.listen_curve(addr, [&core](std::string_view ip, std::string_view pk, bool /*sn*/) {
             return core.omq_allow(ip, pk, AuthLevel::basic);
         });
@@ -142,7 +142,7 @@ omq_rpc::omq_rpc(
 
     for (const auto& addr : command_line::get_arg(vm, arg_omq_curve)) {
         check_omq_listen_addr(addr);
-        log::info(logcat, "OMQ listening on {} (curve restricted)", addr);
+        log::info(globallogcat, "OMQ listening on {} (curve restricted)", addr);
         omq.listen_curve(addr, [&core](std::string_view ip, std::string_view pk, bool /*sn*/) {
             return core.omq_allow(ip, pk, AuthLevel::denied);
         });
@@ -168,7 +168,7 @@ omq_rpc::omq_rpc(
     }
     for (const auto& addr : locals) {
         check_omq_listen_addr(addr);
-        log::info(logcat, "OMQ listening on {} (unauthenticated local admin)", addr);
+        log::info(globallogcat, "OMQ listening on {} (unauthenticated local admin)", addr);
         omq.listen_plain(addr, [&core](std::string_view ip, std::string_view pk, bool /*sn*/) {
             return core.omq_allow(ip, pk, AuthLevel::admin);
         });

@@ -2235,11 +2235,9 @@ skip:
           log::info(logcat, fg(fmt::terminal_color::yellow), "Synced {} blocks in {} ({} blocks per second)", synced_blocks, tools::get_human_readable_timespan(synced_seconds), blocks_per_second);
         }
       }
-      log::info(logcat, fg(fmt::terminal_color::yellow), R"(
+      log::info(globallogcat, fg(fmt::terminal_color::yellow) | fmt::emphasis::bold, R"(
 **********************************************************************
-You are now synchronized with the network. You may now start oxen-wallet-cli.
-
-Use the "help" command to see the list of available commands.
+You are now synchronized with the network.
 **********************************************************************)");
       if (OXEN_LOG_ENABLED(info))
       {

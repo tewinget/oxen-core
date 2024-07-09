@@ -44,10 +44,10 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
 #include "common/boost_serialization_helper.h"
+#include "common/exception.h"
 #include "common/guts.h"
 #include "common/lock.h"
 #include "common/median.h"
-#include "common/exception.h"
 #include "common/pruning.h"
 #include "common/rules.h"
 #include "common/sha256sum.h"
@@ -361,7 +361,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems() {
         return true;
     if (total_blocks > 1)
         log::info(
-                logcat,
+                globallogcat,
                 "Loading blocks into oxen subsystems, scanning blockchain from height: {} to: {} "
                 "(snl: {}, ons: {}, sqlite: {})",
                 start_height,
@@ -384,7 +384,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems() {
         if (duration >= 10s) {
             m_service_node_list.store();
             log::info(
-                    logcat,
+                    globallogcat,
                     "... scanning height {} ({:.3f}s) (snl: {:.3f}s, ons: {:.3f}s, batch: {:.3f}s)",
                     start_height + (index * BLOCK_COUNT),
                     duration.count(),
@@ -480,7 +480,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems() {
 
     if (total_blocks > 1) {
         log::info(
-                logcat,
+                globallogcat,
                 "Done recalculating oxen subsystems in {:.2f}s ({:.2f}s snl; {:.2f}s ons; {:.2f}s "
                 "batch)",
                 dseconds{clock::now() - scan_start}.count(),
@@ -616,7 +616,7 @@ bool Blockchain::init(
         if (ideal_hf_version < hf::hf7 || ideal_hf_version == top_block.major_version) {
             if (num_popped_blocks > 0)
                 log::info(
-                        logcat,
+                        globallogcat,
                         "Initial popping done, top block: {}, top height: {}, block version: {}",
                         top_id,
                         top_height,
@@ -625,7 +625,7 @@ bool Blockchain::init(
         } else {
             if (num_popped_blocks == 0)
                 log::info(
-                        logcat,
+                        globallogcat,
                         "Current top block {} at height {} has version {} which disagrees with the "
                         "ideal version {}",
                         top_id,
@@ -633,7 +633,7 @@ bool Blockchain::init(
                         (uint64_t)top_block.major_version,
                         (uint64_t)ideal_hf_version);
             if (num_popped_blocks % 100 == 0)
-                log::info(logcat, "Popping blocks... {}", top_height);
+                log::info(globallogcat, "Popping blocks... {}", top_height);
             ++num_popped_blocks;
             block popped_block;
             std::vector<transaction> popped_txs;
@@ -776,7 +776,7 @@ void Blockchain::pop_blocks(uint64_t nblocks) {
         for (int progress = 0; i < nblocks; ++i) {
             if (nblocks >= bpd && (i != 0 && (i % blocks_per_update == 0))) {
                 log::info(
-                        logcat,
+                        globallogcat,
                         "... popping blocks {}% completed, height: {} ({}s)",
                         (++progress * PERCENT_PER_PROGRESS_UPDATE),
                         (blockchain_height - i),
@@ -978,7 +978,8 @@ bool Blockchain::get_block_by_hash(const crypto::hash& h, block& blk, bool* orph
         if (m_db->get_alt_block(h, &data, &blob, nullptr /*checkpoint*/)) {
             if (!cryptonote::parse_and_validate_block_from_blob(blob, blk)) {
                 log::error(logcat, "Found block {} in alt chain, but failed to parse it", h);
-                throw oxen::traced<std::runtime_error>("Found block in alt chain, but failed to parse it");
+                throw oxen::traced<std::runtime_error>(
+                        "Found block in alt chain, but failed to parse it");
             }
             if (orphan)
                 *orphan = true;
@@ -1241,7 +1242,7 @@ bool Blockchain::switch_to_alternative_blockchain(
     }
 
     log::info(
-            logcat,
+            globallogcat,
             fg(fmt::terminal_color::green),
             "REORGANIZE SUCCESS! on height: {}, new blockchain size: {}",
             split_height,
@@ -1477,7 +1478,7 @@ bool Blockchain::validate_miner_transaction(
         try {
             hook(hook_data);
         } catch (const std::exception& e) {
-            log::info(
+            log::warning(
                     globallogcat,
                     fg(fmt::terminal_color::red),
                     "Miner tx failed validation: {}",
@@ -1803,7 +1804,10 @@ bool Blockchain::create_block_template_internal(
 
         l2_reward = m_l2_tracker->get_reward_rate(b.l2_height);
         if (!l2_reward) {
-            log::error(logcat, "L2 Tracker failed to retrieve the current block reward; unable to create a block");
+            log::error(
+                    logcat,
+                    "L2 Tracker failed to retrieve the current block reward; unable to create a "
+                    "block");
             return false;
         }
     }
@@ -2467,7 +2471,7 @@ bool Blockchain::handle_alternative_block(
                 fmt::format_to(std::back_inserter(msg), " PoW: {}", blk_pow.proof_of_work);
             fmt::format_to(std::back_inserter(msg), " difficulty {}", current_diff);
 
-            log::info(logcat, fg(fmt::terminal_color::blue), "{}", msg);
+            log::info(globallogcat, fg(fmt::terminal_color::blue) | fmt::emphasis::bold, "{}", msg);
             return true;
         }
     } else {
@@ -2482,7 +2486,7 @@ bool Blockchain::handle_alternative_block(
                 bool keep_alt_chain = false;
                 if (alt_chain_has_more_checkpoints) {
                     log::info(
-                            logcat,
+                            globallogcat,
                             fg(fmt::terminal_color::green),
                             "###### REORGANIZE on height: {} of {}, checkpoint is found in "
                             "alternative chain on height {}",
@@ -2492,7 +2496,7 @@ bool Blockchain::handle_alternative_block(
                 } else {
                     keep_alt_chain = true;
                     log::info(
-                            logcat,
+                            globallogcat,
                             fg(fmt::terminal_color::green),
                             "###### REORGANIZE on height: {} of {} with cum_difficulty {}\n "
                             "alternative blockchain size: {} with cum_difficulty {}",
@@ -2525,7 +2529,7 @@ bool Blockchain::handle_alternative_block(
         } else {
             if (alt_chain_has_greater_pow) {
                 log::info(
-                        logcat,
+                        globallogcat,
                         fg(fmt::terminal_color::green),
                         "###### REORGANIZE on height: {} of {} with cum_difficulty {}\n "
                         "alternative blockchain size: {} with cum_difficulty {}",
@@ -2542,8 +2546,8 @@ bool Blockchain::handle_alternative_block(
                 return r;
             } else {
                 log::info(
-                        logcat,
-                        fg(fmt::terminal_color::blue),
+                        globallogcat,
+                        fg(fmt::terminal_color::blue) | fmt::emphasis::bold,
                         "----- {} BLOCK ADDED AS ALTERNATIVE ON HEIGHT "
                         "{}\nid:\t{}\nPoW:\t{}\ndifficulty:\t{}",
                         block_type,
@@ -4760,9 +4764,9 @@ Blockchain::block_pow_verified Blockchain::verify_block_pow(
         // validate proof_of_work versus difficulty target
         result.valid = check_hash(result.proof_of_work, difficulty);
         if (!result.valid)
-            log::info(
-                    logcat,
-                    fg(fmt::terminal_color::red),
+            log::error(
+                    globallogcat,
+                    fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                     "{} with id: {}\n does not have enough proof of work: {} at height {}, "
                     "required difficulty: {}",
                     (alt_block ? "Alternative block" : "Block"),
@@ -4820,9 +4824,9 @@ bool Blockchain::basic_block_checks(cryptonote::block const& blk, bool alt_block
     } else {
         crypto::hash top_hash = get_tail_id();
         if (blk.prev_id != top_hash) {
-            log::info(
-                    logcat,
-                    fg(fmt::terminal_color::red),
+            log::error(
+                    globallogcat,
+                    fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                     "Block with id: {}, has wrong prev_id: {}, expected: {}",
                     blk_hash,
                     blk.prev_id,
@@ -4836,13 +4840,15 @@ bool Blockchain::basic_block_checks(cryptonote::block const& blk, bool alt_block
             std::lock_guard lock{last_outdated_warning_mutex};
             if (auto now = std::chrono::steady_clock::now(); now > last_outdated_warning + 5min) {
                 last_outdated_warning = now;
-                for (const auto* msg :
-                     {"**********************************************************************",
-                      "A block was seen on the network with a version higher than the last",
-                      "known one. This may be an old version of the daemon, and a software",
-                      "update may be required to sync further. Try running: update check",
-                      "**********************************************************************"})
-                    log::warning(logcat, fg(fmt::terminal_color::red), "{}", msg);
+                log::warning(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                        "\n"
+                        "**********************************************************************\n"
+                        "A block was seen on the network with a version higher than the last\n"
+                        "known one. This may be an old version of the daemon, and a software\n"
+                        "update may be required to sync further.\n"
+                        "**********************************************************************\n");
             }
         }
 
@@ -4850,8 +4856,8 @@ bool Blockchain::basic_block_checks(cryptonote::block const& blk, bool alt_block
         if (blk.major_version != required_major_version ||
             (blk.major_version < hf::hf19_reward_batching &&
              blk.minor_version < static_cast<uint8_t>(required_major_version))) {
-            log::info(
-                    logcat,
+            log::warning(
+                    globallogcat,
                     fg(fmt::terminal_color::red),
                     "Block with id: {}, has invalid version {}.{}; current: {}.{} for height {}",
                     blk_hash,

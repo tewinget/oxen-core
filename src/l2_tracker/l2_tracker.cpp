@@ -173,7 +173,7 @@ void L2Tracker::update_state() {
                         // We *were* on a backup but now are switching back to the primary
                         log::warning(
                                 logcat,
-                                fg(fmt::terminal_color::bright_green),
+                                fg(fmt::terminal_color::green) | fmt::emphasis::bold,
                                 "{} [{}] is available again; switching back to it as primary L2 "
                                 "source",
                                 new_primary.name,

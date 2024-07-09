@@ -41,8 +41,8 @@ extern "C" {
 
 #include "blockchain.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
-#include "bls/bls_utils.h"
 #include "bls/bls_signer.h"
+#include "bls/bls_utils.h"
 #include "common/exception.h"
 #include "common/i18n.h"
 #include "common/lock.h"
@@ -367,8 +367,8 @@ std::optional<registration_details> reg_tx_extract_fields(const cryptonote::tran
     return reg;
 }
 
-static std::string log_registration_details(cryptonote::network_type nettype, const registration_details& reg)
-{
+static std::string log_registration_details(
+        cryptonote::network_type nettype, const registration_details& reg) {
     fmt::memory_buffer buffer{};
     fmt::format_to(
             std::back_inserter(buffer),
@@ -379,13 +379,10 @@ static std::string log_registration_details(cryptonote::network_type nettype, co
 
     for (size_t index = 0; index < reg.reserved.size(); index++) {
         const contribution& contrib = reg.reserved[index];
-        std::string address = cryptonote::get_account_address_as_str(nettype, /*subaddress*/ false, contrib.first);
+        std::string address = cryptonote::get_account_address_as_str(
+                nettype, /*subaddress*/ false, contrib.first);
         fmt::format_to(
-                std::back_inserter(buffer),
-                "  - {:02} [{}, {}]\n",
-                index,
-                address,
-                contrib.second);
+                std::back_inserter(buffer), "  - {:02} [{}, {}]\n", index, address, contrib.second);
     }
 
     fmt::format_to(
@@ -407,10 +404,7 @@ static std::string log_registration_details(cryptonote::network_type nettype, co
                 contrib.second);
     }
 
-    fmt::format_to(
-            std::back_inserter(buffer),
-            "- BLS Pubkey:      {}\n",
-            reg.bls_pubkey);
+    fmt::format_to(std::back_inserter(buffer), "- BLS Pubkey:      {}\n", reg.bls_pubkey);
 
     std::string result = fmt::to_string(buffer);
     return result;
@@ -554,23 +548,26 @@ crypto::hash get_registration_hash(const registration_details& registration) {
 }
 
 void validate_registration_signature(const registration_details& registration) {
-    if (registration.uses_portions || registration.hf < static_cast<uint64_t>(cryptonote::feature::ETH_BLS)) {
+    if (registration.uses_portions ||
+        registration.hf < static_cast<uint64_t>(cryptonote::feature::ETH_BLS)) {
         if (!crypto::check_key(registration.service_node_pubkey))
             throw invalid_registration{"Service Node Key is not a valid public key ({})"_format(
                     registration.service_node_pubkey)};
 
         auto hash = get_registration_hash(registration);
-        if (!crypto::check_signature(hash, registration.service_node_pubkey, registration.signature))
+        if (!crypto::check_signature(
+                    hash, registration.service_node_pubkey, registration.signature))
             throw invalid_registration{
                     "Registration signature verification failed for pubkey/hash: {}/{}"_format(
                             registration.service_node_pubkey, hash)};
     } else {
         auto reg_msg = get_registration_message_for_signing(registration);
         // Don't need a direct crypto::check_key here because libsodium verify already checks it
-        if (crypto_sign_ed25519_verify_detached(registration.ed_signature.data(),
-                                                reg_msg.data(),
-                                                reg_msg.size(),
-                                                registration.service_node_pubkey.data()) != 0) {
+        if (crypto_sign_ed25519_verify_detached(
+                    registration.ed_signature.data(),
+                    reg_msg.data(),
+                    reg_msg.size(),
+                    registration.service_node_pubkey.data()) != 0) {
             throw invalid_registration{
                     "Registration signature verification failed for pubkey/blskey: {}/{}"_format(
                             registration.service_node_pubkey, registration.bls_pubkey)};
@@ -948,9 +945,9 @@ bool service_node_list::state_t::process_state_change_tx(
     switch (state_change.state) {
         case new_state::deregister:
             if (is_me)
-                log::info(
-                        logcat,
-                        fg(fmt::terminal_color::red),
+                log::warning(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                         "Deregistration for service node (yours): {}",
                         key);
             else
@@ -988,9 +985,9 @@ bool service_node_list::state_t::process_state_change_tx(
             }
 
             if (is_me)
-                log::info(
-                        logcat,
-                        fg(fmt::terminal_color::red),
+                log::warning(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                         "Temporary decommission for service node (yours): {}",
                         key);
             else
@@ -1033,8 +1030,8 @@ bool service_node_list::state_t::process_state_change_tx(
 
             if (is_me)
                 log::info(
-                        logcat,
-                        fg(fmt::terminal_color::green),
+                        globallogcat,
+                        fg(fmt::terminal_color::green) | fmt::emphasis::bold,
                         "Recommission for service node (yours): {}",
                         key);
             else
@@ -1042,8 +1039,8 @@ bool service_node_list::state_t::process_state_change_tx(
 
             // To figure out how much credit the node gets at recommissioned we need to know how
             // much it had when it got decommissioned, and how long it's been decommisioned.
-            int64_t credit_at_decomm =
-                    quorum_cop::calculate_decommission_credit(nettype, info, info.last_decommission_height);
+            int64_t credit_at_decomm = quorum_cop::calculate_decommission_credit(
+                    nettype, info, info.last_decommission_height);
             int64_t decomm_blocks = block_height - info.last_decommission_height;
 
             info.active_since_height = block_height;
@@ -1085,8 +1082,8 @@ bool service_node_list::state_t::process_state_change_tx(
             }
 
             if (is_me)
-                log::info(
-                        logcat,
+                log::warning(
+                        globallogcat,
                         fg(fmt::terminal_color::red),
                         "Reward position reset for service node (yours): {}",
                         key);
@@ -1548,7 +1545,8 @@ validate_and_get_ethereum_registration(
         uint32_t index) {
     auto maybe_reg = eth_reg_tx_extract_fields(hf_version, tx);
     if (!maybe_reg)
-        throw oxen::traced<std::runtime_error>("Could not extract registration details from transaction");
+        throw oxen::traced<std::runtime_error>(
+                "Could not extract registration details from transaction");
     auto& reg = *maybe_reg;
     uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
 
@@ -1576,8 +1574,8 @@ validate_and_get_ethereum_registration(
                 throw oxen::traced<std::runtime_error>(
                         "Invalid registration: Duplicate reserved address in registration in "
                         "transaction '{}':\n{}"_format(
-                        cryptonote::get_transaction_hash(tx),
-                        log_registration_details(nettype, reg)));
+                                cryptonote::get_transaction_hash(tx),
+                                log_registration_details(nettype, reg)));
             }
         }
 
@@ -1627,8 +1625,8 @@ bool service_node_list::state_t::process_registration_tx(
 
         if (my_keys && my_keys->pub == key)
             log::info(
-                    logcat,
-                    fg(fmt::terminal_color::green),
+                    globallogcat,
+                    fg(fmt::terminal_color::green) | fmt::emphasis::bold,
                     "Service node registered (yours): {} on height: {}",
                     key,
                     block_height);
@@ -1657,21 +1655,13 @@ bool service_node_list::state_t::process_registration_tx(
         }
 
         if (my_keys && my_keys->pub == key) {
-            if (registered_during_grace_period) {
-                log::info(
-                        logcat,
-                        fg(fmt::terminal_color::green),
-                        "Service node re-registered (yours): {} at block height: {}",
-                        key,
-                        block_height);
-            } else {
-                log::info(
-                        logcat,
-                        fg(fmt::terminal_color::green),
-                        "Service node registered (yours): {} at block height: {}",
-                        key,
-                        block_height);
-            }
+            log::info(
+                    globallogcat,
+                    fg(fmt::terminal_color::green) | fmt::emphasis::bold,
+                    "Service node {}registered (yours): {} at block height: {}",
+                    registered_during_grace_period ? "re-" : "",
+                    key,
+                    block_height);
         } else {
             log::info(
                     logcat,
@@ -1985,8 +1975,8 @@ static bool verify_block_components(
 
         if (cryptonote::block_has_pulse_components(block)) {
             if (log_errors)
-                log::info(
-                        logcat,
+                log::warning(
+                        globallogcat,
                         "Pulse {} received but only miner blocks are permitted\n{}",
                         block_type,
                         dump_pulse_block_data(block, pulse_quorum.get()));
@@ -1995,8 +1985,8 @@ static bool verify_block_components(
 
         if (block.pulse.round != 0) {
             if (log_errors)
-                log::info(
-                        logcat,
+                log::warning(
+                        globallogcat,
                         "Miner {} given but unexpectedly set round {} on height {}",
                         block_type,
                         block.pulse.round,
@@ -2008,8 +1998,8 @@ static bool verify_block_components(
             std::bitset<8 * sizeof(block.pulse.validator_bitset)> const bitset =
                     block.pulse.validator_bitset;
             if (log_errors)
-                log::info(
-                        logcat,
+                log::warning(
+                        globallogcat,
                         "Miner {} block given but unexpectedly set validator bitset {} on height "
                         "{}",
                         block_type,
@@ -2020,8 +2010,8 @@ static bool verify_block_components(
 
         if (block.signatures.size()) {
             if (log_errors)
-                log::info(
-                        logcat,
+                log::warning(
+                        globallogcat,
                         "Miner {} block given but unexpectedly has {} signatures on height {}",
                         block_type,
                         block.signatures.size(),
@@ -2033,8 +2023,8 @@ static bool verify_block_components(
     } else {
         if (!cryptonote::block_has_pulse_components(block)) {
             if (log_errors)
-                log::info(
-                        logcat,
+                log::warning(
+                        globallogcat,
                         "Miner {} received but only pulse blocks are permitted\n{}",
                         block_type,
                         dump_pulse_block_data(block, pulse_quorum.get()));
@@ -2045,8 +2035,7 @@ static bool verify_block_components(
         // Pulse. So we relax the rules here for now.
         if (nettype != cryptonote::network_type::FAKECHAIN) {
             auto round_timeout = get_config(nettype).PULSE_ROUND_TIMEOUT;
-            auto round_begin_timestamp =
-                    timings.r0_timestamp + (block.pulse.round * round_timeout);
+            auto round_begin_timestamp = timings.r0_timestamp + (block.pulse.round * round_timeout);
             auto round_end_timestamp = round_begin_timestamp + round_timeout;
 
             uint64_t begin_time = tools::to_seconds(round_begin_timestamp.time_since_epoch());
@@ -2056,8 +2045,8 @@ static bool verify_block_components(
                 std::string begin = tools::get_human_readable_timestamp(begin_time);
                 std::string end = tools::get_human_readable_timestamp(end_time);
                 if (log_errors)
-                    log::info(
-                            logcat,
+                    log::warning(
+                            globallogcat,
                             "Pulse {} with round {} specifies timestamp {} is not within an "
                             "acceptable range of time [{}, {}]",
                             block_type,
@@ -2071,8 +2060,8 @@ static bool verify_block_components(
 
         if (block.nonce != 0) {
             if (log_errors)
-                log::info(
-                        logcat,
+                log::warning(
+                        globallogcat,
                         "Pulse {} specified a nonce when quorum block generation is available, "
                         "nonce: {}",
                         block_type,
@@ -2131,8 +2120,8 @@ static bool verify_block_components(
             bool insufficient_nodes_for_pulse = pulse_quorum == nullptr;
             if (insufficient_nodes_for_pulse) {
                 if (log_errors)
-                    log::info(
-                            logcat,
+                    log::warning(
+                            globallogcat,
                             "Pulse {} specified but no quorum available {}",
                             block_type,
                             dump_pulse_block_data(block, pulse_quorum.get()));
@@ -2158,8 +2147,8 @@ static bool verify_block_components(
             assert(block.signatures.size() == service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES);
         } else {
             if (log_errors)
-                log::info(
-                        logcat,
+                log::warning(
+                        globallogcat,
                         "Pulse {} failed quorum verification\n{}",
                         block_type,
                         dump_pulse_block_data(block, pulse_quorum.get()));
@@ -2213,8 +2202,9 @@ void service_node_list::verify_block(
                 alt_block ? &alt_quorums : nullptr);
 
         if (!quorum)
-            throw oxen::traced<std::runtime_error>{"Failed to get testing quorum checkpoint for {} {}"_format(
-                    block_type, cryptonote::get_block_hash(block))};
+            throw oxen::traced<std::runtime_error>{
+                    "Failed to get testing quorum checkpoint for {} {}"_format(
+                            block_type, cryptonote::get_block_hash(block))};
 
         bool failed_checkpoint_verify =
                 !service_nodes::verify_checkpoint(block.major_version, *checkpoint, *quorum);
@@ -2229,8 +2219,9 @@ void service_node_list::verify_block(
         }
 
         if (failed_checkpoint_verify)
-            throw oxen::traced<std::runtime_error>{"Service node checkpoint failed verification for {} {}"_format(
-                    block_type, cryptonote::get_block_hash(block))};
+            throw oxen::traced<std::runtime_error>{
+                    "Service node checkpoint failed verification for {} {}"_format(
+                            block_type, cryptonote::get_block_hash(block))};
     }
 
     //
@@ -2360,7 +2351,8 @@ void service_node_list::block_add(
             std::shared_ptr<const quorum> quorum =
                     get_quorum(quorum_type::pulse, block_height, false, nullptr);
             if (!quorum)
-                throw oxen::traced<std::runtime_error>{"Unexpected Pulse error: quorum was not generated"};
+                throw oxen::traced<std::runtime_error>{
+                        "Unexpected Pulse error: quorum was not generated"};
             if (quorum->validators.empty())
                 throw oxen::traced<std::runtime_error>{"Unexpected Pulse error: quorum was empty"};
             for (size_t validator_index = 0;
@@ -3182,7 +3174,8 @@ static void verify_coinbase_tx_output(
                         cryptonote::print_money(reward), cryptonote::print_money(output.amount))};
 
     if (!std::holds_alternative<cryptonote::txout_to_key>(output.target))
-        throw oxen::traced<std::runtime_error>{"Service node output target type should be txout_to_key"};
+        throw oxen::traced<std::runtime_error>{
+                "Service node output target type should be txout_to_key"};
 
     // NOTE: Loki uses the governance key in the one-time ephemeral key
     // derivation for both Pulse Block Producer/Queued Service Node Winner rewards
@@ -3475,7 +3468,8 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                             deterministic_keypair,
                             vout_index,
                             out_eph_public_key))
-                    throw oxen::traced<std::runtime_error>{"Failed to generate output one-time public key"};
+                    throw oxen::traced<std::runtime_error>{
+                            "Failed to generate output one-time public key"};
 
                 const auto& out_to_key = var::get<cryptonote::txout_to_key>(vout.target);
                 if (tools::view_guts(out_to_key) != tools::view_guts(out_eph_public_key))
@@ -3959,7 +3953,6 @@ bool service_node_list::handle_uptime_proof(
     if (now <= std::chrono::system_clock::from_time_t(iproof.timestamp) +
                        std::chrono::seconds{netconf.UPTIME_PROOF_FREQUENCY} / 2) {
 
-
         // NOTE: In the local devnet we rapidly advance past multiple hard-forks to reach the
         // ETH_TRANSITION hardfork. At this hard-fork the BLS keys are transmitted around the
         // network with a proof-of-possession ensuring that each node that will participate in the
@@ -3980,13 +3973,15 @@ bool service_node_list::handle_uptime_proof(
         bool reject_proof = true;
 #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
         if (vers.first == feature::ETH_TRANSITION)
-            reject_proof = it->second->bls_public_key != crypto::null<eth::bls_public_key> && proof->qnet_port != 0;
+            reject_proof = it->second->bls_public_key != crypto::null<eth::bls_public_key> &&
+                           proof->qnet_port != 0;
 #endif
 
         if (reject_proof) {
             log::debug(
                     logcat,
-                    "Rejecting uptime proof from {}: already received one uptime proof for this node "
+                    "Rejecting uptime proof from {}: already received one uptime proof for this "
+                    "node "
                     "recently",
                     proof->pubkey);
             return false;
@@ -3996,7 +3991,8 @@ bool service_node_list::handle_uptime_proof(
     if (m_service_node_keys && proof->pubkey == m_service_node_keys->pub) {
         my_uptime_proof_confirmation = true;
         log::info(
-                logcat,
+                globallogcat,
+                fg(fmt::terminal_color::green),
                 "Received uptime-proof confirmation back from network for Service Node (yours): {}",
                 proof->pubkey);
     } else {
@@ -4004,9 +4000,9 @@ bool service_node_list::handle_uptime_proof(
         log::debug(logcat, "Accepted uptime proof from {}", proof->pubkey);
 
         if (m_service_node_keys && proof->pubkey_ed25519 == m_service_node_keys->pub_ed25519)
-            log::info(
-                    logcat,
-                    fg(fmt::terminal_color::red),
+            log::warning(
+                    globallogcat,
+                    fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                     "Uptime proof from SN {} is not us, but is using our ed/x25519 keys; this is "
                     "likely to lead to deregistration of one or both service nodes.",
                     proof->pubkey);
@@ -4291,7 +4287,8 @@ service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& s
         block_hash{state.block_hash},
         sn_list{snl} {
     if (!sn_list)
-        throw oxen::traced<std::logic_error>("Cannot deserialize a state_t without a service_node_list");
+        throw oxen::traced<std::logic_error>(
+                "Cannot deserialize a state_t without a service_node_list");
     if (state.version == state_serialized::version_t::version_0)
         block_hash = sn_list->m_blockchain.get_block_id_by_height(height);
 
@@ -4518,9 +4515,9 @@ bool service_node_list::load(const uint64_t current_height) {
 
     initialize_x25519_map();
 
-    log::info(logcat, "Service node data loaded successfully, height: {}", m_state.height);
+    log::info(globallogcat, "Service node data loaded successfully, height: {}", m_state.height);
     log::info(
-            logcat,
+            globallogcat,
             "{} nodes and {} recent states loaded, {} historical states loaded, ({})",
             m_state.service_nodes_infos.size(),
             m_transient.state_history.size(),

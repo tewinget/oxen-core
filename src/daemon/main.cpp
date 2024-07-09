@@ -32,8 +32,8 @@
 #include <cstdlib>
 
 #include "command_server.h"
-#include "common/exception.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "common/fs.h"
 #include "common/password.h"
 #include "common/scoped_message_writer.h"
@@ -44,12 +44,12 @@
 #include "daemon/command_line_args.h"
 #include "daemonizer/daemonizer.h"
 #include "epee/misc_log_ex.h"
+#include "fmt/color.h"
 #include "logging/oxen_logger.h"
 #include "p2p/net_node.h"
 #include "rpc/common/rpc_args.h"
 #include "rpc/core_rpc_server.h"
 #include "version.h"
-
 
 namespace po = boost::program_options;
 
@@ -66,6 +66,9 @@ constexpr auto RESET = "\033[0m";
 constexpr auto RED = "\033[31;1m";
 constexpr auto YELLOW = "\033[33;1m";
 constexpr auto CYAN = "\033[36;1m";
+
+const std::string coloured_oxen_release =
+        "{}Oxen '{}' (v{}){}"_format(CYAN, OXEN_RELEASE_NAME, OXEN_VERSION_FULL, RESET);
 }  // namespace
 
 #include <crypto/crypto.h>
@@ -133,8 +136,7 @@ int main(int argc, char const* argv[]) {
             return 1;
 
         if (command_line::get_arg(vm, command_line::arg_help)) {
-            std::cout << CYAN << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")"
-                      << RESET << "\n\n";
+            std::cout << coloured_oxen_release << "\n\n";
             std::cout << "Usage: " + std::string{argv[0]} +
                                  " [options|settings] [daemon_command...]"
                       << std::endl
@@ -145,8 +147,7 @@ int main(int argc, char const* argv[]) {
 
         // Oxen Version
         if (command_line::get_arg(vm, command_line::arg_version)) {
-            std::cout << CYAN << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")"
-                      << RESET << "\n\n";
+            std::cout << coloured_oxen_release << "\n\n";
             return 0;
         }
 
@@ -310,7 +311,8 @@ int main(int argc, char const* argv[]) {
         if (log_file_path.is_relative())
             log_file_path = fs::absolute(data_dir / log_file_path);
 
-        oxen::logging::init(log_file_path.string(), command_line::get_arg(vm, daemon_args::arg_log_level));
+        oxen::logging::init(
+                log_file_path.string(), command_line::get_arg(vm, daemon_args::arg_log_level));
 
         logs_initialized = true;
 
@@ -319,7 +321,12 @@ int main(int argc, char const* argv[]) {
 
         // logging is now set up
         // FIXME: only print this when starting up as a daemon but not when running rpc commands
-        Log::info(logcat, "Oxen '{}' (v{})", OXEN_RELEASE_NAME, OXEN_VERSION_FULL);
+        Log::info(
+                globallogcat,
+                fg(fmt::terminal_color::cyan) | fmt::emphasis::bold,
+                "Oxen '{}' (v{})",
+                OXEN_RELEASE_NAME,
+                OXEN_VERSION_FULL);
 
         // If there are positional options, we're running a daemon command
         {
