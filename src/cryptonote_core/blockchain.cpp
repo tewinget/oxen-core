@@ -1575,11 +1575,16 @@ bool Blockchain::validate_miner_transaction(
         // query the smart contract for the reward amount. Non-service nodes can configure the
         // provider if they wish to synchronise the network with extra security.
         const auto pool_block_reward = m_l2_tracker->get_reward_rate(b.l2_height);
-        if (b.reward != pool_block_reward) {
+        // if pool_block_reward is nullopt then it *probably* means it's just too old (i.e. because
+        // we're syncing old blocks from the chain), or our L2 tracker is broken: in both of those
+        // cases we want to accept it.
+        // The other case is that it's too *new* (or faked too new): we don't reject that here, but
+        // rather in handle_block_to_main_chain.
+        if (pool_block_reward && b.reward != *pool_block_reward) {
             log::error(
                     logcat,
                     "block reward rate is incorrect: expected {}, got {}",
-                    print_money(pool_block_reward),
+                    print_money(*pool_block_reward),
                     print_money(b.reward));
             return false;
         }
@@ -1791,9 +1796,16 @@ bool Blockchain::create_block_template_internal(
     uint64_t fee;
 
     std::optional<std::pair<uint64_t, uint64_t>> l2_range;
+    std::optional<uint64_t> l2_reward;
     if (hf_version >= cryptonote::feature::ETH_BLS) {
         b.l2_height = m_l2_tracker->get_safe_height();
         l2_range.emplace(m_l2_tracker->get_confirmed_height() + 1, b.l2_height);
+
+        l2_reward = m_l2_tracker->get_reward_rate(b.l2_height);
+        if (!l2_reward) {
+            log::error(logcat, "L2 Tracker failed to retrieve the current block reward; unable to create a block");
+            return false;
+        }
     }
 
     // Add transactions in mempool to block
@@ -1922,7 +1934,8 @@ bool Blockchain::create_block_template_internal(
             b.service_node_winner_key = crypto::null<crypto::public_key>;
 
         if (hf_version >= cryptonote::feature::ETH_BLS) {
-            block_rewards = m_l2_tracker->get_reward_rate(b.l2_height);
+            assert(l2_reward);
+            block_rewards = *l2_reward;
         }
 
         b.reward = block_rewards;

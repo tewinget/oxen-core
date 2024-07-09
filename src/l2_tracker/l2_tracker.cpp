@@ -497,11 +497,11 @@ void L2Tracker::update_logs() {
             });
 }
 
-uint64_t L2Tracker::get_reward_rate(uint64_t height) const {
+std::optional<uint64_t> L2Tracker::get_reward_rate(uint64_t height) const {
     std::shared_lock lock{mutex};
     if (auto it = reward_rate.find(reward_height(height)); it != reward_rate.end())
         return it->second;
-    return 0;
+    return std::nullopt;
 }
 
 TransactionReviewSession L2Tracker::initialize_review(uint64_t l2_height) const {
