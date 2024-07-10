@@ -23,13 +23,17 @@ namespace eth {
 static auto logcat = log::Cat("l2_tracker");
 
 // For any given l2 height, we calculate the reward using the last height (inclusive) that was
-// divisible by L2_REWARD_POOL_UPDATE_BLOCKS:
-static inline uint64_t reward_height(uint64_t l2_height) {
-    return l2_height - (l2_height % cryptonote::L2_REWARD_POOL_UPDATE_BLOCKS);
+// divisible by (netconfig).L2_REWARD_POOL_UPDATE_BLOCKS:
+static inline uint64_t reward_height(uint64_t l2_height, uint64_t reward_update_blocks) {
+    return l2_height - (l2_height % reward_update_blocks);
 }
 
 L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_frequency) :
         core{core_}, rewards_contract{core.get_nettype(), provider} {
+
+    if (core.get_nettype() == cryptonote::network_type::LOCALDEV)
+        MAX_HIST_FETCH = 4;
+
     // We initially add this on a tiny interval so that it fires almost immediately after the oxenmq
     // object starts (which hasn't happened yet when we get constructed).  In the first call, we
     // kick off a state update then replace the timer with one that fires updates at the slower
@@ -41,9 +45,15 @@ L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_f
                 update_state();
                 auto& omq = core.get_omq();
                 omq.cancel_timer(updater);
-                updater = omq.add_timer([this] { update_state(); }, update_frequency, /*squelch*/ true, dedicated_thread);
+                updater = omq.add_timer(
+                        [this] { update_state(); },
+                        update_frequency,
+                        /*squelch*/ true,
+                        dedicated_thread);
             },
-            1ms, /*squelch*/ true, dedicated_thread);
+            1ms,
+            /*squelch*/ true,
+            dedicated_thread);
 }
 
 void L2Tracker::prune_old_states(bool to_fetch_limit) {
@@ -254,12 +264,18 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
     // callReadFunctionJSONAsync to get the reward rate, `more` is populated and
     // this function is called again.
     if (!more) {
+        const auto reward_update_blocks = core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS;
         std::shared_lock lock{mutex};
         // Check that we have the rewards for all heights we need to cover both the current and the
         // last MAX_HIST_FETCH L2 block heights.
-        auto r_height = reward_height(latest_height);
-        uint64_t earliest_height_to_get_rewards = latest_height - std::min(latest_height, MAX_HIST_FETCH);
-        log::debug(logcat, "Earliest height to get rewards {} (reward height is {})", earliest_height_to_get_rewards, r_height);
+        auto r_height = reward_height(latest_height, reward_update_blocks);
+        uint64_t earliest_height_to_get_rewards =
+                latest_height - std::min(latest_height, MAX_HIST_FETCH);
+        log::debug(
+                logcat,
+                "Earliest height to get rewards {} (reward height is {})",
+                earliest_height_to_get_rewards,
+                r_height);
         do {
             if (!reward_rate.count(r_height)) {
                 if (!more)
@@ -267,7 +283,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
                 more->push_front(r_height);
                 oxen::log::debug(logcat, "Pushed height: {}", r_height);
             }
-            r_height -= std::min(cryptonote::L2_REWARD_POOL_UPDATE_BLOCKS, r_height);
+            r_height -= std::min(reward_update_blocks, r_height);
         } while (r_height > earliest_height_to_get_rewards);
     }
 
@@ -281,7 +297,6 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
                 "0x{:x}"_format(contract::call::Pool_rewardRate),
                 [this, r_height, more = std::move(more)](
                         std::optional<nlohmann::json> result) mutable {
-
                     if (!result)
                         log::warning(logcat, "Failed to fetch reward rate for height {}", r_height);
                     else if (!result->is_string())
@@ -290,9 +305,11 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
                         // NOTE: In certain conditions (like when intialising an empty reward pool)
                         // the returned reward rate can be "0x" which we handle as 0.
                         std::array<std::byte, 32> rate256{};
-                        std::span<const char> rate256_hex = tools::hex_span(result->get<std::string_view>());
+                        std::span<const char> rate256_hex =
+                                tools::hex_span(result->get<std::string_view>());
 
-                        if (rate256_hex.empty() || tools::try_load_from_hex_guts(rate256_hex, rate256)) {
+                        if (rate256_hex.empty() ||
+                            tools::try_load_from_hex_guts(rate256_hex, rate256)) {
                             try {
                                 auto reward = tools::decode_integer_be(rate256);
                                 {
@@ -303,17 +320,27 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
                                         logcat,
                                         "Block reward for L2 heights {}-{} is {}",
                                         r_height,
-                                        r_height + cryptonote::L2_REWARD_POOL_UPDATE_BLOCKS - 1,
+                                        r_height +
+                                                core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS -
+                                                1,
                                         reward);
                             } catch (const std::exception& e) {
                                 log::warning(logcat, "Failed to parse reward rate: {}", e.what());
                             }
                         } else {
-                            log::warning(logcat, "Unparseable reward rate result: {} {}", result->get<std::string_view>(), std::string_view(rate256_hex.data(), rate256_hex.size()));
+                            log::warning(
+                                    logcat,
+                                    "Unparseable reward rate result: {} {}",
+                                    result->get<std::string_view>(),
+                                    std::string_view(rate256_hex.data(), rate256_hex.size()));
                         }
                     }
 
-                    oxen::log::debug(logcat, "Finished querying reward for height {}, there is more {}", r_height, more->empty() ? "no" : "yes");
+                    oxen::log::debug(
+                            logcat,
+                            "Finished querying reward for height {}, there is more {}",
+                            r_height,
+                            more->empty() ? "no" : "yes");
                     if (!more->empty())
                         update_rewards(std::move(more));
                     else
@@ -404,7 +431,14 @@ void L2Tracker::update_logs() {
     // about if the previous one is too old.
     uint64_t from = std::max(
             synced_height + 1, latest_height >= HIST_SIZE ? latest_height - HIST_SIZE + 1 : 0);
-    oxen::log::trace(logcat, "L2Tracker::{} synced_height={}, latest_height={}, HIST_SIZE={}, from={}", __func__, synced_height, latest_height, HIST_SIZE, from);
+    oxen::log::trace(
+            logcat,
+            "L2Tracker::{} synced_height={}, latest_height={}, HIST_SIZE={}, from={}",
+            __func__,
+            synced_height,
+            latest_height,
+            HIST_SIZE,
+            from);
 
     if (latest_height < from) {
         oxen::log::trace(logcat, "L2Tracker upgrading shared lock to exclusive");
@@ -418,7 +452,12 @@ void L2Tracker::update_logs() {
         // We are too far behind to fetch the full HIST_SIZE, so prune anything more than
         // MAX_HIST_FETCH ago and resync from there (so that we don't leave a gap).  (This is also
         // our "starting up" case to only fetch MAX_HIST_FETCH).
-        oxen::log::debug(logcat, "Begin pruning of state {} >= ({} + {})", latest_height, from, MAX_HIST_FETCH);
+        oxen::log::debug(
+                logcat,
+                "Begin pruning of state {} >= ({} + {})",
+                latest_height,
+                from,
+                MAX_HIST_FETCH);
         auto ex_lock = tools::upgrade_lock(lock);
         prune_old_states(true);
         from = latest_height - MAX_HIST_FETCH + 1;
@@ -499,7 +538,9 @@ void L2Tracker::update_logs() {
 
 std::optional<uint64_t> L2Tracker::get_reward_rate(uint64_t height) const {
     std::shared_lock lock{mutex};
-    if (auto it = reward_rate.find(reward_height(height)); it != reward_rate.end())
+    if (auto it = reward_rate.find(
+                reward_height(height, core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS));
+        it != reward_rate.end())
         return it->second;
     return std::nullopt;
 }

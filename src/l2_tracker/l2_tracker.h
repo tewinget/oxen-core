@@ -150,11 +150,7 @@ class L2Tracker {
     //
     // A default, non-archive Arbitrum node keeps only 30min of block state, so this ought to be
     // shorter than that.
-#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
-    size_t MAX_HIST_FETCH = 4;
-#else
     size_t MAX_HIST_FETCH = 10min / 250ms;
-#endif
 
     // How many blocks worth of logs we fetch at once.  Various providers impose various limits on
     // this based on the free/pair tier, but 100 at once seems to be accepted by most free tiers and
