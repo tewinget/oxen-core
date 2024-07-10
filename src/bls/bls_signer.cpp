@@ -168,6 +168,8 @@ static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8
     for (uint8_t increment = 0;; increment++) {
         messageWithI[messageWithI.size() - 1] = increment;
 
+        oxen::log::trace(logcat, "msgi: {}", oxenc::to_hex(messageWithI.begin(), messageWithI.end()));
+
         // NOTE: Solidity's BN256G2.hashToField(msg, tag) => (x1, x2, b)
         mcl::bn::Fp x1 = {}, x2 = {};
         bool b = false;
@@ -311,6 +313,18 @@ bls_signature BLSSigner::proofOfPossession(
     msg.insert(msg.end(), bls_pkey.begin(), bls_pkey.end());
     msg.insert(msg.end(), sender.begin(), sender.end());
     msg.insert(msg.end(), serviceNodePubkey.begin(), serviceNodePubkey.end());
+
+    oxen::log::debug(
+            logcat,
+            "Generating proof-of-possession with parameters\n"
+            "Tag:        {}\n"
+            "BLS Pubkey: {}\n"
+            "Sender:     {}\n"
+            "SN Pubkey:  {}",
+            tag,
+            bls_pkey,
+            sender,
+            serviceNodePubkey);
 
     bls_signature result = signMsg(msg);
     return result;

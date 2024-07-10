@@ -283,8 +283,10 @@ class SNNetwork:
         self.sn_contract.start()
 
         # Register a SN via the Ethereum smart contract
-        vprint("Preparing to submit registration to Eth w/ address {} for SN {}".format(hardhat_account, sn0_pubkey))
         ethereum_add_bls_args = self.ethsns[0].get_ethereum_registration_args(hardhat_account_no_0x)
+        vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})".format(hardhat_account,
+                                                                                             sn0_pubkey,
+                                                                                             ethereum_add_bls_args))
         self.sn_contract.addBLSPublicKey(ethereum_add_bls_args)
 
         # NOTE: Log all the SNs in the contract ####################################################

@@ -62,9 +62,9 @@ inline constexpr network_config config{
         mainnet::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         mainnet::STORE_LONG_TERM_STATE_INTERVAL,
         testnet::ETH_REMOVAL_BUFFER,
-        devnet::ETHEREUM_CHAIN_ID,
-        devnet::ETHEREUM_REWARDS_CONTRACT,
-        devnet::ETHEREUM_POOL_CONTRACT,
+        ETHEREUM_CHAIN_ID,
+        ETHEREUM_REWARDS_CONTRACT,
+        ETHEREUM_POOL_CONTRACT,
         L2_REWARD_POOL_UPDATE_BLOCKS,
 };
 
