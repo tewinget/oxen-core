@@ -498,7 +498,7 @@ void BlockchainSQLite::calculate_rewards(
                 contributor.amount, distribution_amount - operator_fee, total_contributed_to_sn);
         if (c_reward > 0) {
             if (contributor.ethereum_address)
-                payments.emplace_back(contributor.ethereum_address, operator_fee);
+                payments.emplace_back(contributor.ethereum_address, c_reward);
             else
                 payments.emplace_back(contributor.address, c_reward);
         }
@@ -516,8 +516,8 @@ bool BlockchainSQLite::reward_handler(
     bool (BlockchainSQLite::*add_or_subtract)(const std::vector<cryptonote::batch_sn_payment>&) =
             add ? &BlockchainSQLite::add_sn_rewards : &BlockchainSQLite::subtract_sn_rewards;
 
-    // From here on we calculate everything in milli-atomic OXEN (i.e. thousanths of an atomic
-    // OXEN) so that our integer math has minimal loss from integer division.
+    // From here on we calculate everything in milli-atomic OXEN/SENT (i.e. thousanths of an atomic
+    // unit) so that our integer math has reduced loss from integer division.
     if (block.reward > std::numeric_limits<uint64_t>::max() / BATCH_REWARD_FACTOR)
         throw oxen::traced<std::logic_error>{"Reward distribution amount is too large"};
 

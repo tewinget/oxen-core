@@ -1559,9 +1559,12 @@ validate_and_get_ethereum_registration(
     info.staking_requirement = staking_requirement;
     info.operator_ethereum_address = reg.eth_contributions[0].first;
     info.bls_public_key = reg.bls_pubkey;
-    info.portions_for_operator = staking_requirement;
+    assert(!reg.uses_portions);
+    info.portions_for_operator =
+            mul128_div64(reg.fee, cryptonote::old::STAKING_PORTIONS, cryptonote::STAKING_FEE_BASIS);
     info.registration_height = block_height;
     info.registration_hf_version = hf_version;
+    info.active_since_height = block_height;
     info.last_reward_block_height = block_height;
     info.last_reward_transaction_index = index;
     info.swarm_id = UNASSIGNED_SWARM_ID;
