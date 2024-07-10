@@ -22,7 +22,7 @@ inline constexpr uint32_t ETHEREUM_CHAIN_ID = 31337;
 inline constexpr auto ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv;
 inline constexpr auto ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv;
 
-inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 4;
+inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 1;
 
 inline constexpr auto TARGET_BLOCK_TIME = 6s;
 inline constexpr auto PULSE_STAGE_TIMEOUT = 1s;

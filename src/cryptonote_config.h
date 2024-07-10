@@ -98,6 +98,13 @@ inline constexpr auto ETH_L2_DEFAULT_CHECK_INTERVAL = 2min;
 inline constexpr int ETH_L2_DEFAULT_CHECK_THRESHOLD = 120;
 
 
+// How frequently the reward rate gets recomputed for inclusion into Oxen blocks.  An Oxen block
+// that has a l2_height of x must include the reward computed at the highest block height <= x that
+// is divisible by this number.  For instance, if this is 1000, an Oxen block with height
+// l2_height=12345678 must contain the reward value computed at height 12345000.  (The default
+// updates every 10 minutes with the Arbitrum 250ms block time).
+inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 10min / 250ms;
+
 // Fallback used in wallet if no fee is available from RPC:
 inline constexpr uint64_t FEE_PER_BYTE_V13 = 215;
 // 0.005 OXEN per tx output (in addition to the per-byte fee), starting in v18:
