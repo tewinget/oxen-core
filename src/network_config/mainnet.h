@@ -85,8 +85,11 @@ inline constexpr std::string_view ETHEREUM_REWARDS_CONTRACT =
 inline constexpr std::string_view ETHEREUM_POOL_CONTRACT =
         "0x0000000000000000000000000000000000000000";
 
-// Update every ~10 minutes with the Arbitrum ~250ms block time:
+// Update every ~10 minutes with an Arbitrum ~250ms block time:
 inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 10min / 250ms;
+
+// The default is 30s behind with an Arbitrum ~250ms block time:
+static constexpr uint64_t L2_TRACKER_SAFE_BLOCKS = 30s / 250ms;
 
 inline constexpr network_config config{
         network_type::MAINNET,
@@ -125,6 +128,7 @@ inline constexpr network_config config{
         ETHEREUM_REWARDS_CONTRACT,
         ETHEREUM_POOL_CONTRACT,
         L2_REWARD_POOL_UPDATE_BLOCKS,
+        L2_TRACKER_SAFE_BLOCKS,
 };
 
 }  // namespace cryptonote::config::mainnet

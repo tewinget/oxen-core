@@ -23,6 +23,7 @@ inline constexpr auto ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcB
 inline constexpr auto ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv;
 
 inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 1;
+static constexpr uint64_t L2_TRACKER_SAFE_BLOCKS = 0;
 
 inline constexpr auto TARGET_BLOCK_TIME = 6s;
 inline constexpr auto PULSE_STAGE_TIMEOUT = 1s;
@@ -66,6 +67,7 @@ inline constexpr network_config config{
         ETHEREUM_REWARDS_CONTRACT,
         ETHEREUM_POOL_CONTRACT,
         L2_REWARD_POOL_UPDATE_BLOCKS,
+        L2_TRACKER_SAFE_BLOCKS,
 };
 
 }  // namespace cryptonote::config::localdev

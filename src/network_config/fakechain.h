@@ -51,6 +51,7 @@ inline constexpr network_config config{
         mainnet::ETHEREUM_REWARDS_CONTRACT,
         mainnet::ETHEREUM_POOL_CONTRACT,
         mainnet::L2_REWARD_POOL_UPDATE_BLOCKS,
+        mainnet::L2_TRACKER_SAFE_BLOCKS,
 };
 
 

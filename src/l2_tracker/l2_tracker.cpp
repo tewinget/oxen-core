@@ -259,6 +259,8 @@ void L2Tracker::update_height() {
 
 void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) {
 
+    const uint64_t reward_pool_update_blocks = get_config(core.get_nettype()).L2_REWARD_POOL_UPDATE_BLOCKS;
+
     // NOTE: Initial case of update_rewards from all entry-points has a nullopt
     // for `more`, e.g. this branch executes. After calling into
     // callReadFunctionJSONAsync to get the reward rate, `more` is populated and
@@ -295,7 +297,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
         provider.callReadFunctionJSONAsync(
                 contract::pool_address(core.get_nettype()),
                 "0x{:x}"_format(contract::call::Pool_rewardRate),
-                [this, r_height, more = std::move(more)](
+                [this, r_height, more = std::move(more), reward_pool_update_blocks](
                         std::optional<nlohmann::json> result) mutable {
                     if (!result)
                         log::warning(logcat, "Failed to fetch reward rate for height {}", r_height);
@@ -320,9 +322,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
                                         logcat,
                                         "Block reward for L2 heights {}-{} is {}",
                                         r_height,
-                                        r_height +
-                                                core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS -
-                                                1,
+                                        r_height + reward_pool_update_blocks - 1,
                                         reward);
                             } catch (const std::exception& e) {
                                 log::warning(logcat, "Failed to parse reward rate: {}", e.what());
