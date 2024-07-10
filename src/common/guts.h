@@ -39,6 +39,16 @@ std::basic_string<Char> copy_guts(const T& val) {
     return std::basic_string<Char>{view_guts<Char>(val)};
 }
 
+/// Multi-input version of copy/view_guts that returns an std::array with all of the `view_guts()`
+/// values of the given inputs concatenated together into the returned array.
+template <oxenc::basic_char Char = char, safe_to_memcpy... T>
+std::array<Char, (0 + ... + sizeof(T))> concat_guts(const T&... vals) {
+    std::array<Char, (0 + ... + sizeof(T))> result;
+    auto* d = result.data();
+    ((std::memcpy(d, &vals, sizeof(T)), d += sizeof(T)), ...);
+    return result;
+}
+
 /// Wrapper around the above that converts to hex
 template <safe_to_memcpy T>
 std::string hex_guts(const T& val) {

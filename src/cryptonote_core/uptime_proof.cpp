@@ -1,17 +1,16 @@
 #include "uptime_proof.h"
-#include "service_node_list.h"
 
-
-#include <common/guts.h>
+#include <bls/bls_signer.h>
 #include <common/exception.h>
+#include <common/guts.h>
 #include <crypto/crypto.h>
 #include <cryptonote_config.h>
 #include <epee/string_tools.h>
 #include <logging/oxen_logger.h>
-#include <version.h>
-#include <bls/bls_signer.h>
-
 #include <oxenc/bt_producer.h>
+#include <version.h>
+
+#include "service_node_list.h"
 
 extern "C" {
 #include <sodium/crypto_sign.h>
@@ -49,7 +48,7 @@ Proof::Proof(
 
     if (hardfork == feature::ETH_TRANSITION) {
         assert(keys.pub_bls);
-        pop_bls = bls_signer.signMsg(crypto::keccak(keys.pub_bls, keys.pub));
+        pop_bls = bls_signer.signMsg(tools::concat_guts<uint8_t>(keys.pub_bls, keys.pub));
     }
 
     serialized_proof = bt_encode_uptime_proof(hardfork);
@@ -79,12 +78,11 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
     // NB: we must consume in sorted key order
 
     if (hardfork == feature::ETH_TRANSITION) {
-        pubkey_bls = tools::make_from_guts<eth::bls_public_key>(
-                proof.require<std::string_view>("bk"sv));
-        pop_bls = tools::make_from_guts<eth::bls_signature>(
-                proof.require<std::string_view>("bp"sv));
+        pubkey_bls =
+                tools::make_from_guts<eth::bls_public_key>(proof.require<std::string_view>("bk"sv));
+        pop_bls =
+                tools::make_from_guts<eth::bls_signature>(proof.require<std::string_view>("bp"sv));
     }
-
 
     if (auto ip = proof.require<std::string>("ip");
         !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)

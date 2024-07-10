@@ -3910,7 +3910,7 @@ bool service_node_list::handle_uptime_proof(
 
     // BLS pubkey and verification: these only get sent during the HF20 transition; for HF21+ the
     // data will be stored in the SN registration data itself.
-    if (vers.first == hf::hf20_eth_transition) {
+    if (vers.first == feature::ETH_TRANSITION) {
         // BLS pubkey and signature verification
         if (!proof->pubkey_bls || !proof->pop_bls) {
             log::debug(
@@ -3920,9 +3920,9 @@ bool service_node_list::handle_uptime_proof(
             return false;
         }
 
-        auto pop_hash = crypto::keccak(proof->pubkey_bls, proof->pubkey);
+        auto pop = tools::concat_guts<uint8_t>(proof->pubkey_bls, proof->pubkey);
         if (!eth::BLSSigner::verifyMsg(
-                    m_blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop_hash)) {
+                    m_blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop)) {
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: BLS proof of possession verification failed",
