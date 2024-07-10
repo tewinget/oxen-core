@@ -31,6 +31,7 @@
 
 #include "daemon/rpc_command_executor.h"
 
+#include <cpr/cpr.h>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <oxenc/base32z.h>
@@ -60,8 +61,6 @@
 #include "epee/string_tools.h"
 #include "oxen_economy.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-
-#include <cpr/cpr.h>
 
 using namespace cryptonote::rpc;
 using cryptonote::hf;
@@ -1082,14 +1081,16 @@ static void print_pool(const json& txs) {
                 tx["received_timestamp"].get<std::time_t>(),
                 get_human_time_ago(tx["received_timestamp"].get<std::time_t>(), now));
         msg.append("    status: {}\n", fmt::join(status, ", "));
-        msg.append(
-                "    top required block: {} ({})\n",
-                tx["max_used_height"].get<uint64_t>(),
-                tx["max_used_block"].get<std::string_view>());
-        if (tx.count("last_failed_height"))
+        if (auto muh = tx.value<uint64_t>("max_used_height", 0)) {
+            msg.append(
+                    "    top required block: {} ({})\n",
+                    muh,
+                    tx["max_used_block"].get<std::string_view>());
+        }
+        if (auto lfh = tx.value<uint64_t>("last_failed_height", 0))
             msg.append(
                     "    last failed block: {} ({})\n",
-                    tx["last_failed_height"].get<uint64_t>(),
+                    lfh,
                     tx["last_failed_block"].get<std::string_view>());
         if (auto extra = tx.find("extra"); extra != tx.end()) {
             msg.append("    transaction extra: ");
@@ -2710,16 +2711,16 @@ The Service Node will not activate until the entire stake has been contributed.
     return false;
 }
 
-bool rpc_command_executor::prepare_eth_registration(std::string_view operator_address, std::string_view contract_address, bool print_only)
-{
-    for (size_t i = 0; i < (contract_address.empty() ? 1 : 2); i++)
-    {
+bool rpc_command_executor::prepare_eth_registration(
+        std::string_view operator_address, std::string_view contract_address, bool print_only) {
+    for (size_t i = 0; i < (contract_address.empty() ? 1 : 2); i++) {
         auto eth_arg = (i == 0) ? operator_address : contract_address;
         if (eth_arg.starts_with("0x"))
             eth_arg.remove_prefix(2);
 
-        auto maybe_reg_info = try_running([this, &eth_arg]() {
-                return invoke<BLS_REGISTRATION>(json{{"address", eth_arg}});
+        auto maybe_reg_info = try_running(
+                [this, &eth_arg]() {
+                    return invoke<BLS_REGISTRATION>(json{{"address", eth_arg}});
                 },
                 "Failed to generate the service node registration info");
         if (!maybe_reg_info)
@@ -2732,47 +2733,50 @@ bool rpc_command_executor::prepare_eth_registration(std::string_view operator_ad
         auto bls_sig = reg_info["proof_of_possession"].get<std::string>();
         auto reg_type_str = (i == 0) ? "operator-only"sv : "multi-contributor"sv;
         tools::msg_writer("Printing info for {} staking\n", reg_type_str);
-        tools::msg_writer("ed25519_pubkey: {}\n"
-                                  "bls_pubkey: {}\n"
-                                  "ed25519_signature: {}\n"
-                                  "bls_signature: {}\n"
-                                  "operator_address: {}\n"
-                                  "multi-contributor contract address: {}\n",
-                                  snode_pubkey,
-                                  bls_pubkey,
-                                  ed_sig,
-                                  bls_sig,
-                                  operator_address,
-                                  contract_address);
+        tools::msg_writer(
+                "ed25519_pubkey: {}\n"
+                "bls_pubkey: {}\n"
+                "ed25519_signature: {}\n"
+                "bls_signature: {}\n"
+                "operator_address: {}\n"
+                "multi-contributor contract address: {}\n",
+                snode_pubkey,
+                bls_pubkey,
+                ed_sig,
+                bls_sig,
+                operator_address,
+                contract_address);
         if (print_only)
             continue;
 
-        std::string BASE_URL = "https://ssb.oxen.observer/api/"; // TODO: make config option
+        std::string BASE_URL = "https://ssb.oxen.observer/api/";  // TODO: make config option
 
-        tools::msg_writer("Submitting {} information to the staking website, please wait.", reg_type_str);
+        tools::msg_writer(
+                "Submitting {} information to the staking website, please wait.", reg_type_str);
         auto url = cpr::Url{BASE_URL + "store/" + snode_pubkey};
 
-        auto msg = cpr::Multipart{{"sig_ed25519"s, ed_sig},
-            {"pubkey_bls"s, bls_pubkey},
-            {"sig_bls"s, bls_sig},
-            {"operator"s, std::string{operator_address}}};
+        auto msg = cpr::Multipart{
+                {"sig_ed25519"s, ed_sig},
+                {"pubkey_bls"s, bls_pubkey},
+                {"sig_bls"s, bls_sig},
+                {"operator"s, std::string{operator_address}}};
 
         if (i == 1)
             msg.parts.emplace_back("contract", std::string{contract_address});
 
         auto response = cpr::Post(url, msg);
 
-        if (response.status_code != 200)
-        {
-            tools::fail_msg_writer("Something went wrong submitting {} information to the staking website: {}",
+        if (response.status_code != 200) {
+            tools::fail_msg_writer(
+                    "Something went wrong submitting {} information to the staking website: {}",
                     reg_type_str,
                     response.status_line);
-        }
-        else
-        {
-            tools::success_msg_writer("Submitted {} information to the staking website successfully!\n"
+        } else {
+            tools::success_msg_writer(
+                    "Submitted {} information to the staking website successfully!\n"
                     "View your registrations at: {}",
-                    reg_type_str, BASE_URL + "registrations/" + snode_pubkey);
+                    reg_type_str,
+                    BASE_URL + "registrations/" + snode_pubkey);
         }
     }
 

@@ -3492,7 +3492,9 @@ bool Blockchain::check_tx_inputs(
             "internal error: max used block index={} is not less than blockchain size={}",
             max_used_block_height,
             m_db->height());
-    max_used_block_id = m_db->get_block_hash_from_height(max_used_block_height);
+    max_used_block_id = max_used_block_height
+                              ? m_db->get_block_hash_from_height(max_used_block_height)
+                              : crypto::null<hash>;
     return true;
 }
 //------------------------------------------------------------------
