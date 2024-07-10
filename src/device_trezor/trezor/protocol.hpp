@@ -31,6 +31,7 @@
 #define MONERO_PROTOCOL_H
 
 #include "device/device_cold.hpp"
+#include "common/exception.h"
 #include "messages_map.hpp"
 #include "ringct/rctTypes.h"
 #include "transport.hpp"
@@ -340,7 +341,7 @@ namespace tx {
 
         bool is_simple() const {
             if (!m_ct.rv) {
-                throw std::invalid_argument("RV not initialized");
+                throw oxen::traced<std::invalid_argument>("RV not initialized");
             }
             auto tp = m_ct.rv->type;
             return tp == rct::RCTType::Simple;
@@ -352,7 +353,7 @@ namespace tx {
 
         bool is_bulletproof() const {
             if (!m_ct.rv) {
-                throw std::invalid_argument("RV not initialized");
+                throw oxen::traced<std::invalid_argument>("RV not initialized");
             }
             return rct::is_rct_bulletproof(m_ct.rv->type);
         }

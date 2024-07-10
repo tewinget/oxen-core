@@ -152,6 +152,13 @@ static constexpr std::array devnet_hard_forks = {
         hard_fork{hf::hf18, 0, 256, 1716310018},
         hard_fork{hf::hf19_reward_batching, 0, 257, 1716310019},
         hard_fork{hf::hf20_eth_transition, 0, 379, 1716310020},
+        hard_fork{hf::hf21_eth, 0, 409, 1716310020},
+};
+
+static constexpr std::array stagenet_hard_forks = {
+        hard_fork{hf::hf7, 0, 0, 1720230000},
+        hard_fork{hf::hf14_blink, 0, 1, 1720230014},
+        hard_fork{hf::hf21_eth, 0, 250, 1720230021},
 };
 
 template <size_t N>
@@ -183,62 +190,59 @@ static_assert(
         is_ordered(devnet_hard_forks),
         "Invalid devnet hard forks: version must start at 7, versions and heights must be strictly "
         "increasing, and timestamps must be non-decreasing");
+static_assert(
+        is_ordered(stagenet_hard_forks),
+        "Invalid devnet hard forks: version must start at 7, versions and heights must be strictly "
+        "increasing, and timestamps must be non-decreasing");
 
 std::vector<hard_fork> fakechain_hardforks;
 
-std::pair<const hard_fork*, const hard_fork*> get_hard_forks(network_type type) {
-    if (type == network_type::MAINNET)
-        return {&mainnet_hard_forks[0], &mainnet_hard_forks[mainnet_hard_forks.size()]};
-    if (type == network_type::TESTNET)
-        return {&testnet_hard_forks[0], &testnet_hard_forks[testnet_hard_forks.size()]};
-    if (type == network_type::DEVNET)
-        return {&devnet_hard_forks[0], &devnet_hard_forks[devnet_hard_forks.size()]};
-    if (type == network_type::FAKECHAIN)
-        return {fakechain_hardforks.data(),
-                fakechain_hardforks.data() + fakechain_hardforks.size()};
-    return {nullptr, nullptr};
+std::span<const hard_fork> get_hard_forks(network_type type) {
+    switch (type) {
+        case network_type::MAINNET: return mainnet_hard_forks;
+        case network_type::STAGENET: return stagenet_hard_forks;
+        case network_type::TESTNET: return testnet_hard_forks;
+        case network_type::DEVNET:
+        case network_type::LOCALDEV: return devnet_hard_forks;
+        case network_type::FAKECHAIN: return fakechain_hardforks;
+        case network_type::UNDEFINED:;
+    }
+    return {};
 }
 
 std::pair<std::optional<uint64_t>, std::optional<uint64_t>> get_hard_fork_heights(
         network_type nettype, hf version) {
     std::pair<std::optional<uint64_t>, std::optional<uint64_t>> found;
-    for (auto [it, end] = get_hard_forks(nettype); it != end; it++) {
-        if (it->version > version) {  // This (and anything else) are in the future
-            if (found.first)  // Found something suitable in the previous iteration, so one before
-                              // this hf is the max
-                found.second = it->height - 1;
+    for (auto& hf : get_hard_forks(nettype)) {
+        if (hf.version > version) {  // This (and anything else) are in the future
+            if (found.first)         // Found something suitable in the previous iteration, so one
+                                     // before this hf is the max
+                found.second = hf.height - 1;
             break;
-        } else if (it->version == version && !found.first) {
-            found.first = it->height;
+        } else if (hf.version == version && !found.first) {
+            found.first = hf.height;
         }
     }
     return found;
 }
 
 hard_fork get_latest_hard_fork(network_type nettype) {
-    if (nettype == network_type::MAINNET)
-        return mainnet_hard_forks.back();
-    if (nettype == network_type::TESTNET)
-        return testnet_hard_forks.back();
-    if (nettype == network_type::FAKECHAIN)
-        return fakechain_hardforks.back();
-    return devnet_hard_forks.back();
+    return get_hard_forks(nettype).back();
 }
 
 hf hard_fork_ceil(network_type nettype, hf version) {
-    auto [it, end] = get_hard_forks(nettype);
-    for (; it != end; it++)
-        if (it->version >= version)
-            return it->version;
+    for (auto& hf : get_hard_forks(nettype))
+        if (hf.version >= version)
+            return hf.version;
 
     return version;
 }
 
 std::pair<hf, uint8_t> get_network_version_revision(network_type nettype, uint64_t height) {
     std::pair<hf, uint8_t> result;
-    for (auto [it, end] = get_hard_forks(nettype); it != end; it++) {
-        if (it->height <= height)
-            result = {it->version, it->snode_revision};
+    for (auto& h : get_hard_forks(nettype)) {
+        if (h.height <= height)
+            result = {h.version, h.snode_revision};
         else
             break;
     }
@@ -251,13 +255,13 @@ bool is_hard_fork_at_least(network_type type, hf version, uint64_t height) {
 
 std::pair<hf, uint8_t> get_ideal_block_version(network_type nettype, uint64_t height) {
     std::pair<hf, uint8_t> result;
-    for (auto [it, end] = get_hard_forks(nettype); it != end; it++) {
-        if (it->height <= height) {
-            result.first = it->version;
-            result.second = it->snode_revision;
+    for (auto& h : get_hard_forks(nettype)) {
+        if (h.height <= height) {
+            result.first = h.version;
+            result.second = h.snode_revision;
         }
         if (result.first < hf::hf19_reward_batching)
-            result.second = static_cast<uint8_t>(it->version);
+            result.second = static_cast<uint8_t>(h.version);
     }
     return result;
 }

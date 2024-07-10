@@ -520,24 +520,24 @@ class node_server
 
 extern const command_line::arg_descriptor<std::string> arg_p2p_bind_ip;
 extern const command_line::arg_descriptor<std::string> arg_p2p_bind_ipv6_address;
-extern const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port;
-extern const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port_ipv6;
-extern const command_line::arg_descriptor<bool> arg_p2p_use_ipv6;
-extern const command_line::arg_descriptor<bool> arg_p2p_ignore_ipv4;
+extern const command_line::arg_descriptor<uint16_t> arg_p2p_bind_port;
+extern const command_line::arg_descriptor<uint16_t> arg_p2p_bind_port_ipv6;
+extern const command_line::arg_flag arg_p2p_use_ipv6;
+extern const command_line::arg_flag arg_p2p_ignore_ipv4;
 extern const command_line::arg_descriptor<uint32_t> arg_p2p_external_port;
-extern const command_line::arg_descriptor<bool> arg_p2p_allow_local_ip;
+extern const command_line::arg_flag arg_p2p_allow_local_ip;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_peer;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_priority_node;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_exclusive_node;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_seed_node;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_tx_proxy;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_anonymous_inbound;
-extern const command_line::arg_descriptor<bool> arg_p2p_hide_my_port;
-extern const command_line::arg_descriptor<bool> arg_no_sync;
+extern const command_line::arg_flag arg_p2p_hide_my_port;
+extern const command_line::arg_flag arg_no_sync;
 
-extern const command_line::arg_descriptor<bool> arg_no_igd;
+extern const command_line::arg_flag arg_no_igd;
 extern const command_line::arg_descriptor<std::string> arg_igd;
-extern const command_line::arg_descriptor<bool> arg_offline;
+extern const command_line::arg_flag arg_offline;
 extern const command_line::arg_descriptor<int64_t> arg_out_peers;
 extern const command_line::arg_descriptor<int64_t> arg_in_peers;
 extern const command_line::arg_descriptor<int> arg_tos_flag;

@@ -3,7 +3,6 @@
 #include <mcl/op.hpp>
 
 #include "crypto/eth.h"
-#include "crypto/hash.h"
 
 namespace bls {
 
@@ -22,15 +21,7 @@ void init();
 
 eth::bls_public_key to_crypto_pubkey(const bls::PublicKey& publicKey);
 bls::PublicKey from_crypto_pubkey(const eth::bls_public_key& pk);
-std::string PublicKeyToHex(const bls::PublicKey& publicKey);
 
 eth::bls_signature to_crypto_signature(const bls::Signature& sig);
 bls::Signature from_crypto_signature(const eth::bls_signature& sig);
-std::string SignatureToHex(const bls::Signature& sig);
-
-/// Verifies a signed hash, taking the eth::/crypto:: primitive types.  Returns true if the
-/// signature passes, false if verification fails.
-[[nodiscard]] bool verify(
-        const eth::bls_signature& sig, const crypto::hash& hash, const eth::bls_public_key& pk);
-
 }  // namespace bls_utils

@@ -237,7 +237,7 @@ namespace {
     }
 
     std::bitset<sizeof(uint16_t) * 8> bitset_view16(uint16_t val) {
-        std::bitset<sizeof(uint16_t)* 8> result = val;
+        std::bitset<sizeof(uint16_t) * 8> result = val;
         return result;
     }
 
@@ -782,9 +782,12 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
 // TODO(doyle): Update pulse::perpare_for_round with this function after the hard fork and sanity
 // check it on testnet.
 bool convert_time_to_round(
-        pulse::time_point const& time, pulse::time_point const& r0_timestamp, uint8_t* round) {
+        cryptonote::network_type nettype,
+        pulse::time_point const& time,
+        pulse::time_point const& r0_timestamp,
+        uint8_t* round) {
     const auto time_since_round_started = time <= r0_timestamp ? 0s : (time - r0_timestamp);
-    size_t result_usize = time_since_round_started / service_nodes::PULSE_ROUND_TIME;
+    size_t result_usize = time_since_round_started / get_config(nettype).PULSE_ROUND_TIMEOUT;
     if (round)
         *round = static_cast<uint8_t>(result_usize);
     return result_usize <= 255;
@@ -796,7 +799,8 @@ bool get_round_timings(
         uint64_t prev_timestamp,
         pulse::timings& times) {
     times = {};
-    auto hf16 = hard_fork_begins(blockchain.nettype(), cryptonote::hf::hf16_pulse);
+    auto& conf = get_config(blockchain.nettype());
+    auto hf16 = hard_fork_begins(conf.NETWORK_TYPE, cryptonote::hf::hf16_pulse);
     if (!hf16 || blockchain.get_current_blockchain_height() < *hf16)
         return false;
 
@@ -808,19 +812,15 @@ bool get_round_timings(
     times.genesis_timestamp = pulse::time_point(std::chrono::seconds(genesis_block.timestamp));
 
     times.prev_timestamp = pulse::time_point(std::chrono::seconds(prev_timestamp));
-    times.ideal_timestamp = pulse::time_point(
-            times.genesis_timestamp + (cryptonote::TARGET_BLOCK_TIME * delta_height));
+    times.ideal_timestamp =
+            pulse::time_point(times.genesis_timestamp + conf.TARGET_BLOCK_TIME * delta_height);
 
-#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)  // NOTE: Debug, make next block start relatively soon
-    times.r0_timestamp = times.prev_timestamp + service_nodes::PULSE_ROUND_TIME;
-#else
     times.r0_timestamp = std::clamp(
             times.ideal_timestamp,
-            times.prev_timestamp + service_nodes::PULSE_MIN_TARGET_BLOCK_TIME,
-            times.prev_timestamp + service_nodes::PULSE_MAX_TARGET_BLOCK_TIME);
-#endif
+            times.prev_timestamp + conf.TARGET_BLOCK_TIME - conf.PULSE_MAX_START_ADJUSTMENT,
+            times.prev_timestamp + conf.TARGET_BLOCK_TIME + conf.PULSE_MAX_START_ADJUSTMENT);
 
-    times.miner_fallback_timestamp = times.r0_timestamp + (service_nodes::PULSE_ROUND_TIME * 255);
+    times.miner_fallback_timestamp = times.r0_timestamp + (conf.PULSE_ROUND_TIMEOUT * 255);
     return true;
 }
 
@@ -1174,6 +1174,7 @@ namespace {
             round_context& context,
             service_nodes::service_node_keys const& key,
             cryptonote::Blockchain const& blockchain) {
+        auto& conf = get_config(blockchain.nettype());
         //
         // NOTE: Clear Round Data
         //
@@ -1217,7 +1218,7 @@ namespace {
                     now <= context.wait_for_next_block.round_0_start_time
                             ? std::chrono::seconds(0)
                             : (now - context.wait_for_next_block.round_0_start_time);
-            size_t round_usize = time_since_block / service_nodes::PULSE_ROUND_TIME;
+            size_t round_usize = time_since_block / conf.PULSE_ROUND_TIMEOUT;
 
             if (round_usize > 255)  // Network stalled
             {
@@ -1237,24 +1238,24 @@ namespace {
             using namespace service_nodes;
             context.prepare_for_round.start_time =
                     context.wait_for_next_block.round_0_start_time +
-                    (context.prepare_for_round.round * PULSE_ROUND_TIME);
+                    (context.prepare_for_round.round * conf.PULSE_ROUND_TIMEOUT);
             context.transient.send_and_wait_for_handshakes.stage.end_time =
-                    context.prepare_for_round.start_time + PULSE_WAIT_FOR_HANDSHAKES_DURATION;
+                    context.prepare_for_round.start_time + conf.PULSE_STAGE_TIMEOUT;
             context.transient.wait_for_handshake_bitsets.stage.end_time =
                     context.transient.send_and_wait_for_handshakes.stage.end_time +
-                    PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION;
+                    conf.PULSE_STAGE_TIMEOUT;
             context.transient.wait_for_block_template.stage.end_time =
                     context.transient.wait_for_handshake_bitsets.stage.end_time +
-                    PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION;
+                    conf.PULSE_STAGE_TIMEOUT;
             context.transient.random_value_hashes.wait.stage.end_time =
                     context.transient.wait_for_block_template.stage.end_time +
-                    PULSE_WAIT_FOR_RANDOM_VALUE_HASH_DURATION;
+                    conf.PULSE_STAGE_TIMEOUT;
             context.transient.random_value.wait.stage.end_time =
                     context.transient.random_value_hashes.wait.stage.end_time +
-                    PULSE_WAIT_FOR_RANDOM_VALUE_DURATION;
+                    conf.PULSE_STAGE_TIMEOUT;
             context.transient.signed_block.wait.stage.end_time =
                     context.transient.random_value.wait.stage.end_time +
-                    PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION;
+                    conf.PULSE_STAGE_TIMEOUT;
         }
 
         std::vector<crypto::hash> const entropy = service_nodes::get_pulse_entropy_for_next_block(

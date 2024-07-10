@@ -30,9 +30,9 @@
 #include "blockchain_db.h"
 
 #include <chrono>
-
 #include "checkpoints/checkpoints.h"
 #include "common/string_util.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_core/service_node_rules.h"
@@ -49,8 +49,8 @@ const command_line::arg_descriptor<std::string> arg_db_sync_mode = {
         "Specify sync option, using format "
         "[safe|fast|fastest]:[sync|async]:[<nblocks_per_sync>[blocks]|<nbytes_per_sync>[bytes]].",
         "fast:async:250000000bytes"};
-const command_line::arg_descriptor<bool> arg_db_salvage = {
-        "db-salvage", "Try to salvage a blockchain database if it seems corrupted", false};
+const command_line::arg_flag arg_db_salvage = {
+        "db-salvage", "Try to salvage a blockchain database if it seems corrupted"};
 
 std::unique_ptr<BlockchainDB> new_db() {
     return std::make_unique<BlockchainLMDB>();
@@ -168,7 +168,7 @@ uint64_t BlockchainDB::add_block(
 
     // sanity
     if (blk.tx_hashes.size() != txs.size())
-        throw std::runtime_error("Inconsistent tx/hashes sizes");
+        throw oxen::traced<std::runtime_error>("Inconsistent tx/hashes sizes");
 
     auto started = std::chrono::steady_clock::now();
     crypto::hash blk_hash = get_block_hash(blk);

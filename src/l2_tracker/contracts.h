@@ -1,7 +1,7 @@
 #pragma once
 
 #include "crypto/hash.h"
-#include "cryptonote_config.h"
+#include "networks.h"
 
 // Namespace for storing the ethereum contract, events, and function call signatures.
 namespace eth::contract {

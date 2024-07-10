@@ -26,17 +26,17 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <fmt/std.h>
-
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
-#include "common/command_line.h"
-#include "common/guts.h"
-#include "common/median.h"
-#include "common/varint.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_core/uptime_proof.h"
 #include "version.h"
+
+#include <common/command_line.h>
+#include <common/guts.h>
+#include <common/median.h>
+#include <common/exception.h>
+
+#include <fmt/std.h>
 
 namespace po = boost::program_options;
 using namespace cryptonote;
@@ -44,6 +44,7 @@ using namespace cryptonote;
 static auto logcat = log::Cat("bcutil");
 
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -60,12 +61,11 @@ int main(int argc, char* argv[]) {
             "txid", "Get min depth for this txid", ""};
     const command_line::arg_descriptor<uint64_t> arg_height = {
             "height", "Get min depth for all txes at this height", 0};
-    const command_line::arg_descriptor<bool> arg_include_coinbase = {
-            "include-coinbase", "Include coinbase in the average", false};
+    const command_line::arg_flag arg_include_coinbase{
+            "include-coinbase", "Include coinbase in the average"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_txid);
     command_line::add_arg(desc_cmd_sett, arg_height);
@@ -96,11 +96,7 @@ int main(int argc, char* argv[]) {
     oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    network_type net_type = opt_testnet ? network_type::TESTNET
-                          : opt_devnet  ? network_type::DEVNET
-                                        : network_type::MAINNET;
+    auto net_type = command_line::get_network(vm);
     std::string opt_txid_string = command_line::get_arg(vm, arg_txid);
     uint64_t opt_height = command_line::get_arg(vm, arg_height);
     bool opt_include_coinbase = command_line::get_arg(vm, arg_include_coinbase);
@@ -123,7 +119,7 @@ int main(int argc, char* argv[]) {
     auto bdb = new_db();
     if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 

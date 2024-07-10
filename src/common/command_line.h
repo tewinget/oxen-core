@@ -33,13 +33,18 @@
 #include <array>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
+#include <boost/program_options/value_semantic.hpp>
 #include <boost/program_options/variables_map.hpp>
+#include <concepts>
 #include <functional>
 #include <type_traits>
+#include <variant>
 
 #include "common/format.h"
 #include "common/i18n.h"
+#include "common/meta.h"
 #include "common/string_util.h"
+#include "cryptonote_config.h"
 #include "logging/oxen_logger.h"
 
 namespace command_line {
@@ -74,160 +79,108 @@ bool is_back(const S& str, const More&... more) {
     return tools::string_iequal_any(str, "b", "back", tr("back"), more...);
 }
 
-template <typename T, bool required = false, bool dependent = false, int NUM_DEPS = 1>
-struct arg_descriptor;
+struct required_t {};
+constexpr inline required_t required{};
 
-template <typename T, bool required>
-struct arg_descriptor<T, required> {
-    using value_type = T;
-
-    const char* name;
-    const char* description;
-    T default_value;
-    bool not_use_default;
-
-    static constexpr void validate() requires std::is_same_v<T, bool> { // NOTE: Evaluated if [T = bool]
-        static_assert(!required, "Boolean switch can't be required");
-    }
-};
-
-template <typename T, int NUM_DEPS>
-struct arg_descriptor<T, false, true, NUM_DEPS> {
-    using value_type = T;
-
-    const char* name;
-    const char* description;
-
-    T default_value;
-
-    std::array<const arg_descriptor<bool, false>*, NUM_DEPS> ref;
-    std::function<T(std::array<bool, NUM_DEPS>, bool, T)> depf;
-
-    bool not_use_default;
-};
-
-template <typename T>
-boost::program_options::typed_value<T, char>* make_semantic(
-        const arg_descriptor<T, true>& /*arg*/) {
-    return boost::program_options::value<T>()->required();
-}
-
-template <typename T>
-boost::program_options::typed_value<T, char>* make_semantic(const arg_descriptor<T, false>& arg) {
-    auto semantic = boost::program_options::value<T>();
-    if (!arg.not_use_default)
-        semantic->default_value(arg.default_value);
-    return semantic;
-}
+// Extra values that can be specified in a arg_descriptor constructor.  Currently supports just
+// `required` (but doesn't allow even that for a `bool` argument).
+template <typename Opt, typename T>
+concept arg_option = (std::same_as<required_t, T> && !std::same_as<Opt, bool>);
 
 namespace {
     template <typename T>
     std::string arg_stringify(const T& a) {
         return "{}"_format(a);
     }
+    template <>
+    std::string arg_stringify(const bool& b) {
+        return b ? "true" : "";
+    }
     template <typename T>
     std::string arg_stringify(const std::vector<T>& v) {
-        return "{{{}}}"_format(fmt::join(v, ","));
+        return v.empty() ? "" : "[{}]"_format(fmt::join(v, ","));
     }
 }  // namespace
 
 template <typename T>
-boost::program_options::typed_value<T, char>* make_semantic(
-        const arg_descriptor<T, false, true>& arg) {
-    auto semantic = boost::program_options::value<T>();
-    if (!arg.not_use_default) {
-        auto default_display = "{}, {} if '{}'"_format(
-                arg_stringify(arg.depf(false, true, arg.default_value)),
-                arg_stringify(arg.depf(true, true, arg.default_value)),
-                arg.ref.name);
-        semantic->default_value(
-                arg.depf(arg.ref.default_value, true, arg.default_value), default_display);
-    }
-    return semantic;
-}
+struct arg_descriptor {
+    using value_type = T;
 
-template <typename T, int NUM_DEPS>
-boost::program_options::typed_value<T, char>* make_semantic(
-        const arg_descriptor<T, false, true, NUM_DEPS>& arg) {
-    auto semantic = boost::program_options::value<T>();
-    if (!arg.not_use_default) {
-        std::array<bool, NUM_DEPS> depval;
-        depval.fill(false);
-        auto default_display = arg_stringify(arg.depf(depval, true, arg.default_value));
-        for (size_t i = 0; i < depval.size(); ++i) {
-            depval.fill(false);
-            depval[i] = true;
-            fmt::format_to(
-                    std::back_inserter(default_display),
-                    ", {} if '{}'",
-                    arg_stringify(arg.depf(depval, true, arg.default_value)),
-                    arg.ref[i]->name);
+    using default_cb = std::function<T(cryptonote::network_type)>;
+
+    std::string name;
+    std::string description;
+    // The default value variant: will be required_t for a no-default, required argument; otherwise
+    // a fixed default, or a network-dependent callback that returns the default.
+    std::variant<required_t, T, default_cb> default_value;
+
+    // Constructs an non-required arg descriptor from a name, description, and default-constructed
+    // T for default value.
+    template <arg_option<T>... Opts>
+    arg_descriptor(std::string name, std::string description) :
+            name{std::move(name)}, description{std::move(description)}, default_value{T{}} {}
+
+    // Constructs an non-required arg descriptor from a name, description, and default value.  This
+    // constructor is not available if T is bool (flags always default to false).
+    template <arg_option<T>... Opts>
+    arg_descriptor(std::string name, std::string description, T def)
+        requires(!std::same_as<T, bool>)
+            :
+            name{std::move(name)},
+            description{std::move(description)},
+            default_value{std::move(def)} {}
+
+    // Constructs an arg descriptor for a required argument.  This constructor is not available if T
+    // is bool (flags can never be required).
+    template <arg_option<T>... Opts>
+    arg_descriptor(std::string name, std::string description, required_t)
+        requires(!std::same_as<T, bool>)
+            : name{std::move(name)}, description{std::move(description)}, default_value{required} {}
+
+    // Constructs a non-required arg descriptor with a name, description, and network-dependent
+    // default value callback.
+    arg_descriptor(std::string name, std::string description, default_cb get_default) :
+            name{std::move(name)},
+            description{std::move(description)},
+            default_value{std::move(get_default)} {}
+
+    boost::program_options::typed_value<T, char>* make_semantic() const {
+        if constexpr (std::same_as<bool, T>)
+            return boost::program_options::bool_switch();
+        auto* semantic = boost::program_options::value<T>();
+        if (std::holds_alternative<required_t>(default_value))
+            semantic->required();
+        else if (auto* def = std::get_if<T>(&default_value)) {
+            if constexpr (!std::same_as<bool, T>)
+                semantic->default_value(*def, arg_stringify(*def));
+        } else {
+            auto* cb_ptr = std::get_if<default_cb>(&default_value);
+            assert(cb_ptr && *cb_ptr);
+            auto& cb = *cb_ptr;
+            auto mainnet_default = cb(cryptonote::network_type::MAINNET);
+            std::string default_disp = "{}; {}/{}/{} for stage/test/dev networks"_format(
+                    arg_stringify(mainnet_default),
+                    arg_stringify(cb(cryptonote::network_type::STAGENET)),
+                    arg_stringify(cb(cryptonote::network_type::TESTNET)),
+                    arg_stringify(cb(cryptonote::network_type::DEVNET)));
+            semantic->default_value(std::move(mainnet_default), std::move(default_disp));
         }
-        for (size_t i = 0; i < depval.size(); ++i)
-            depval[i] = arg.ref[i]->default_value;
-        semantic->default_value(arg.depf(depval, true, arg.default_value), default_display);
+
+        return semantic;
     }
-    return semantic;
-}
+};
 
-template <typename T>
-boost::program_options::typed_value<T, char>* make_semantic(
-        const arg_descriptor<T, false>& arg, const T& def) {
-    auto semantic = boost::program_options::value<T>();
-    if (!arg.not_use_default)
-        semantic->default_value(def);
-    return semantic;
-}
-
-template <typename T>
-boost::program_options::typed_value<std::vector<T>, char>* make_semantic(
-        const arg_descriptor<std::vector<T>, false>& /*arg*/) {
-    auto semantic = boost::program_options::value<std::vector<T>>();
-    semantic->default_value(std::vector<T>(), "");
-    return semantic;
-}
-
-template <typename T, bool required, bool dependent, int NUM_DEPS>
-void add_arg(
-        boost::program_options::options_description& description,
-        const arg_descriptor<T, required, dependent, NUM_DEPS>& arg,
-        bool unique = true) {
-    if (0 != description.find_nothrow(arg.name, false)) {
-        if (!unique)
-            log::error(globallogcat, "Argument already exists: {}", arg.name);
-        return;
-    }
-
-    description.add_options()(arg.name, make_semantic(arg), arg.description);
-}
+using arg_flag = arg_descriptor<bool>;
 
 template <typename T>
 void add_arg(
-        boost::program_options::options_description& description,
-        const arg_descriptor<T, false>& arg,
-        const T& def,
-        bool unique = true) {
+        boost::program_options::options_description& description, const arg_descriptor<T>& arg) {
     if (0 != description.find_nothrow(arg.name, false)) {
-        if (!unique)
-            log::error(globallogcat, "Argument already exists: {}", arg.name);
+        log::error(globallogcat, "Argument already exists: {}", arg.name);
         return;
     }
 
-    description.add_options()(arg.name, make_semantic(arg, def), arg.description);
-}
-
-template <>
-inline void add_arg(
-        boost::program_options::options_description& description,
-        const arg_descriptor<bool, false>& arg,
-        bool unique) {
-    if (0 != description.find_nothrow(arg.name, false)) {
-        if (!unique)
-            log::error(globallogcat, "Argument already exists: {}", arg.name);
-        return;
-    }
-
-    description.add_options()(arg.name, boost::program_options::bool_switch(), arg.description);
+    description.add_options()(arg.name.c_str(), arg.make_semantic(), arg.description.c_str());
 }
 
 template <typename charT>
@@ -247,53 +200,55 @@ boost::program_options::basic_parsed_options<charT> parse_command_line(
 bool handle_error_helper(
         const boost::program_options::options_description& desc, std::function<bool()> parser);
 
-template <typename T, bool required, bool dependent, int NUM_DEPS>
+template <typename T>
     requires(!std::same_as<T, bool>)
-bool has_arg(
-        const boost::program_options::variables_map& vm,
-        const arg_descriptor<T, required, dependent, NUM_DEPS>& arg) {
+bool has_arg(const boost::program_options::variables_map& vm, const arg_descriptor<T>& arg) {
     auto value = vm[arg.name];
     return !value.empty();
 }
 
-template <typename T, bool required, bool dependent, int NUM_DEPS>
+template <typename T>
 bool is_arg_defaulted(
-        const boost::program_options::variables_map& vm,
-        const arg_descriptor<T, required, dependent, NUM_DEPS>& arg) {
+        const boost::program_options::variables_map& vm, const arg_descriptor<T>& arg) {
     return vm[arg.name].defaulted();
 }
 
+/// Adds the --testnet, --devnet, etc. arguments to an options_description.  Use `get_network(vm)`
+/// after parsing CLI arguments to see which network is implied by the flags.
+void add_network_args(boost::program_options::options_description& od);
+
+/// Returns the network type implied by the current testnet/devnet/etc. network selection flags.
+cryptonote::network_type get_network(const boost::program_options::variables_map& vm);
+
 template <typename T>
-T get_arg(
-        const boost::program_options::variables_map& vm,
-        const arg_descriptor<T, false, true>& arg) {
-    return arg.depf(get_arg(vm, arg.ref), is_arg_defaulted(vm, arg), vm[arg.name].template as<T>());
-}
-
-template <typename T, int NUM_DEPS>
-T get_arg(
-        const boost::program_options::variables_map& vm,
-        const arg_descriptor<T, false, true, NUM_DEPS>& arg) {
-    std::array<bool, NUM_DEPS> depval;
-    for (size_t i = 0; i < depval.size(); ++i)
-        depval[i] = get_arg(vm, *arg.ref[i]);
-    return arg.depf(depval, is_arg_defaulted(vm, arg), vm[arg.name].template as<T>());
-}
-
-template <typename T, bool required>
-T get_arg(const boost::program_options::variables_map& vm, const arg_descriptor<T, required>& arg) {
+T get_arg(const boost::program_options::variables_map& vm, const arg_descriptor<T>& arg) {
+    using default_cb = arg_descriptor<T>::default_cb;
+    if (is_arg_defaulted(vm, arg)) {
+        if (auto* cb = std::get_if<default_cb>(&arg.default_value)) {
+            assert(*cb);
+            return (*cb)(get_network(vm));
+        }
+    }
     return vm[arg.name].template as<T>();
 }
 
-template <bool dependent, int NUM_DEPS>
-inline bool has_arg(
-        const boost::program_options::variables_map& vm,
-        const arg_descriptor<bool, false, dependent, NUM_DEPS>& arg) {
-    return get_arg(vm, arg);
+// Same as above, but fetches multiple arguments at once:
+template <tools::instantiation_of<arg_descriptor>... ArgDescriptor>
+std::tuple<typename ArgDescriptor::value_type...> get_args(
+        const boost::program_options::variables_map& vm, const ArgDescriptor&... arg) {
+    return std::make_tuple(get_arg(vm, arg)...);
 }
 
-extern const arg_descriptor<bool> arg_help;
-extern const arg_descriptor<bool> arg_version;
+extern const arg_flag arg_help;
+extern const arg_flag arg_version;
+
+// Network type arguments; we handle these centrally, here, as various other options defined
+// elsewhere have defaults that depend on the network type.
+extern const arg_flag arg_testnet;
+extern const arg_flag arg_devnet;
+extern const arg_flag arg_regtest;
+extern const arg_flag arg_stagenet;
+extern const arg_flag arg_localdev;
 
 /// Returns the terminal width and height (in characters), if supported on this system and
 /// available.  Returns {0,0} if not available or could not be determined.

@@ -30,6 +30,7 @@
 #include "device_trezor.hpp"
 
 #include "common/lock.h"
+#include "common/exception.h"
 
 namespace hw::trezor {
 
@@ -539,7 +540,7 @@ void device_trezor::tx_sign(
                     return true;
                 });
         if (!all_are_txin_to_key) {
-            throw std::invalid_argument("Not all are txin_to_key");
+            throw oxen::traced<std::invalid_argument>("Not all are txin_to_key");
         }
         cpend.key_images = key_images.str();
 

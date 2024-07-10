@@ -49,10 +49,10 @@ struct rpc_args {
 
         const command_line::arg_descriptor<std::string> rpc_bind_ip;
         const command_line::arg_descriptor<std::string> rpc_bind_ipv6_address;
-        const command_line::arg_descriptor<bool> rpc_use_ipv6;
-        const command_line::arg_descriptor<bool> rpc_ignore_ipv4;
+        const command_line::arg_flag rpc_use_ipv6;
+        const command_line::arg_flag rpc_ignore_ipv4;
         const command_line::arg_descriptor<std::string> rpc_login;
-        const command_line::arg_descriptor<bool> confirm_external_bind;
+        const command_line::arg_flag confirm_external_bind;
         const command_line::arg_descriptor<std::string> rpc_access_control_origins;
         const command_line::arg_descriptor<std::string> zmq_rpc_bind_ip;    // Deprecated & ignored
         const command_line::arg_descriptor<std::string> zmq_rpc_bind_port;  // Deprecated & ignored

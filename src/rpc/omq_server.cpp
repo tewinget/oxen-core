@@ -1,6 +1,7 @@
 
 #include "omq_server.h"
 
+#include <common/exception.h>
 #include <fmt/core.h>
 #include <fmt/std.h>
 #include <oxenc/bt.h>
@@ -75,7 +76,7 @@ namespace {
         // Crude check for basic validity; you can specify all sorts of invalid things, but at
         // least we can check the prefix for something that looks zmq-y.
         if (addr.size() < 7 || (addr.substr(0, 6) != "tcp://" && addr.substr(0, 6) != "ipc://"))
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Error: omq listen address '" + std::string(addr) +
                     "' is invalid: expected tcp://IP:PORT, tcp://[IPv6]:PORT or "
                     "ipc:///path/to/socket");
@@ -86,7 +87,7 @@ namespace {
         pks.reserve(pk_strings.size());
         for (const auto& pkstr : pk_strings) {
             if (pkstr.size() != 64 || !oxenc::is_hex(pkstr))
-                throw std::runtime_error(
+                throw oxen::traced<std::runtime_error>(
                         "Invalid OMQ login pubkey: '" + pkstr + "'; expected 64-char hex pubkey");
             pks.emplace_back();
             oxenc::to_hex(pkstr.begin(), pkstr.end(), reinterpret_cast<char*>(&pks.back()));
@@ -125,7 +126,7 @@ omq_rpc::omq_rpc(
     // have the quorumnet listener set up in cryptonote_core).
     for (const auto& addr : command_line::get_arg(vm, arg_omq_public)) {
         check_omq_listen_addr(addr);
-        log::info(logcat, "OMQ listening on {} (public unencrypted)", addr);
+        log::info(globallogcat, "OMQ listening on {} (public unencrypted)", addr);
         omq.listen_plain(addr, [&core](std::string_view ip, std::string_view pk, bool /*sn*/) {
             return core.omq_allow(ip, pk, AuthLevel::basic);
         });
@@ -133,7 +134,7 @@ omq_rpc::omq_rpc(
 
     for (const auto& addr : command_line::get_arg(vm, arg_omq_curve_public)) {
         check_omq_listen_addr(addr);
-        log::info(logcat, "OMQ listening on {} (public curve)", addr);
+        log::info(globallogcat, "OMQ listening on {} (public curve)", addr);
         omq.listen_curve(addr, [&core](std::string_view ip, std::string_view pk, bool /*sn*/) {
             return core.omq_allow(ip, pk, AuthLevel::basic);
         });
@@ -141,7 +142,7 @@ omq_rpc::omq_rpc(
 
     for (const auto& addr : command_line::get_arg(vm, arg_omq_curve)) {
         check_omq_listen_addr(addr);
-        log::info(logcat, "OMQ listening on {} (curve restricted)", addr);
+        log::info(globallogcat, "OMQ listening on {} (curve restricted)", addr);
         omq.listen_curve(addr, [&core](std::string_view ip, std::string_view pk, bool /*sn*/) {
             return core.omq_allow(ip, pk, AuthLevel::denied);
         });
@@ -167,7 +168,7 @@ omq_rpc::omq_rpc(
     }
     for (const auto& addr : locals) {
         check_omq_listen_addr(addr);
-        log::info(logcat, "OMQ listening on {} (unauthenticated local admin)", addr);
+        log::info(globallogcat, "OMQ listening on {} (unauthenticated local admin)", addr);
         omq.listen_plain(addr, [&core](std::string_view ip, std::string_view pk, bool /*sn*/) {
             return core.omq_allow(ip, pk, AuthLevel::admin);
         });
@@ -180,12 +181,12 @@ omq_rpc::omq_rpc(
         size_t len = 0;
         umask = std::stoi(umask_str, &len, 8);
         if (len != umask_str.size())
-            throw std::invalid_argument("not an octal value");
+            throw oxen::traced<std::invalid_argument>("not an octal value");
         if (umask < 0 || umask > 0777)
-            throw std::invalid_argument("invalid umask value");
+            throw oxen::traced<std::invalid_argument>("invalid umask value");
         omq.STARTUP_UMASK = umask;
     } catch (const std::exception& e) {
-        throw std::invalid_argument(
+        throw oxen::traced<std::invalid_argument>(
                 "Invalid --lmq-umask value '" + umask_str +
                 "': value must be an octal value between 0 and 0777");
     }

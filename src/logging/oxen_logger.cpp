@@ -27,6 +27,7 @@ void set_additional_log_categories(log::Level& log_level) {
             log::set_level("serialization", log::Level::err);
             log::set_level("logging", log::Level::info);
             log::set_level("msgwriter", log::Level::info);
+            log::set_level("daemon", log::Level::info);
             break;
         case log::Level::info:
             log::set_level("net", log::Level::err);
@@ -105,6 +106,8 @@ void init(const std::string& log_location, std::string_view log_levels, bool log
         std::cerr << "Incorrect log level string: " << log_levels << std::endl;
         throw std::runtime_error{"Invalid log level or log categories"};
     }
+    if (!cats.default_level)
+        cats.default_level = log::Level::warn;
 
     if (log_to_stdout)
         log::add_sink(log::Type::Print, "stdout");
@@ -141,7 +144,7 @@ using namespace std::literals;
 
 using strlvl = std::pair<std::string_view, log::Level>;
 static constexpr std::array logLevels = {
-        strlvl{""sv, log::Level::info},         strlvl{"4"sv, log::Level::trace},
+        strlvl{""sv, log::Level::warn},         strlvl{"4"sv, log::Level::trace},
         strlvl{"3"sv, log::Level::trace},       strlvl{"2"sv, log::Level::debug},
         strlvl{"1"sv, log::Level::info},        strlvl{"0"sv, log::Level::warn},
         strlvl{"trace"sv, log::Level::trace},   strlvl{"trc"sv, log::Level::trace},

@@ -33,4 +33,7 @@ endforeach()
 
 configure_file(blocks.cpp.in blocks.cpp @ONLY)
 add_library(blocks "${CMAKE_CURRENT_BINARY_DIR}/blocks.cpp")
-target_link_libraries(blocks PRIVATE extra)
+target_link_libraries(blocks
+    PRIVATE
+    $<$<CONFIG:Debug>:cpptrace::cpptrace>
+    extra)

@@ -103,8 +103,12 @@ class Notify;
 class gamma_picker {
   public:
     uint64_t pick();
-    gamma_picker(const std::vector<uint64_t>& rct_offsets);
-    gamma_picker(const std::vector<uint64_t>& rct_offsets, double shape, double scale);
+    gamma_picker(cryptonote::network_type nettype, const std::vector<uint64_t>& rct_offsets);
+    gamma_picker(
+            cryptonote::network_type nettype,
+            const std::vector<uint64_t>& rct_offsets,
+            double shape,
+            double scale);
 
   private:
     struct gamma_engine {
@@ -293,8 +297,6 @@ class wallet2 {
     static const char* ERR_MSG_TOO_MANY_TXS_CONSTRUCTED;
     static const char* ERR_MSG_EXCEPTION_THROWN;
 
-    static bool has_testnet_option(const boost::program_options::variables_map& vm);
-    static bool has_devnet_option(const boost::program_options::variables_map& vm);
     static std::vector<std::string> has_deprecated_options(
             const boost::program_options::variables_map& vm);
     static bool has_disable_rpc_long_poll(const boost::program_options::variables_map& vm);

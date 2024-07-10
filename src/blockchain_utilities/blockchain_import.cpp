@@ -40,9 +40,10 @@
 #include "blocks/blocks.h"
 #include "bootstrap_file.h"
 #include "bootstrap_serialization.h"
+#include "common/command_line.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_core/uptime_proof.h"
 #include "cryptonote_protocol/quorumnet.h"
 #include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
@@ -55,8 +56,6 @@ namespace {
 bool opt_batch = true;
 bool opt_verify = true;  // use add_new_block, which does verification before calling add_block
 bool opt_resume = true;
-bool opt_testnet = true;
-bool opt_devnet = true;
 
 // number of blocks per batch transaction
 // adjustable through command-line argument according to available RAM
@@ -73,13 +72,9 @@ uint64_t db_batch_size_verify = 5000;
 
 std::string refresh_string = "\r                                    \r";
 
-const command_line::arg_descriptor<bool> arg_recalculate_difficulty = {
+const command_line::arg_flag arg_recalculate_difficulty{
         "recalculate-difficulty",
-        "Recalculate per-block difficulty starting from the height specified",
-        // This is now enabled by default because the network broke at 526483 because of divergent
-        // difficulty values (and the chain that kept going violated the correct difficulty, and got
-        // checkpointed multiple times because enough of the network followed it).
-        false};
+        "Recalculate per-block difficulty starting from the height specified"};
 }  // namespace
 
 namespace po = boost::program_options;
@@ -310,14 +305,15 @@ int import_from_file(
         try {
             serialization::parse_binary(std::string_view{buffer1, sizeof(chunk_size)}, chunk_size);
         } catch (const std::exception& e) {
-            throw std::runtime_error("Error in deserialization of chunk size: "s + e.what());
+            throw oxen::traced<std::runtime_error>(
+                    "Error in deserialization of chunk size: "s + e.what());
         }
         log::debug(logcat, "chunk_size: {}", chunk_size);
 
         if (chunk_size > BUFFER_SIZE) {
             log::warning(
                     logcat, "WARNING: chunk_size {} > BUFFER_SIZE {}", chunk_size, BUFFER_SIZE);
-            throw std::runtime_error("Aborting: chunk size exceeds buffer size");
+            throw oxen::traced<std::runtime_error>("Aborting: chunk size exceeds buffer size");
         }
         if (chunk_size > CHUNK_SIZE_WARNING_THRESHOLD) {
             log::info(logcat, "NOTE: chunk_size {} > {}", chunk_size, CHUNK_SIZE_WARNING_THRESHOLD);
@@ -362,7 +358,8 @@ int import_from_file(
             try {
                 serialization::parse_binary(std::string_view{buffer_block, chunk_size}, bp);
             } catch (const std::exception& e) {
-                throw std::runtime_error("Error in deserialization of chunk"s + e.what());
+                throw oxen::traced<std::runtime_error>(
+                        "Error in deserialization of chunk"s + e.what());
             }
 
             int display_interval = 1000;
@@ -501,6 +498,7 @@ quitting:
 }
 
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -518,7 +516,7 @@ int main(int argc, char* argv[]) {
     po::options_description desc_cmd_sett(
             "Command line options and settings options", opt_size.first, opt_size.second);
     const command_line::arg_descriptor<std::string> arg_input_file = {
-            "input-file", "Specify input file", "", true};
+            "input-file", "Specify input file"};
     const command_line::arg_descriptor<std::string> arg_log_level = {
             "log-level", "0-4 or categories", ""};
     const command_line::arg_descriptor<uint64_t> arg_block_stop = {
@@ -526,17 +524,15 @@ int main(int argc, char* argv[]) {
     const command_line::arg_descriptor<uint64_t> arg_batch_size = {"batch-size", "", db_batch_size};
     const command_line::arg_descriptor<uint64_t> arg_pop_blocks = {
             "pop-blocks", "Remove blocks from end of blockchain", num_blocks};
-    const command_line::arg_descriptor<bool> arg_count_blocks = {
-            "count-blocks", "Count blocks in bootstrap file and exit", false};
-    const command_line::arg_descriptor<bool> arg_noverify = {
+    const command_line::arg_flag arg_count_blocks = {
+            "count-blocks", "Count blocks in bootstrap file and exit"};
+    const command_line::arg_flag arg_noverify = {
             "dangerous-unverified-import",
             "Blindly trust the import file and use potentially malicious blocks and transactions "
-            "during import (only enable if you exported the file yourself)",
-            false};
-    const command_line::arg_descriptor<bool> arg_batch = {
-            "batch", "Batch transactions for faster import", true};
-    const command_line::arg_descriptor<bool> arg_resume = {
-            "resume", "Resume from current height if output database already exists", true};
+            "during import (only enable if you exported the file yourself)"};
+    const command_line::arg_flag arg_batch = {"batch", "Batch transactions for faster import"};
+    const command_line::arg_flag arg_resume = {
+            "resume", "Resume from current height if output database already exists"};
 
     command_line::add_arg(desc_cmd_sett, arg_input_file);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
@@ -552,9 +548,11 @@ int main(int argc, char* argv[]) {
     // call add_options() directly for these arguments since
     // command_line helpers support only boolean switch, not boolean argument
     desc_cmd_sett.add_options()(
-            arg_noverify.name, make_semantic(arg_noverify), arg_noverify.description)(
-            arg_batch.name, make_semantic(arg_batch), arg_batch.description)(
-            arg_resume.name, make_semantic(arg_resume), arg_resume.description);
+            arg_noverify.name.c_str(),
+            arg_noverify.make_semantic(),
+            arg_noverify.description.c_str())(
+            arg_batch.name.c_str(), arg_batch.make_semantic(), arg_batch.description.c_str())(
+            arg_resume.name.c_str(), arg_resume.make_semantic(), arg_resume.description.c_str());
 
     po::options_description desc_options("Allowed options");
     desc_options.add(desc_cmd_only).add(desc_cmd_sett);
@@ -600,12 +598,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    if (opt_testnet && opt_devnet) {
-        std::cerr << "Error: Can't specify more than one of --testnet and --devnet\n";
-        return 1;
-    }
+    auto net_type = command_line::get_network(vm);
     m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
     auto log_file_path = m_config_folder + "oxen-blockchain-import.log";
     oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
@@ -613,13 +606,13 @@ int main(int argc, char* argv[]) {
 
     fs::path import_file_path;
 
-    if (command_line::has_arg(vm, arg_input_file))
+    if (!command_line::is_arg_defaulted(vm, arg_input_file))
         import_file_path = tools::utf8_path(command_line::get_arg(vm, arg_input_file));
     else
         import_file_path =
                 tools::utf8_path(m_config_folder) / fs::path(u8"export") / BLOCKCHAIN_RAW;
 
-    if (command_line::has_arg(vm, arg_count_blocks)) {
+    if (command_line::get_arg(vm, arg_count_blocks)) {
         BootstrapFile bootstrap;
         bootstrap.count_blocks(import_file_path);
         return 0;
@@ -633,7 +626,7 @@ int main(int argc, char* argv[]) {
         log::info(logcat, "batch:   {}", opt_batch);
     }
     log::info(logcat, "resume:  {}", opt_resume);
-    log::info(logcat, "nettype: {}", (opt_testnet ? "testnet" : opt_devnet ? "devnet" : "mainnet"));
+    log::info(logcat, "nettype: {}", network_type_to_string(net_type));
 
     log::info(logcat, "bootstrap file path: {}", import_file_path);
     log::info(logcat, "database path:       {}", m_config_folder);

@@ -59,7 +59,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     miner_accounts[n].generate();
     CHECK_AND_ASSERT_MES(generator.construct_block_manually(blocks[n], *prev_block, miner_accounts[n],
         test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
-        cryptonote::hf::hf7, 2, prev_block->timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+        cryptonote::hf::hf7, 2, prev_block->timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
           crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
         false, "Failed to generate block");
     events.push_back(blocks[n]);
@@ -75,7 +75,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       cryptonote::block blk;
       CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk, blk_last, miner_account,
           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
-          cryptonote::hf::hf7, 2, blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+          cryptonote::hf::hf7, 2, blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
           crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
           false, "Failed to generate block");
       events.push_back(blk);
@@ -144,7 +144,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
 
     CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk_txes[n], blk_last, miner_account,
         test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_tx_hashes | test_generator::bf_hf_version,
-        cryptonote::hf::hf7, 4, blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+        cryptonote::hf::hf7, 4, blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
         crypto::hash(), 0, transaction(), starting_rct_tx_hashes, 0),
         false, "Failed to generate block");
     events.push_back(blk_txes[n]);
@@ -158,7 +158,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       cryptonote::block blk;
       CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk, blk_last, miner_account,
           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
-          last_version, static_cast<uint8_t>(last_version), blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+          last_version, static_cast<uint8_t>(last_version), blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
           crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
           false, "Failed to generate block");
       events.push_back(blk);

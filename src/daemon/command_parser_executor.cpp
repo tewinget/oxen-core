@@ -267,6 +267,60 @@ bool command_parser_executor::prepare_registration(const std::vector<std::string
     return m_executor.prepare_registration(force_registration);
 }
 
+bool command_parser_executor::prepare_eth_registration(const std::vector<std::string>& args) {
+    constexpr auto usage = "Eth registration args: <operator address> [multi-contributor contract address] [\"print_only\"]"sv;
+
+    auto argc = args.size();
+    if (argc < 1)
+    {
+        log::error(logcat, usage);
+        return false;
+    }
+    if (args[0].size() != 42)
+    {
+        log::error(logcat, usage);
+        return false;
+    }
+    const auto operator_address = std::string_view{args[0]};
+    auto contract_address = ""sv;
+    bool print_only = false;
+    if (argc == 2)
+    {
+        if (args[1] != "print_only")
+        {
+            if (args[1].size() != 42)
+            {
+                log::error(logcat, usage);
+                return false;
+            }
+            contract_address = std::string_view{args[1]};
+        }
+        else
+            print_only = true;
+    }
+    else if (argc == 3)
+    {
+        if (args[2] != "print_only")
+        {
+            log::error(logcat, usage);
+            return false;
+        }
+        print_only = true;
+        if (args[1].size() != 42)
+        {
+            log::error(logcat, usage);
+            return false;
+        }
+        contract_address = std::string_view{args[1]};
+    }
+    else
+    {
+        log::error(logcat, usage);
+        return false;
+    }
+    return m_executor.prepare_eth_registration(operator_address, contract_address, print_only);
+}
+
 bool command_parser_executor::print_sn(const std::vector<std::string>& args) {
     bool result = m_executor.print_sn(args);
     return result;
@@ -429,6 +483,9 @@ bool command_parser_executor::start_mining(const std::vector<std::string>& args)
     else if (cryptonote::get_account_address_from_str(
                      info, cryptonote::network_type::DEVNET, args.front()))
         nettype = cryptonote::network_type::DEVNET;
+    else if (cryptonote::get_account_address_from_str(
+                     info, cryptonote::network_type::STAGENET, args.front()))
+        nettype = cryptonote::network_type::STAGENET;
     else {
         std::cout << "target account address has wrong format" << std::endl;
         return true;

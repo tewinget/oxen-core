@@ -45,14 +45,13 @@ namespace cryptonote::rpc {
 class http_server : public http_server_base {
   public:
     static const command_line::arg_descriptor<std::vector<std::string>> arg_rpc_public;
-    static const command_line::arg_descriptor<std::vector<std::string>, false, true, 2>
-            arg_rpc_admin;
+    static const command_line::arg_descriptor<std::vector<std::string>> arg_rpc_admin;
 
     // Deprecated:
     static const command_line::arg_descriptor<uint16_t> arg_rpc_bind_port;
     static const command_line::arg_descriptor<uint16_t> arg_rpc_restricted_bind_port;
-    static const command_line::arg_descriptor<bool> arg_restricted_rpc;
-    static const command_line::arg_descriptor<bool> arg_public_node;
+    static const command_line::arg_flag arg_restricted_rpc;
+    static const command_line::arg_flag arg_public_node;
 
     static void init_options(
             boost::program_options::options_description& desc,

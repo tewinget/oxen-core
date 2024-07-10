@@ -46,14 +46,15 @@
 #include <tuple>
 #include <vector>
 
+#include "common/command_line.h"
 #include "common/file.h"
 #include "common/periodic_task.h"
 #include "common/pruning.h"
 #include "common/string_util.h"
 #include "crypto/crypto.h"
+#include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_basic/connection_context.h"
 #include "epee/misc_log_ex.h"
 #include "epee/net/local_ip.h"
 #include "epee/storages/levin_abstract_invoke2.h"
@@ -95,8 +96,8 @@ void node_server<t_payload_net_handler>::init_options(
         boost::program_options::options_description& hidden) {
     command_line::add_arg(desc, arg_p2p_bind_ip);
     command_line::add_arg(desc, arg_p2p_bind_ipv6_address);
-    command_line::add_arg(desc, arg_p2p_bind_port, false);
-    command_line::add_arg(desc, arg_p2p_bind_port_ipv6, false);
+    command_line::add_arg(desc, arg_p2p_bind_port);
+    command_line::add_arg(desc, arg_p2p_bind_port_ipv6);
     command_line::add_arg(desc, arg_p2p_use_ipv6);
     command_line::add_arg(desc, arg_p2p_ignore_ipv4);
     command_line::add_arg(desc, arg_p2p_external_port);
@@ -330,20 +331,15 @@ bool node_server<t_payload_net_handler>::add_host_fail(
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::handle_command_line(
         const boost::program_options::variables_map& vm) {
-    bool testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    bool fakenet = command_line::get_arg(vm, cryptonote::arg_regtest_on);
-    m_nettype = testnet ? cryptonote::network_type::TESTNET
-              : devnet  ? cryptonote::network_type::DEVNET
-              : fakenet ? cryptonote::network_type::FAKECHAIN
-                        : cryptonote::network_type::MAINNET;
+
+    m_nettype = command_line::get_network(vm);
 
     network_zone& public_zone = m_network_zones[epee::net_utils::zone::public_];
     public_zone.m_connect = &public_connect;
     public_zone.m_bind_ip = command_line::get_arg(vm, arg_p2p_bind_ip);
     public_zone.m_bind_ipv6_address = command_line::get_arg(vm, arg_p2p_bind_ipv6_address);
-    public_zone.m_port = command_line::get_arg(vm, arg_p2p_bind_port);
-    public_zone.m_port_ipv6 = command_line::get_arg(vm, arg_p2p_bind_port_ipv6);
+    public_zone.m_port = "{}"_format(command_line::get_arg(vm, arg_p2p_bind_port));
+    public_zone.m_port_ipv6 = "{}"_format(command_line::get_arg(vm, arg_p2p_bind_port_ipv6));
     public_zone.m_can_pingback = true;
     m_external_port = command_line::get_arg(vm, arg_p2p_external_port);
     m_allow_local_ip = command_line::get_arg(vm, arg_p2p_allow_local_ip);
@@ -406,10 +402,10 @@ bool node_server<t_payload_net_handler>::handle_command_line(
             return false;
     }
 
-    if (command_line::has_arg(vm, arg_p2p_hide_my_port))
+    if (command_line::get_arg(vm, arg_p2p_hide_my_port))
         m_hide_my_port = true;
 
-    if (command_line::has_arg(vm, arg_no_sync))
+    if (command_line::get_arg(vm, arg_no_sync))
         m_payload_handler.set_no_sync(true);
 
     if (!set_max_out_peers(public_zone, command_line::get_arg(vm, arg_out_peers)))
@@ -574,14 +570,16 @@ std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes(
         full_addrs.insert("144.76.164.202:38156");  // public-eu.optf.ngo
     } else if (nettype == cryptonote::network_type::DEVNET) {
         full_addrs.insert("144.76.164.202:38856");
-    } else if (nettype == cryptonote::network_type::FAKECHAIN) {
-    } else {
+    } else if (nettype == cryptonote::network_type::STAGENET) {
+        full_addrs.insert("104.243.40.38:11022");  // angus.oxen.io
+    } else if (nettype == cryptonote::network_type::MAINNET) {
         full_addrs.insert("116.203.196.12:22022");  // Hetzner seed node
         full_addrs.insert("185.150.191.32:22022");  // Jason's seed node
         full_addrs.insert("199.127.60.6:22022");    // Oxen Foundation server "holstein"
         full_addrs.insert("23.88.6.250:22022");     // Official Session open group server
         full_addrs.insert("104.194.8.115:22000");   // Oxen Foundation server "brahman"
     }
+    // LOCALDEV and FAKECHAIN don't have seed nodes
     return full_addrs;
 }
 //-----------------------------------------------------------------------------------
@@ -589,11 +587,7 @@ template <class t_payload_net_handler>
 std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes() {
     if (!m_exclusive_peers.empty() || m_offline)
         return {};
-    if (m_nettype == cryptonote::network_type::TESTNET)
-        return get_seed_nodes(cryptonote::network_type::TESTNET);
-    if (m_nettype == cryptonote::network_type::DEVNET)
-        return get_seed_nodes(cryptonote::network_type::DEVNET);
-    return get_seed_nodes(cryptonote::network_type::MAINNET);
+    return get_seed_nodes(m_nettype);
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
@@ -618,11 +612,7 @@ bool node_server<t_payload_net_handler>::init(const boost::program_options::vari
     bool res = handle_command_line(vm);
     CHECK_AND_ASSERT_MES(res, false, "Failed to handle command line");
 
-    memcpy(&m_network_id,
-           m_nettype == cryptonote::network_type::TESTNET ? &cryptonote::config::testnet::NETWORK_ID
-           : m_nettype == cryptonote::network_type::DEVNET ? &cryptonote::config::devnet::NETWORK_ID
-                                                           : &cryptonote::config::NETWORK_ID,
-           16);
+    memcpy(&m_network_id, &get_config(m_nettype).NETWORK_ID, 16);
 
     m_config_folder = fs::path{
             tools::convert_sv<char8_t>(command_line::get_arg(vm, cryptonote::arg_data_dir))};
@@ -1806,7 +1796,9 @@ bool node_server<t_payload_net_handler>::check_incoming_connections() {
         get_incoming_connections_count(public_zone->second) == 0) {
         if (m_hide_my_port ||
             public_zone->second.m_config.m_net_config.max_in_connection_count == 0) {
-            log::info(logcat, "Incoming connections disabled, enable them for full connectivity");
+            log::warning(
+                    globallogcat,
+                    "Incoming connections disabled, enable them for full connectivity");
         } else {
             log::warning(
                     logcat,

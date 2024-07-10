@@ -122,7 +122,7 @@ namespace {
             if (auto body = request.body_view())
                 data = *body;
             else
-                throw std::runtime_error{
+                throw oxen::traced<std::runtime_error>{
                         "Internal error: can't load binary a RPC command with non-string body"};
             if (!epee::serialization::load_t_from_binary(req, data))
                 throw parse_error{"Failed to parse binary data parameters"};
@@ -203,22 +203,20 @@ void core_rpc_server::invoke(GET_HEIGHT& get_height, [[maybe_unused]] rpc_contex
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context context) {
 
-    auto [top_height, top_hash] = m_core.get_blockchain_top();
-
     auto& bs = m_core.get_blockchain_storage();
     auto& db = bs.get_db();
-
-    auto prev_ts = db.get_block_timestamp(top_height);
-    auto height = top_height + 1;  // turn top block height into blockchain height
+    const cryptonote::block top_block = db.get_top_block();
+    auto height = top_block.height + 1;  // turn top block height into blockchain height
 
     info.response["height"] = height;
-    info.response_hex["top_block_hash"] = top_hash;
+    info.response["l2_height"] = top_block.l2_height;
+    info.response_hex["top_block_hash"] = top_block.hash;
     info.response["target_height"] = m_core.get_target_blockchain_height();
 
     info.response["hard_fork"] = m_core.get_blockchain_storage().get_network_version();
 
     bool next_block_is_pulse = false;
-    if (pulse::timings t; pulse::get_round_timings(bs, height, prev_ts, t)) {
+    if (pulse::timings t; pulse::get_round_timings(bs, height, top_block.timestamp, t)) {
         info.response["pulse_ideal_timestamp"] =
                 tools::to_seconds(t.ideal_timestamp.time_since_epoch());
         info.response["pulse_target_timestamp"] =
@@ -226,7 +224,8 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
         next_block_is_pulse = pulse::clock::now() < t.miner_fallback_timestamp;
     }
 
-    if (cryptonote::checkpoint_t checkpoint; db.get_immutable_checkpoint(&checkpoint, top_height)) {
+    if (cryptonote::checkpoint_t checkpoint;
+        db.get_immutable_checkpoint(&checkpoint, top_block.height)) {
         info.response["immutable_height"] = checkpoint.height;
         info.response_hex["immutable_block_hash"] = checkpoint.block_hash;
     }
@@ -236,7 +235,7 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
     else
         info.response["difficulty"] = bs.get_difficulty_for_next_block(next_block_is_pulse);
 
-    info.response["target"] = tools::to_seconds(TARGET_BLOCK_TIME);
+    info.response["target"] = tools::to_seconds(m_core.get_net_config().TARGET_BLOCK_TIME);
     // This count seems broken: blocks with no outputs (after batching) shouldn't be subtracted, and
     // 0-output txes (SN state changes) arguably shouldn't be, either.
     info.response["tx_count"] =
@@ -254,23 +253,14 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
 
     cryptonote::network_type nettype = m_core.get_nettype();
     info.response["mainnet"] = nettype == network_type::MAINNET;
-    if (nettype == network_type::TESTNET)
-        info.response["testnet"] = true;
-    else if (nettype == network_type::DEVNET)
-        info.response["devnet"] = true;
-    else if (nettype != network_type::MAINNET)
-        info.response["fakechain"] = true;
-    info.response["nettype"] = nettype == network_type::MAINNET ? "mainnet"
-                             : nettype == network_type::TESTNET ? "testnet"
-                             : nettype == network_type::DEVNET  ? "devnet"
-                                                                : "fakechain";
+    info.response["nettype"] = network_type_to_string(nettype);
 
     try {
-        auto cd = db.get_block_cumulative_difficulty(top_height);
+        auto cd = db.get_block_cumulative_difficulty(top_block.height);
         info.response["cumulative_difficulty"] = cd;
     } catch (std::exception const& e) {
-        info.response["status"] =
-                "Error retrieving cumulative difficulty at height " + std::to_string(top_height);
+        info.response["status"] = "Error retrieving cumulative difficulty at height " +
+                                  std::to_string(top_block.height);
         return;
     }
 
@@ -593,8 +583,12 @@ namespace {
             return *x = std::forward<T>(value);
         }
 
-        void operator()(const tx_extra_pub_key& x) { set("pubkey", x.pub_key); }
+        void operator()(const tx_extra_pub_key& x) {
+            set("type", "pub_key");
+            set("pubkey", x.pub_key);
+        }
         void operator()(const tx_extra_nonce& x) {
+            set("type", "nonce");
             if ((x.nonce.size() == sizeof(crypto::hash) + 1 &&
                  x.nonce[0] == TX_EXTRA_NONCE_PAYMENT_ID) ||
                 (x.nonce.size() == sizeof(crypto::hash8) + 1 &&
@@ -604,21 +598,26 @@ namespace {
                 set("extra_nonce", x.nonce, true);
         }
         void operator()(const tx_extra_merge_mining_tag& x) {
+            set("type", "merge_mining_tag");
             set("mm_depth", x.depth);
             set("mm_root", x.merkle_root);
         }
         void operator()(const tx_extra_additional_pub_keys& x) {
+            set("type", "additional_pub_keys");
             set("additional_pubkeys", x.data);
         }
         void operator()(const tx_extra_burn& x) { set("burn_amount", x.amount); }
         void operator()(const tx_extra_service_node_winner& x) {
+            set("type", "service_node_winner");
             set("sn_winner", x.m_service_node_key);
         }
         void operator()(const tx_extra_service_node_pubkey& x) {
+            set("type", "service_node_pubkey");
             set("sn_pubkey", x.m_service_node_key);
         }
         void operator()(const tx_extra_service_node_register& x) {
             // MERGEFIX: confirm this is correct
+            set("type", "service_node_register");
             json new_reg{};
             if (x.hf_or_expiration <= 255) {  // hard fork value
                 new_reg["hardfork"] = static_cast<hf>(x.hf_or_expiration);
@@ -658,6 +657,7 @@ namespace {
             set("sn_registration", std::move(new_reg));
         }
         void operator()(const tx_extra_service_node_contributor& x) {
+            set("type", "service_node_contributor");
             set("sn_contributor",
                 get_account_address_as_str(
                         nettype, false, {x.m_spend_public_key, x.m_view_public_key}));
@@ -675,11 +675,13 @@ namespace {
             return set("sn_state_change", std::move(sc));
         }
         void operator()(const tx_extra_service_node_deregister_old& x) {
+            set("type", "service_node_deregister_old");
             auto& sc = _state_change(x);
             sc["old_dereg"] = true;
             sc["type"] = "dereg";
         }
         void operator()(const tx_extra_service_node_state_change& x) {
+            set("type", "service_node_state_change");
             auto& sc = _state_change(x);
             if (x.reason_consensus_all)
                 sc["reasons"] = cryptonote::coded_reasons(x.reason_consensus_all);
@@ -695,9 +697,11 @@ namespace {
             }
         }
         void operator()(const tx_extra_tx_secret_key& x) {
+            set("type", "tx_secret_key");
             set("tx_secret_key", tools::view_guts(x.key), true);
         }
         void operator()(const tx_extra_tx_key_image_proofs& x) {
+            set("type", "tx_key_image_proofs");
             std::vector<crypto::key_image> kis;
             kis.reserve(x.proofs.size());
             for (auto& proof : x.proofs)
@@ -705,6 +709,7 @@ namespace {
             set("locked_key_images", std::move(kis));
         }
         void operator()(const tx_extra_tx_key_image_unlock& x) {
+            set("type", "key_image_unlock");
             set("key_image_unlock", x.key_image);
         }
         void _load_owner(json& parent, const std::string& key, const ons::generic_owner& owner) {
@@ -717,6 +722,7 @@ namespace {
                 json_binary_proxy{parent[key], format} = owner.ed25519;
         }
         void operator()(const tx_extra_oxen_name_system& x) {
+            set("type", "oxen_name_system");
             json ons{};
             if (auto maybe_exp = ons::expiry_blocks(nettype, x.type))
                 ons["blocks"] = *maybe_exp;
@@ -746,6 +752,7 @@ namespace {
             _load_owner(ons, "backup_owner", x.backup_owner);
         }
         void operator()(const tx_extra_ethereum_new_service_node& x) {
+            set("type", "ethereum_new_service_node");
             set("bls_pubkey", x.bls_pubkey);
             set("eth_address", x.eth_address);
             set("service_node_pubkey", x.service_node_pubkey);
@@ -760,14 +767,17 @@ namespace {
             set("contributors", contributors);
         }
         void operator()(const tx_extra_ethereum_service_node_leave_request& x) {
+            set("type", "ethereum_service_node_leave_request");
             set("bls_pubkey", x.bls_pubkey);
         }
         void operator()(const tx_extra_ethereum_service_node_exit& x) {
+            set("type", "ethereum_service_node_exit");
             set("eth_address", x.eth_address);
             set("amount", x.amount);
             set("bls_pubkey", x.bls_pubkey);
         }
         void operator()(const tx_extra_ethereum_service_node_deregister& x) {
+            set("type", "ethereum_service_node_deregister");
             set("bls_pubkey", x.bls_pubkey);
         }
 
@@ -871,12 +881,14 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, [[maybe_unused]] rpc_context
             auto split_mempool_tx = [](std::pair<const crypto::hash, tx_info>& info) {
                 cryptonote::transaction tx;
                 if (!cryptonote::parse_and_validate_tx_from_blob(info.second.tx_blob, tx))
-                    throw std::runtime_error{"Unable to parse and validate tx from blob"};
+                    throw oxen::traced<std::runtime_error>{
+                            "Unable to parse and validate tx from blob"};
                 serialization::binary_string_archiver ba;
                 try {
                     tx.serialize_base(ba);
                 } catch (const std::exception& e) {
-                    throw std::runtime_error{"Failed to serialize transaction base: "s + e.what()};
+                    throw oxen::traced<std::runtime_error>{
+                            "Failed to serialize transaction base: "s + e.what()};
                 }
                 std::string pruned = ba.str();
                 std::string pruned2{info.second.tx_blob, pruned.size()};
@@ -1268,7 +1280,8 @@ void core_rpc_server::invoke(STOP_MINING& stop_mining, [[maybe_unused]] rpc_cont
 void core_rpc_server::invoke(MINING_STATUS& mining_status, [[maybe_unused]] rpc_context context) {
     const miner& lMiner = m_core.get_miner();
     mining_status.response["active"] = lMiner.is_mining();
-    mining_status.response["block_target"] = tools::to_seconds(TARGET_BLOCK_TIME);
+    mining_status.response["block_target"] =
+            tools::to_seconds(m_core.get_net_config().TARGET_BLOCK_TIME);
     mining_status.response["difficulty"] =
             m_core.get_blockchain_storage().get_difficulty_for_next_block(false /*pulse*/);
     if (lMiner.is_mining()) {
@@ -1933,6 +1946,7 @@ void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, [[maybe_unused]] rpc_
         rhex["service_node_pubkey"] = keys.pub;
         rhex["pubkey_ed25519"] = keys.pub_ed25519;
         rhex["pubkey_x25519"] = keys.pub_x25519;
+        rhex["pubkey_bls"] = keys.pub_bls;
     }
 }
 
@@ -2401,7 +2415,7 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
         uint8_t pulse_round = 0;
         if (pulse::get_round_timings(blockchain, curr_height, top_header.timestamp, next_timings) &&
             pulse::convert_time_to_round(
-                    pulse::clock::now(), next_timings.r0_timestamp, &pulse_round)) {
+                    nettype(), pulse::clock::now(), next_timings.r0_timestamp, &pulse_round)) {
             auto entropy = service_nodes::get_pulse_entropy_for_next_block(
                     blockchain.get_db(), pulse_round);
             auto& sn_list = m_core.get_service_node_list();
@@ -2498,7 +2512,7 @@ void core_rpc_server::invoke(
     auto& amounts = get_service_node_registration_cmd.request.contributor_amounts;
 
     if (addresses.size() != amounts.size()) {
-        throw std::runtime_error("Mismatch in sizes of addresses and amounts");
+        throw oxen::traced<std::runtime_error>("Mismatch in sizes of addresses and amounts");
     }
 
     for (size_t i = 0; i < addresses.size(); ++i) {
@@ -2523,60 +2537,59 @@ void core_rpc_server::invoke(
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
         GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES& get_service_node_blacklisted_key_images,
-        rpc_context context) {
+        rpc_context) {
     auto& blacklist = m_core.get_service_node_blacklisted_key_images();
 
     get_service_node_blacklisted_key_images.response["status"] = STATUS_OK;
     get_service_node_blacklisted_key_images.response["blacklist"] = blacklist;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_context) {
-    const auto bls_withdrawal_signature_response =
-            m_core.bls_rewards_request(bls_rewards_request.request.address);
-    bls_rewards_request.response["status"] = STATUS_OK;
-    bls_rewards_request.response_hex["address"] = bls_withdrawal_signature_response.address;
-    bls_rewards_request.response["amount"] = bls_withdrawal_signature_response.amount;
-    bls_rewards_request.response["height"] = bls_withdrawal_signature_response.height;
-    bls_rewards_request.response_hex["signed_hash"] = bls_withdrawal_signature_response.signed_hash;
-    bls_rewards_request.response_hex["signature"] = bls_withdrawal_signature_response.signature;
-    bls_rewards_request.response["non_signer_indices"] =
+void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
+    const auto response = m_core.bls_rewards_request(rpc.request.address);
+    rpc.response["status"] = STATUS_OK;
+    rpc.response_hex["address"] = response.address;
+    rpc.response["amount"] = response.amount;
+    rpc.response["height"] = response.height;
+    rpc.response_hex["msg_to_sign"] =
+            oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
+    rpc.response_hex["signature"] = response.signature;
+    rpc.response["non_signer_indices"] =
             m_core.get_blockchain_storage().l2_tracker().get_non_signers(
-                    bls_withdrawal_signature_response.signers_bls_pubkeys.begin(),
-                    bls_withdrawal_signature_response.signers_bls_pubkeys.end());
+                    response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_EXIT_REQUEST& exit, rpc_context) {
-    const auto exit_sig = m_core.aggregate_exit_request(exit.request.bls_pubkey);
-    exit.response["status"] = STATUS_OK;
-    exit.response_hex["bls_pubkey"] = exit_sig.exit_pubkey;
-    exit.response_hex["signed_hash"] = exit_sig.signed_hash;
-    exit.response_hex["signature"] = exit_sig.signature;
-    exit.response["non_signer_indices"] =
+void core_rpc_server::invoke(BLS_EXIT_REQUEST& rpc, rpc_context) {
+    const auto response = m_core.aggregate_exit_request(rpc.request.bls_pubkey);
+    rpc.response["status"] = STATUS_OK;
+    rpc.response_hex["bls_pubkey"] = response.exit_pubkey;
+    rpc.response_hex["msg_to_sign"] =
+            oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
+    rpc.response_hex["signature"] = response.signature;
+    rpc.response["non_signer_indices"] =
             m_core.get_blockchain_storage().l2_tracker().get_non_signers(
-                    exit_sig.signers_bls_pubkeys.begin(), exit_sig.signers_bls_pubkeys.end());
+                    response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& liquidate, rpc_context) {
-    const auto liquidate_sig = m_core.aggregate_liquidation_request(liquidate.request.bls_pubkey);
-    liquidate.response["status"] = STATUS_OK;
-    liquidate.response_hex["bls_pubkey"] = liquidate_sig.exit_pubkey;
-    liquidate.response_hex["signed_hash"] = liquidate_sig.signed_hash;
-    liquidate.response_hex["signature"] = liquidate_sig.signature;
-    liquidate.response["non_signer_indices"] =
+void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& rpc, rpc_context) {
+    const auto response = m_core.aggregate_liquidation_request(rpc.request.bls_pubkey);
+    rpc.response["status"] = STATUS_OK;
+    rpc.response_hex["bls_pubkey"] = response.exit_pubkey;
+    rpc.response_hex["msg_to_sign"] =
+            oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
+    rpc.response_hex["signature"] = response.signature;
+    rpc.response["non_signer_indices"] =
             m_core.get_blockchain_storage().l2_tracker().get_non_signers(
-                    liquidate_sig.signers_bls_pubkeys.begin(),
-                    liquidate_sig.signers_bls_pubkeys.end());
+                    response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REGISTRATION& bls_registration_request, rpc_context) {
-    const auto bls_registration = m_core.bls_registration(bls_registration_request.request.address);
-    bls_registration_request.response["status"] = STATUS_OK;
-    bls_registration_request.response_hex["address"] = bls_registration.address;
-    bls_registration_request.response_hex["bls_pubkey"] = bls_registration.bls_pubkey;
-    bls_registration_request.response_hex["proof_of_possession"] =
-            bls_registration.proof_of_possession;
-    bls_registration_request.response_hex["service_node_pubkey"] = bls_registration.sn_pubkey;
-    bls_registration_request.response_hex["service_node_signature"] = bls_registration.ed_signature;
+void core_rpc_server::invoke(BLS_REGISTRATION& rpc, rpc_context) {
+    const auto response = m_core.bls_registration(rpc.request.address);
+    rpc.response["status"] = STATUS_OK;
+    rpc.response_hex["address"] = response.address;
+    rpc.response_hex["bls_pubkey"] = response.bls_pubkey;
+    rpc.response_hex["proof_of_possession"] = response.proof_of_possession;
+    rpc.response_hex["service_node_pubkey"] = response.sn_pubkey;
+    rpc.response_hex["service_node_signature"] = response.ed_signature;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -2586,6 +2599,7 @@ void core_rpc_server::invoke(
         get_service_keys.response_hex["service_node_pubkey"] = keys.pub;
     get_service_keys.response_hex["service_node_ed25519_pubkey"] = keys.pub_ed25519;
     get_service_keys.response_hex["service_node_x25519_pubkey"] = keys.pub_x25519;
+    get_service_keys.response_hex["service_node_bls_pubkey"] = keys.pub_bls;
     get_service_keys.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2646,6 +2660,10 @@ void core_rpc_server::fill_sn_response_entry(
     set_if_requested(reqed, binary, "service_node_pubkey", sn_info.pubkey);
     if (info.bls_public_key) {
         set_if_requested(reqed, binary, "pubkey_bls", info.bls_public_key);
+        // FIXME: these calls are failing, but also we can't do this in the middle of an rpc
+        // request, so we either need to pre-cache the info, or else just leave it off (and you can
+        // fetch it via arbitrum calls instead).
+        /*
         set_if_requested(
                 reqed,
                 entry,
@@ -2653,6 +2671,7 @@ void core_rpc_server::fill_sn_response_entry(
                 m_core.is_node_removable(info.bls_public_key),
                 "is_liquidatable",
                 m_core.is_node_liquidatable(info.bls_public_key));
+        */
     }
     set_if_requested(
             reqed,
@@ -2674,7 +2693,7 @@ void core_rpc_server::fill_sn_response_entry(
                                                                : info.active_since_height)
                                    : info.last_reward_block_height,
             "earned_downtime_blocks",
-            service_nodes::quorum_cop::calculate_decommission_credit(info, top_height),
+            service_nodes::quorum_cop::calculate_decommission_credit(nettype(), info, top_height),
             "decommission_count",
             info.decommission_count,
             "total_contributed",
@@ -2759,8 +2778,7 @@ void core_rpc_server::fill_sn_response_entry(
                     m_core.get_service_keys().pub_ed25519,
                     "pubkey_x25519",
                     m_core.get_service_keys().pub_x25519);
-            if (!info.bls_public_key)
-                set_if_requested(reqed, binary, "pubkey_bls", m_core.get_service_keys().pub_bls);
+            set_if_requested(reqed, binary, "pubkey_bls", m_core.get_service_keys().pub_bls);
         } else {
             if (proof.proof->public_ip != 0)
                 set_if_requested(
@@ -2789,8 +2807,11 @@ void core_rpc_server::fill_sn_response_entry(
                         "pubkey_x25519",
                         proof.pubkey_x25519);
             // During HF20 the BLS pubkey isn't in info, but is in the proof:
-            if (!info.bls_public_key && proof.proof->pubkey_bls)
+            if (info.bls_public_key) {
+                set_if_requested(reqed, binary, "pubkey_bls", info.bls_public_key);
+            } else if (proof.proof->pubkey_bls) {
                 set_if_requested(reqed, binary, "pubkey_bls", proof.proof->pubkey_bls);
+            }
         }
 
         auto system_now = std::chrono::system_clock::now();
@@ -3006,7 +3027,7 @@ namespace {
                                lifetime;  // Print loudly for the first ping after startup/expiry
             auto msg = "Received ping from {} {}"_format(name, fmt::join(cur_version, "."));
             if (significant)
-                log::info(logcat, fg(fmt::terminal_color::green), "{}", msg);
+                log::info(globallogcat, fg(fmt::terminal_color::green) | fmt::emphasis::bold, "{}", msg);
             else
                 log::debug(logcat, "{}", msg);
             success(significant);

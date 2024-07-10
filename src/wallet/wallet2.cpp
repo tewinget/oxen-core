@@ -43,6 +43,7 @@
 #include <optional>
 #include <tuple>
 #include <type_traits>
+#include <common/exception.h>
 
 #include "common/apply_permutation.h"
 #include "common/base58.h"
@@ -126,7 +127,6 @@ namespace {
     constexpr float RECENT_OUTPUT_DAYS = 1.8f;  // last 1.8 day makes up the recent zone (taken from
                                                 // monerolink.pdf, Miller et al)
     constexpr time_t RECENT_OUTPUT_ZONE = RECENT_OUTPUT_DAYS * 86400;
-    constexpr uint64_t RECENT_OUTPUT_BLOCKS = RECENT_OUTPUT_DAYS * BLOCKS_PER_DAY;
 
     constexpr uint64_t FEE_ESTIMATE_GRACE_BLOCKS = 10;  // estimate fee valid for that many blocks
 
@@ -326,25 +326,19 @@ namespace {
                 "daemon-address",
                 tools::wallet2::tr("Use oxend RPC at [http://]<host>[:<port>]"),
                 ""};
-        const command_line::arg_descriptor<std::string> daemon_login = {
+        const command_line::arg_descriptor<std::string> daemon_login{
                 "daemon-login",
-                tools::wallet2::tr("Specify username[:password] for daemon RPC client"),
-                "",
-                true};
+                tools::wallet2::tr("Specify username[:password] for daemon RPC client")};
         const command_line::arg_descriptor<std::string> proxy = {
                 "proxy",
                 tools::wallet2::tr("Use socks proxy at [socks4a://]<ip>:<port> for daemon "
-                                   "connections"),
-                "",
-                true};
-        const command_line::arg_descriptor<bool> trusted_daemon = {
+                                   "connections")};
+        const command_line::arg_flag trusted_daemon{
                 "trusted-daemon",
-                tools::wallet2::tr("Enable commands which rely on a trusted daemon"),
-                false};
-        const command_line::arg_descriptor<bool> untrusted_daemon = {
+                tools::wallet2::tr("Enable commands which rely on a trusted daemon")};
+        const command_line::arg_flag untrusted_daemon{
                 "untrusted-daemon",
-                tools::wallet2::tr("Disable commands which rely on a trusted daemon"),
-                false};
+                tools::wallet2::tr("Disable commands which rely on a trusted daemon")};
         const command_line::arg_descriptor<std::string> daemon_ssl_private_key = {
                 "daemon-ssl-private-key",
                 tools::wallet2::tr("Path to a PEM format private key for HTTPS client "
@@ -360,11 +354,10 @@ namespace {
                 tools::wallet2::tr("Path to a CA certificate bundle to use to verify the remote "
                                    "node's HTTPS certificate instead of using your operating "
                                    "system CAs.")};
-        const command_line::arg_descriptor<bool> daemon_ssl_allow_any_cert = {
+        const command_line::arg_flag daemon_ssl_allow_any_cert{
                 "daemon-ssl-allow-any-cert",
                 tools::wallet2::tr("Make the HTTPS connection insecure by allowing any SSL "
-                                   "certificate from the daemon."),
-                false};
+                                   "certificate from the daemon.")};
 
         // Deprecated and not listed in --help
         const command_line::arg_descriptor<std::string> daemon_host = {
@@ -376,49 +369,24 @@ namespace {
                 tools::wallet2::tr("Deprecated. Use --daemon-address https://... instead"),
                 ""};
 
-        const command_line::arg_descriptor<std::string> password = {
-                "password",
-                tools::wallet2::tr("Wallet password (escape/quote as needed)"),
-                "",
-                true};
-        const command_line::arg_descriptor<std::string> password_file = {
-                "password-file", tools::wallet2::tr("Wallet password file"), "", true};
+        const command_line::arg_descriptor<std::string> password{
+                "password", tools::wallet2::tr("Wallet password (escape/quote as needed)")};
+        const command_line::arg_descriptor<std::string> password_file{
+                "password-file", tools::wallet2::tr("Wallet password file")};
 
-        const command_line::arg_descriptor<bool> testnet = {
-                "testnet",
-                tools::wallet2::tr("For testnet. Daemon must also be launched with --testnet flag"),
-                false};
-        const command_line::arg_descriptor<bool> devnet = {
-                "devnet",
-                tools::wallet2::tr("For devnet. Daemon must also be launched with --devnet flag"),
-                false};
-        const command_line::arg_descriptor<bool> regtest = {
-                "regtest",
-                tools::wallet2::tr("For regression testing. Daemon must also be launched with "
-                                   "--regtest flag"),
-                false};
-        const command_line::arg_descriptor<bool> disable_rpc_long_poll = {
+        const command_line::arg_flag disable_rpc_long_poll{
                 "disable-rpc-long-poll",
                 tools::wallet2::tr("Disable TX pool long polling functionality for instantaneous "
-                                   "TX detection"),
-                false};
+                                   "TX detection")};
 
-        const command_line::arg_descriptor<std::string, false, true, 3> shared_ringdb_dir = {
+        const command_line::arg_descriptor<std::string> shared_ringdb_dir = {
                 "shared-ringdb-dir",
                 tools::wallet2::tr("Set shared ring database path"),
-                get_default_ringdb_path(),
-                {{&testnet, &devnet, &regtest}},
-                [](std::array<bool, 3> test_dev_fake,
-                   bool defaulted,
-                   std::string val) -> std::string {
-                    if (!test_dev_fake[0] && !test_dev_fake[1] && !test_dev_fake[2])
-                        return val;
-                    return tools::convert_str<char>((tools::utf8_path(val) /
-                                                     fs::path{
-                                                             test_dev_fake[0]   ? u8"testnet"
-                                                             : test_dev_fake[1] ? u8"devnet"
-                                                                                : u8"fake"})
-                                                            .u8string());
+                [](network_type nettype) {
+                    auto dir = get_default_ringdb_path();
+                    if (auto subdir = network_config_subdir(nettype); !subdir.empty())
+                        dir /= subdir;
+                    return tools::convert_str<char>(dir.u8string());
                 }};
         const command_line::arg_descriptor<uint64_t> kdf_rounds = {
                 "kdf-rounds",
@@ -437,8 +405,8 @@ namespace {
                 "Run a program for each new incoming transaction, '%s' will be replaced by the "
                 "transaction hash",
                 ""};
-        const command_line::arg_descriptor<bool> offline = {
-                "offline", tools::wallet2::tr("Do not connect to a daemon"), false};
+        const command_line::arg_flag offline = {
+                "offline", tools::wallet2::tr("Do not connect to a daemon")};
         const command_line::arg_descriptor<std::string> extra_entropy = {
                 "extra-entropy",
                 tools::wallet2::tr("File containing extra entropy to initialize the PRNG (any "
@@ -497,24 +465,13 @@ namespace {
             const options& opts,
             const std::function<std::optional<tools::password_container>(const char*, bool)>&
                     password_prompter) {
-        const bool testnet = command_line::get_arg(vm, opts.testnet);
-        const bool devnet = command_line::get_arg(vm, opts.devnet);
-        const bool fakenet = command_line::get_arg(vm, opts.regtest);
-        network_type nettype = testnet ? network_type::TESTNET
-                             : devnet  ? network_type::DEVNET
-                             : fakenet ? network_type::FAKECHAIN
-                                       : network_type::MAINNET;
-
-        THROW_WALLET_EXCEPTION_IF(
-                testnet + devnet + fakenet > 1,
-                tools::error::wallet_internal_error,
-                "At most one of --testnet, --devnet, or --regtest may be specified");
+        auto nettype = command_line::get_network(vm);
 
         const uint64_t kdf_rounds = command_line::get_arg(vm, opts.kdf_rounds);
         THROW_WALLET_EXCEPTION_IF(
                 kdf_rounds == 0, tools::error::wallet_internal_error, "KDF rounds must not be 0");
 
-        const bool use_proxy = command_line::has_arg(vm, opts.proxy);
+        const bool use_proxy = !command_line::is_arg_defaulted(vm, opts.proxy);
         auto daemon_address = command_line::get_arg(vm, opts.daemon_address);
         // Deprecated:
         auto daemon_host = command_line::get_arg(vm, opts.daemon_host);
@@ -531,7 +488,7 @@ namespace {
                                    "be combined with --daemon-address"));
 
         std::optional<tools::login> login;
-        if (command_line::has_arg(vm, opts.daemon_login)) {
+        if (!command_line::is_arg_defaulted(vm, opts.daemon_login)) {
             login = tools::login::parse(
                     command_line::get_arg(vm, opts.daemon_login),
                     false,
@@ -656,19 +613,19 @@ namespace {
             const std::function<std::optional<tools::password_container>(const char*, bool)>&
                     password_prompter,
             const bool verify) {
-        if (command_line::has_arg(vm, opts.password) &&
-            command_line::has_arg(vm, opts.password_file)) {
+        if (!command_line::is_arg_defaulted(vm, opts.password) &&
+            !command_line::is_arg_defaulted(vm, opts.password_file)) {
             THROW_WALLET_EXCEPTION(
                     tools::error::wallet_internal_error,
                     tools::wallet2::tr("can't specify more than one of --password and "
                                        "--password-file"));
         }
 
-        if (command_line::has_arg(vm, opts.password)) {
+        if (!command_line::is_arg_defaulted(vm, opts.password)) {
             return tools::password_container{command_line::get_arg(vm, opts.password)};
         }
 
-        if (command_line::has_arg(vm, opts.password_file)) {
+        if (!command_line::is_arg_defaulted(vm, opts.password_file)) {
             std::string password;
             bool r = tools::slurp_file(
                     tools::utf8_path(command_line::get_arg(vm, opts.password_file)), password);
@@ -721,11 +678,7 @@ namespace {
             const options& opts,
             const std::function<std::optional<tools::password_container>(const char*, bool)>&
                     password_prompter) {
-        const bool testnet = command_line::get_arg(vm, opts.testnet);
-        const bool devnet = command_line::get_arg(vm, opts.devnet);
-        const network_type nettype = testnet ? network_type::TESTNET
-                                   : devnet  ? network_type::DEVNET
-                                             : network_type::MAINNET;
+        const auto nettype = command_line::get_network(vm);
 
         /* GET_FIELD_FROM_JSON_RETURN_ON_ERROR Is a generic macro that can return
         false. Gcc will coerce this into unique_ptr(nullptr), but clang correctly
@@ -1257,14 +1210,19 @@ const char* wallet2::tr(const char* str) {
     return i18n_translate(str, "tools::wallet2");
 }
 
-gamma_picker::gamma_picker(const std::vector<uint64_t>& rct_offsets, double shape, double scale) :
+gamma_picker::gamma_picker(
+        network_type nettype,
+        const std::vector<uint64_t>& rct_offsets,
+        double shape,
+        double scale) :
         rct_offsets(rct_offsets) {
     gamma = std::gamma_distribution<double>(shape, scale);
     THROW_WALLET_EXCEPTION_IF(
             rct_offsets.size() <= DEFAULT_TX_SPENDABLE_AGE,
             error::wallet_internal_error,
             "Bad offset calculation");
-    const size_t blocks_in_a_year = BLOCKS_PER_DAY * 365;
+    auto& conf = get_config(nettype);
+    const size_t blocks_in_a_year = conf.BLOCKS_IN(365 * 24h);
     const size_t blocks_to_consider = std::min<size_t>(rct_offsets.size(), blocks_in_a_year);
     const double outputs_to_consider =
             rct_offsets.back() - (blocks_to_consider < rct_offsets.size()
@@ -1275,12 +1233,12 @@ gamma_picker::gamma_picker(const std::vector<uint64_t>& rct_offsets, double shap
     num_rct_outputs = *(end - 1);
     THROW_WALLET_EXCEPTION_IF(num_rct_outputs == 0, error::wallet_internal_error, "No rct outputs");
     average_output_time =
-            tools::to_seconds(TARGET_BLOCK_TIME) * blocks_to_consider /
+            tools::to_seconds(conf.TARGET_BLOCK_TIME) * blocks_to_consider /
             outputs_to_consider;  // this assumes constant target over the whole rct range
 };
 
-gamma_picker::gamma_picker(const std::vector<uint64_t>& rct_offsets) :
-        gamma_picker(rct_offsets, GAMMA_SHAPE, GAMMA_SCALE) {}
+gamma_picker::gamma_picker(network_type nettype, const std::vector<uint64_t>& rct_offsets) :
+        gamma_picker(nettype, rct_offsets, GAMMA_SHAPE, GAMMA_SCALE) {}
 
 uint64_t gamma_picker::pick() {
     double x = gamma(engine);
@@ -1439,16 +1397,8 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended) :
 
 wallet2::~wallet2() {}
 
-bool wallet2::has_testnet_option(const boost::program_options::variables_map& vm) {
-    return command_line::get_arg(vm, options().testnet);
-}
-
 bool wallet2::has_disable_rpc_long_poll(const boost::program_options::variables_map& vm) {
     return command_line::get_arg(vm, options().disable_rpc_long_poll);
-}
-
-bool wallet2::has_devnet_option(const boost::program_options::variables_map& vm) {
-    return command_line::get_arg(vm, options().devnet);
 }
 
 std::vector<std::string> wallet2::has_deprecated_options(
@@ -1496,9 +1446,6 @@ void wallet2::init_options(
     command_line::add_arg(desc_params, opts.daemon_ssl_allow_any_cert);
     command_line::add_arg(desc_params, opts.password);
     command_line::add_arg(desc_params, opts.password_file);
-    command_line::add_arg(desc_params, opts.testnet);
-    command_line::add_arg(desc_params, opts.devnet);
-    command_line::add_arg(desc_params, opts.regtest);
     command_line::add_arg(desc_params, opts.shared_ringdb_dir);
     command_line::add_arg(desc_params, opts.kdf_rounds);
 #ifdef WALLET_ENABLE_MMS
@@ -4297,7 +4244,7 @@ void wallet2::refresh(
                     short_chain_history.clear();
                     get_short_chain_history(short_chain_history);
                     start_height = stop_height;
-                    throw std::runtime_error("");  // loop again
+                    throw oxen::traced<std::runtime_error>("");  // loop again
                 } catch (const std::exception& e) {
                     log::error(logcat, "Error parsing blocks: {}", e.what());
                     error = true;
@@ -4314,7 +4261,7 @@ void wallet2::refresh(
 
             // handle error from async fetching thread
             if (error) {
-                throw std::runtime_error("proxy exception in refresh thread");
+                throw oxen::traced<std::runtime_error>("proxy exception in refresh thread");
             }
 
             // if we've got at least 10 blocks to refresh, assume we're starting
@@ -5098,10 +5045,12 @@ bool wallet2::load_keys_buf(
                 "{:s} wallet cannot be opened as {:s} wallet"_format(
                         field_nettype == 0   ? "Mainnet"
                         : field_nettype == 1 ? "Testnet"
-                                             : "Devnet",
+                        : field_nettype == 2 ? "Devnet"
+                                             : "Stagenet",
                         m_nettype == network_type::MAINNET   ? "mainnet"
                         : m_nettype == network_type::TESTNET ? "testnet"
-                                                             : "devnet"));
+                        : m_nettype == network_type::DEVNET  ? "devnet"
+                                                             : "stagenet"));
         GET_FIELD_FROM_JSON_RETURN_ON_ERROR(
                 json, segregate_pre_fork_outputs, int, Int, false, true);
         m_segregate_pre_fork_outputs = field_segregate_pre_fork_outputs;
@@ -5648,7 +5597,7 @@ crypto::secret_key wallet2::generate(
 }
 
 uint64_t wallet2::estimate_blockchain_height() {
-    const uint64_t blocks_per_month = BLOCKS_PER_DAY * 30;
+    const uint64_t blocks_per_month = get_config(m_nettype).BLOCKS_IN(30 * 24h);
 
     // try asking the daemon first
     std::string err;
@@ -7697,7 +7646,8 @@ bool wallet2::is_transfer_unlocked(
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_tx_spendtime_unlocked(uint64_t unlock_time, uint64_t block_height) const {
-    return cryptonote::rules::is_output_unlocked(unlock_time, get_blockchain_current_height());
+    return cryptonote::rules::is_output_unlocked(
+            nettype(), unlock_time, get_blockchain_current_height());
 }
 //----------------------------------------------------------------------------------------------------
 namespace {
@@ -9694,7 +9644,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
                 result.msg.append(" (about ");
                 result.msg.append(tools::get_human_readable_timespan(std::chrono::seconds(
                         (node_info["requested_unlock_height"].get<uint64_t>() - curr_height) *
-                        TARGET_BLOCK_TIME)));
+                        get_config(nettype()).TARGET_BLOCK_TIME)));
                 result.msg.append(")");
                 return result;
             }
@@ -9703,19 +9653,21 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
                     service_nodes::get_staking_requirement(nettype(), curr_height),
                     service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::num,
                     service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::den);
+            uint64_t small_contributor_unlock_blocks =
+                    get_config(nettype()).BLOCKS_IN(service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER);
             if (contribution["amount"] < small_contributor_amount_threshold &&
                 (curr_height - node_info["registration_height"].get<uint64_t>()) <
-                        service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER) {
+                        small_contributor_unlock_blocks) {
                 result.msg.append("You are requesting to unlock a stake of: ");
                 result.msg.append(cryptonote::print_money(contribution["amount"]));
                 result.msg.append(
                         " Oxen which is a small contributor stake.\nSmall contributors need to "
                         "wait ");
-                result.msg.append(std::to_string(service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER));
+                result.msg.append(std::to_string(small_contributor_unlock_blocks));
                 result.msg.append(" blocks before being allowed to unlock.");
                 result.msg.append("You will need to wait: ");
                 result.msg.append(std::to_string(
-                        service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER -
+                        small_contributor_unlock_blocks -
                         (curr_height - node_info["registration_height"].get<uint64_t>())));
                 result.msg.append(" more blocks.");
                 return result;
@@ -9742,7 +9694,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
             result.msg.append(std::to_string(unlock_height));
             result.msg.append(" (about ");
             result.msg.append(tools::get_human_readable_timespan(
-                    std::chrono::seconds((unlock_height - curr_height) * TARGET_BLOCK_TIME)));
+                    (unlock_height - curr_height) * get_config(nettype()).TARGET_BLOCK_TIME));
             result.msg.append(")");
 
             if (!tools::try_load_from_hex_guts(
@@ -10443,6 +10395,8 @@ void wallet2::get_outs(
             std::sort(req_t.amounts.begin(), req_t.amounts.end());
             auto end = std::unique(req_t.amounts.begin(), req_t.amounts.end());
             req_t.amounts.resize(std::distance(req_t.amounts.begin(), end));
+            const uint64_t RECENT_OUTPUT_BLOCKS =
+                    RECENT_OUTPUT_DAYS * get_config(m_nettype).BLOCKS_PER_DAY();
             req_t.from_height = std::max<uint64_t>(segregation_fork_height, RECENT_OUTPUT_BLOCKS) -
                                 RECENT_OUTPUT_BLOCKS;
             req_t.to_height = segregation_fork_height + 1;
@@ -10518,7 +10472,7 @@ void wallet2::get_outs(
 
         std::unique_ptr<gamma_picker> gamma;
         if (has_rct_distribution)
-            gamma.reset(new gamma_picker(rct_offsets));
+            gamma.reset(new gamma_picker(m_nettype, rct_offsets));
 
         size_t num_selected_transfers = 0;
         for (size_t idx : selected_transfers) {
@@ -11845,7 +11799,7 @@ void wallet2::light_wallet_get_unspent_outs() {
     oreq.address = get_account().get_public_address_str(m_nettype);
     oreq.view_key = tools::hex_guts(get_account().get_keys().m_view_secret_key);
     // openMonero specific
-    oreq.dust_threshold = std::to_string(::config::DEFAULT_DUST_THRESHOLD);
+    oreq.dust_threshold = std::to_string(DEFAULT_DUST_THRESHOLD);
     // below are required by openMonero api - but are not used.
     oreq.mixin = 0;
     oreq.use_dust = true;
@@ -13694,7 +13648,7 @@ void wallet2::cold_sign_tx(
         std::vector<std::string>& tx_device_aux) {
     auto& hwdev = get_account().get_device();
     if (!hwdev.has_tx_cold_sign()) {
-        throw std::invalid_argument("Device does not support cold sign protocol");
+        throw oxen::traced<std::invalid_argument>("Device does not support cold sign protocol");
     }
 
     unsigned_tx_set txs;
@@ -15288,8 +15242,8 @@ uint64_t wallet2::get_approximate_blockchain_height() const {
     const time_t since_ts = time(nullptr) - netconf.HEIGHT_ESTIMATE_TIMESTAMP;
     uint64_t approx_blockchain_height =
             netconf.HEIGHT_ESTIMATE_HEIGHT +
-            (since_ts > 0 ? (uint64_t)since_ts / tools::to_seconds(TARGET_BLOCK_TIME) : 0) -
-            BLOCKS_PER_DAY * 7;  // subtract a week's worth of blocks to be conservative
+            (since_ts > 0 ? (uint64_t)since_ts / tools::to_seconds(netconf.TARGET_BLOCK_TIME) : 0) -
+            netconf.BLOCKS_IN(7 * 24h);  // subtract a week's worth of blocks to be conservative
     log::debug(logcat, "Calculated blockchain height: {}", approx_blockchain_height);
     return approx_blockchain_height;
 }
@@ -15431,7 +15385,7 @@ void wallet2::set_account_tag_description(const std::string& tag, const std::str
 
 std::string wallet2::sign(std::string_view data, cryptonote::subaddress_index index) const {
     if (m_watch_only)
-        throw std::logic_error{"Unable to sign with a watch-only wallet"};
+        throw oxen::traced<std::logic_error>{"Unable to sign with a watch-only wallet"};
 
     crypto::hash hash;
     crypto::cn_fast_hash(data.data(), data.size(), hash);
@@ -16908,24 +16862,24 @@ bool wallet2::parse_uri(
 uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, uint8_t day) {
     rpc::version_t version;
     if (!check_connection(&version)) {
-        throw std::runtime_error("failed to connect to daemon: " + get_daemon_address());
+        throw oxen::traced<std::runtime_error>("failed to connect to daemon: " + get_daemon_address());
     }
     if (version < rpc::version_t{1, 6}) {
-        throw std::runtime_error("this function requires RPC version 1.6 or higher");
+        throw oxen::traced<std::runtime_error>("this function requires RPC version 1.6 or higher");
     }
     std::tm date = {0, 0, 0, 0, 0, 0, 0, 0};
     date.tm_year = year - 1900;
     date.tm_mon = month - 1;
     date.tm_mday = day;
     if (date.tm_mon < 0 || 11 < date.tm_mon || date.tm_mday < 1 || 31 < date.tm_mday) {
-        throw std::runtime_error("month or day out of range");
+        throw oxen::traced<std::runtime_error>("month or day out of range");
     }
     uint64_t timestamp_target = std::mktime(&date);
     std::string err;
     uint64_t height_min = 0;
     uint64_t height_max = get_daemon_blockchain_height(err) - 1;
     if (!err.empty()) {
-        throw std::runtime_error("failed to get blockchain height");
+        throw oxen::traced<std::runtime_error>("failed to get blockchain height");
     }
     while (true) {
         rpc::GET_BLOCKS_BY_HEIGHT_BIN::request req{};
@@ -16945,19 +16899,19 @@ uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, ui
                 oss << "daemon is busy";
             else
                 oss << get_rpc_status(res.status);
-            throw std::runtime_error(oss.str());
+            throw oxen::traced<std::runtime_error>(oss.str());
         }
         cryptonote::block blk_min, blk_mid, blk_max;
         if (res.blocks.size() < 3)
-            throw std::runtime_error("Not enough blocks returned from daemon");
+            throw oxen::traced<std::runtime_error>("Not enough blocks returned from daemon");
         if (!parse_and_validate_block_from_blob(res.blocks[0].block, blk_min))
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "failed to parse blob at height " + std::to_string(height_min));
         if (!parse_and_validate_block_from_blob(res.blocks[1].block, blk_mid))
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "failed to parse blob at height " + std::to_string(height_mid));
         if (!parse_and_validate_block_from_blob(res.blocks[2].block, blk_max))
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "failed to parse blob at height " + std::to_string(height_max));
         uint64_t timestamp_min = blk_min.timestamp;
         uint64_t timestamp_mid = blk_mid.timestamp;
@@ -16968,7 +16922,7 @@ uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, ui
             return std::min({height_min, height_mid, height_max});
         }
         if (timestamp_target > timestamp_max) {
-            throw std::runtime_error("specified date is in the future");
+            throw oxen::traced<std::runtime_error>("specified date is in the future");
         }
         if (timestamp_target <= timestamp_min + 2 * 24 * 60 * 60)  // two days of "buffer" period
         {

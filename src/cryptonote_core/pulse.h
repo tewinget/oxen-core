@@ -95,7 +95,10 @@ struct timings {
 // elapsed such that Pulse round has overflowed 255 and Pulse blocks are no longer possible to
 // generate.
 bool convert_time_to_round(
-        pulse::time_point const& time, pulse::time_point const& r0_timestamp, uint8_t* round);
+        cryptonote::network_type nettype,
+        pulse::time_point const& time,
+        pulse::time_point const& r0_timestamp,
+        uint8_t* round);
 bool get_round_timings(
         cryptonote::Blockchain const& blockchain,
         uint64_t height,

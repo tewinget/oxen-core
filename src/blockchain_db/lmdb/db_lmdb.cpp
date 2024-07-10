@@ -4784,6 +4784,8 @@ void BlockchainLMDB::fixup(cryptonote::network_type nettype) {
     // Always call parent as well
     BlockchainDB::fixup(nettype);
 
+    auto& conf = get_config(nettype);
+
     if (is_read_only())
         return;
 
@@ -4826,7 +4828,7 @@ void BlockchainLMDB::fixup(cryptonote::network_type nettype) {
                         diff = next_difficulty_v2(
                                 timestamps,
                                 difficulties,
-                                tools::to_seconds(TARGET_BLOCK_TIME),
+                                tools::to_seconds(conf.TARGET_BLOCK_TIME),
                                 difficulty_mode(nettype, curr_height + 1));
                     }
                 }

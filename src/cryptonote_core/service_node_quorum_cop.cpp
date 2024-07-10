@@ -421,7 +421,8 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                 if (!test_results.timesync_status)
                                     reason |= cryptonote::Decommission_Reason::
                                             timesync_status_out_of_sync;
-                                int64_t credit = calculate_decommission_credit(info, latest_height);
+                                int64_t credit = calculate_decommission_credit(
+                                        m_core.get_nettype(), info, latest_height);
 
                                 if (info.is_decommissioned()) {
                                     if (credit >= 0) {
@@ -442,7 +443,7 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                             quorum->workers[node_index]);
                                     vote_for_state = new_state::deregister;  // Credit ran out!
                                 } else {
-                                    if (credit >= DECOMMISSION_MINIMUM) {
+                                    if (credit >= netconf.BLOCKS_IN(DECOMMISSION_MINIMUM)) {
                                         vote_for_state = new_state::decommission;
                                         log::debug(
                                                 logcat,
@@ -462,7 +463,7 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                                 "voting to deregister",
                                                 quorum->workers[node_index],
                                                 credit,
-                                                DECOMMISSION_MINIMUM);
+                                                netconf.BLOCKS_IN(DECOMMISSION_MINIMUM));
                                     }
                                 }
                             }
@@ -829,7 +830,7 @@ bool quorum_cop::handle_vote(
 // Calculate the decommission credit for a service node.  If the SN is current decommissioned this
 // accumulated blocks.
 int64_t quorum_cop::calculate_decommission_credit(
-        const service_node_info& info, uint64_t current_height) {
+        cryptonote::network_type nettype, const service_node_info& info, uint64_t current_height) {
     // If currently decommissioned, we need to know how long it was up before being decommissioned;
     // otherwise we need to know how long since it last become active until now (or 0 if not staked
     // yet).
@@ -846,12 +847,12 @@ int64_t quorum_cop::calculate_decommission_credit(
     // Now we calculate the credit at last commission plus any credit earned from being up for
     // `blocks_up` blocks since
     int64_t credit = info.recommission_credit;
+    auto& conf = get_config(nettype);
     if (blocks_up > 0)
-        credit += blocks_up * DECOMMISSION_CREDIT_PER_DAY / cryptonote::BLOCKS_PER_DAY;
+        credit += blocks_up * conf.BLOCKS_IN(DECOMMISSION_CREDIT_PER_DAY) / conf.BLOCKS_PER_DAY();
 
-    if (credit > DECOMMISSION_MAX_CREDIT)
-        credit = DECOMMISSION_MAX_CREDIT;  // Cap the available decommission credit blocks if above
-                                           // the max
+    if (int max = conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT); credit > max)
+        credit = max;  // Cap the available decommission credit blocks at the max allowed
 
     // If currently decommissioned, remove any used credits used for the current downtime
     if (info.is_decommissioned())

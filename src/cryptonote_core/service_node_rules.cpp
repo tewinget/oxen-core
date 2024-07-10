@@ -5,6 +5,7 @@
 #include <boost/lexical_cast.hpp>
 #include <cfenv>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "common/oxen.h"
@@ -12,6 +13,7 @@
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "epee/int-util.h"
+#include "networks.h"
 #include "oxen_economy.h"
 
 using cryptonote::hf;
@@ -22,6 +24,63 @@ using namespace cryptonote;
 using namespace oxen;
 
 static auto logcat = log::Cat("service_nodes");
+
+template <cryptonote::network_type Net>
+static constexpr bool has_valid_parameters() {
+    constexpr auto& conf = get_config(Net);
+
+    static_assert(conf.PULSE_MIN_SERVICE_NODES >= PULSE_QUORUM_SIZE);
+
+    // Some sanity checks on the recommission credit value:
+    static_assert(
+            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT), 0) <=
+                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+            "Max recommission credit should not be higher than DECOMMISSION_MAX_CREDIT");
+
+    // These are by no means exhaustive, but will at least catch simple mistakes
+    static_assert(
+            RECOMMISSION_CREDIT(
+                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT)) <=
+                            RECOMMISSION_CREDIT(
+                                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2) &&
+                    RECOMMISSION_CREDIT(
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2) <=
+                            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT), 0) &&
+                    RECOMMISSION_CREDIT(
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2,
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2) <=
+                            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2, 0),
+            "Recommission credit should be (weakly) decreasing in the length of decommissioning");
+    static_assert(
+            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2, 1) <=
+                            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT), 1) &&
+                    RECOMMISSION_CREDIT(0, 1) <=
+                            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2, 1),
+            "Recommission credit should be (weakly) increasing in initial credit blocks");
+
+    // This one actually could be supported (i.e. you can have negative credit and have to crawl out
+    // of that hole), but the current code is entirely untested as to whether or not that actually
+    // works.
+    static_assert(
+            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT), 0) >= 0 &&
+                    RECOMMISSION_CREDIT(
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT)) >= 0 &&
+                    RECOMMISSION_CREDIT(
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                            2 * conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT)) >=
+                            0,  // delayed recommission that overhangs your time
+            "Recommission credit should not be negative");
+
+    return true;
+}
+
+static_assert([]<size_t... I>(std::index_sequence<I...>) {
+    return (has_valid_parameters<ALL_NETWORKS[I]>() && ...);
+}(std::make_index_sequence<ALL_NETWORKS.size()>{}));
 
 uint64_t get_staking_requirement(cryptonote::network_type nettype, hf hardfork) {
     assert(hardfork >= hf::hf16_pulse);
@@ -220,6 +279,14 @@ crypto::hash generate_request_stake_unlock_hash(uint32_t nonce) {
     return result;
 }
 
+uint64_t staking_num_lock_blocks(cryptonote::network_type nettype) {
+    switch (nettype) {
+        case cryptonote::network_type::FAKECHAIN: return 30;
+        case cryptonote::network_type::TESTNET: return get_config(nettype).BLOCKS_IN(48h);
+        default: return get_config(nettype).BLOCKS_IN(30 * 24h);
+    }
+}
+
 uint64_t get_locked_key_image_unlock_height(
         cryptonote::network_type nettype, uint64_t node_register_height, uint64_t curr_height) {
     uint64_t blocks_to_lock = staking_num_lock_blocks(nettype);
@@ -305,10 +372,10 @@ std::optional<double> parse_fee_percent(std::string_view fee) {
 uint16_t percent_to_basis_points(std::string percent_string) {
     const auto percent = parse_fee_percent(percent_string);
     if (!percent)
-        throw invalid_registration{"could not parse fee percent"};
+        throw oxen::traced<invalid_registration>{"could not parse fee percent"};
 
     if (*percent < 0.0 || *percent > 100.0)
-        throw invalid_registration{"fee percent out of bounds"};
+        throw oxen::traced<invalid_registration>{"fee percent out of bounds"};
 
     auto basis_points =
             static_cast<uint16_t>(std::lround(*percent / 100.0 * cryptonote::STAKING_FEE_BASIS));

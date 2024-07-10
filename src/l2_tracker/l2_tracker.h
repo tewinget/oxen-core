@@ -150,7 +150,11 @@ class L2Tracker {
     //
     // A default, non-archive Arbitrum node keeps only 30min of block state, so this ought to be
     // shorter than that.
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+    size_t MAX_HIST_FETCH = 4;
+#else
     size_t MAX_HIST_FETCH = 10min / 250ms;
+#endif
 
     // How many blocks worth of logs we fetch at once.  Various providers impose various limits on
     // this based on the free/pair tier, but 100 at once seems to be accepted by most free tiers and
@@ -177,11 +181,11 @@ class L2Tracker {
     // that are too new that other nodes might not know about yet).  The default is 30s behind.
     static constexpr uint64_t SAFE_BLOCKS = 30s / 250ms;
 
-    // Returns the reward rate for the given L2 height.  Returns 0 if we don't know/haven't
+    // Returns the reward rate for the given L2 height.  Returns nullopt if we don't know/haven't
     // retrieved it yet (and so this should generally be called with a safe height, not the current
     // L2 height).  (Note that L2 reward rates only change on L2 block heights divisible by
     // L2_REWARD_POOL_UPDATE_BLOCKS, not on every block).
-    uint64_t get_reward_rate(uint64_t height) const;
+    std::optional<uint64_t> get_reward_rate(uint64_t height) const;
 
     // This function checks whether transactions on the oxen chain should be there.  It is called
     // when deciding whether to accept a block (and, for a pulse quorum validator, whether to sign

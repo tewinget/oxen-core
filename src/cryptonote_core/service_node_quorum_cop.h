@@ -121,7 +121,9 @@ class quorum_cop {
     bool handle_vote(quorum_vote_t const& vote, cryptonote::vote_verification_context& vvc);
 
     static int64_t calculate_decommission_credit(
-            const service_node_info& info, uint64_t current_height);
+            cryptonote::network_type nettype,
+            const service_node_info& info,
+            uint64_t current_height);
 
   private:
     void process_quorums(cryptonote::block const& block);

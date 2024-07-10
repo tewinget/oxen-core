@@ -32,10 +32,9 @@
 #include <iterator>
 #include <mutex>
 #include <shared_mutex>
-#include <string_view>
 #include <span>
+#include <string_view>
 
-#include "bls/bls_signer.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -45,6 +44,7 @@
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/service_node_voting.h"
+#include "networks.h"
 #include "serialization/serialization.h"
 #include "uptime_proof.h"
 
@@ -280,10 +280,9 @@ struct service_node_info  // registration information
     uint16_t last_decommission_reason_consensus_any =
             0;  // The reason which the last (or current!) decommissioning occurred as voted by any
                 // of the SNs, or 0 if never decommissioned
-    int64_t recommission_credit =
-            DECOMMISSION_INITIAL_CREDIT;  // The number of blocks of credit you started with or kept
-                                          // when you were last activated (i.e. as of
-                                          // `active_since_height`)
+    int64_t recommission_credit = 0;  // The number of blocks of credit you started with or kept
+                                      // when you were last activated (i.e. as of
+                                      // `active_since_height`)
     std::vector<contributor_t> contributors;
     uint64_t total_contributed = 0;
     uint64_t total_reserved = 0;
@@ -460,7 +459,6 @@ struct service_node_keys {
     /// staking contract.
     eth::bls_secret_key key_bls;
     eth::bls_public_key pub_bls;
-    std::shared_ptr<eth::BLSSigner> bls_signer;
 };
 
 class service_node_list {
@@ -598,10 +596,11 @@ class service_node_list {
             if (!it->second.proof)
                 continue;
             auto& proof = *it->second.proof;
-            assert(it->second.pubkey_x25519); // Should always be set to non-null if we have a proof
+            assert(it->second
+                           .pubkey_x25519);  // Should always be set to non-null if we have a proof
             *out++ = service_node_address{
                     pk_info.first,
-                    proof.pubkey_bls,
+                    pk_info.second->bls_public_key,
                     it->second.pubkey_x25519,
                     proof.public_ip,
                     proof.qnet_port};
@@ -624,7 +623,8 @@ class service_node_list {
             uint16_t storage_omq_port,
             std::array<uint16_t, 3> ss_version,
             uint16_t quorumnet_port,
-            std::array<uint16_t, 3> lokinet_version) const;
+            std::array<uint16_t, 3> lokinet_version,
+            const eth::BLSSigner& signer) const;
 
     bool handle_uptime_proof(
             std::unique_ptr<uptime_proof::Proof> proof,

@@ -71,10 +71,8 @@ namespace {
         auto dir = tools::get_default_data_dir();
         // remove .oxen, replace with .shared-ringdb
         dir.replace_filename(".shared-ringdb");
-        if (nettype == cryptonote::network_type::TESTNET)
-            dir /= "testnet";
-        else if (nettype == cryptonote::network_type::DEVNET)
-            dir /= "devnet";
+        if (auto subdir = network_config_subdir(nettype); !subdir.empty())
+            dir /= subdir;
         return dir;
     }
 

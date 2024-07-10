@@ -502,6 +502,7 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 ///
 /// - `status` -- General RPC status string. `"OK"` means everything looks good.
 /// - `height` -- Current length of longest chain known to daemon.
+/// - `l2_height` -- Current Arbitrum height that the network is synchronized to
 /// - `target_height` -- The height of the next block in the chain.
 /// - `immutable_height` -- The latest height in the blockchain that can not be reorganized (i.e.
 ///   is backed by at least 2 Service Node, or 1 hardcoded checkpoint, 0 if N/A).  Omitted if it
@@ -519,13 +520,7 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 /// - `tx_count` -- Total number of non-coinbase transaction in the chain.
 /// - `tx_pool_size` -- Number of transactions that have been broadcast but not included in a block.
 /// - `mainnet` -- Indicates whether the node is on the main network (`true`) or not (`false`).
-/// - `testnet` -- Indicates that the node is on the test network (`true`). Will be omitted for
-///   non-testnet.
-/// - `devnet` -- Indicates that the node is on the dev network (`true`). Will be omitted for
-///   non-devnet.
-/// - `fakechain` -- States that the node is running in "fakechain" mode (`true`).  Omitted
-///   otherwise.
-/// - `nettype` -- String value of the network type (mainnet, testnet, devnet, or fakechain).
+/// - `nettype` -- String value of the network type (mainnet, stagenet, testnet, devnet, localdev, or fakechain).
 /// - `top_block_hash` -- Hash of the highest block in the chain.  Will be hex for JSON requests,
 ///   32-byte binary value for bt requests.
 /// - `immutable_block_hash` -- Hash of the highest block in the chain that can not be reorganized.
@@ -1864,6 +1859,7 @@ struct GET_SERVICE_NODE_REGISTRATION_CMD : RPC_COMMAND {
 ///   running as a service node.
 /// - `service_node_ed25519_pubkey` -- The daemon's ed25519 auxiliary public key.
 /// - `service_node_x25519_pubkey` -- The daemon's x25519 auxiliary public key.
+/// - `service_node_bls_pubkey` -- The daemon's BLS auxiliary public key.
 struct GET_SERVICE_KEYS : NO_ARGS {
     static constexpr auto names() { return NAMES("get_service_keys", "get_service_node_key"); }
 };

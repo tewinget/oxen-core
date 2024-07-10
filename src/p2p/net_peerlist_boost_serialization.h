@@ -32,8 +32,10 @@
 
 #include <cstring>
 
-#include "common/expect.h"
-#include "common/pruning.h"
+#include <common/expect.h>
+#include <common/pruning.h>
+#include <common/exception.h>
+
 #include "epee/net/net_utils_base.h"
 #include "net/i2p_address.h"
 #include "net/tor_address.h"
@@ -77,7 +79,7 @@ inline void serialize(Archive& a, epee::net_utils::network_address& na, const ve
             do_serialize<net::i2p_address>(is_saving, a, na);
             break;
         case epee::net_utils::address_type::invalid:
-        default: throw std::runtime_error("Unsupported network address type");
+        default: throw oxen::traced<std::runtime_error>("Unsupported network address type");
     }
 }
 template <class Archive, class ver_type>

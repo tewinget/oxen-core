@@ -75,9 +75,11 @@ add_subdirectory(sqlitedb)
 add_subdirectory(gen_multisig)
 add_subdirectory(blockchain_utilities)
 
+option(BUILD_EVERYTHING "Enable building of all optional components" OFF)
+
 # We'll always add, but with EXCLUDE_FROM_ALL if you didn't ask for them (but this lets you do a
 # `make cn_deserialize` or whatever from a build dir without needing to reconfigure).
-option(BUILD_DEBUG_UTILS "Build debug utils as part of the default build" OFF)
+option(BUILD_DEBUG_UTILS "Build debug utils as part of the default build" ${BUILD_EVERYTHING})
 if(BUILD_DEBUG_UTILS)
   message(STATUS "Building debug utilities")
   add_subdirectory(debug_utilities)

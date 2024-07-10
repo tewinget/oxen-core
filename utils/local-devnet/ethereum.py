@@ -1,27 +1,73 @@
 from web3 import Web3
+import urllib.request
 import json
+
+PROVIDER_URL = "http://127.0.0.1:8545"
+
+def eth_chainId():
+    method = "eth_chainId"
+    data = json.dumps({
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": [],
+        "id": 1
+    }).encode('utf-8')
+
+    try:
+        req = urllib.request.Request(PROVIDER_URL, data=data, headers={'content-type': 'application/json'}, )
+        with urllib.request.urlopen(req, timeout=2) as response:
+            response      = response.read()
+            response_json = json.loads(response)
+            result        = int(response_json["result"], 16) # Parse chain ID from hex
+    except Exception as e:
+        raise RuntimeError("Failed to query {} from {}: {}".format(method, PROVIDER_URL, e))
+
+    return result
+
+def evm_increaseTime(web3, seconds):
+    web3.provider.make_request('evm_increaseTime', [seconds])
+
+def evm_mine(web3):
+    web3.provider.make_request('mine', [])
+
+class ContractServiceNodeContributor:
+    def __init__(self):
+        self.addr         = None
+        self.stakedAmount = None
+
+class ContractServiceNode:
+    def __init__(self):
+        self.next                  = None
+        self.prev                  = None
+        self.operator              = None
+        self.pubkey_x              = None
+        self.pubkey_y              = None
+        self.leaveRequestTimestamp = None
+        self.deposit               = None
+        self.contributors          = None
+
+class ContractSeedServiceNode:
+    def __init__(self, bls_pubkey_hex, deposit):
+        assert len(bls_pubkey_hex) == 128, "BLS pubkey must be 128 hex characters consisting of a 32 byte X & Y component"
+        self.pubkey       = bls_pubkey_hex
+        self.deposit      = deposit
+        self.contributors = []
 
 class ServiceNodeRewardContract:
     def __init__(self):
-        self.provider_url = "http://127.0.0.1:8545"
-        self.private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" # Hardhat account #0
-        self.web3 = Web3(Web3.HTTPProvider(self.provider_url))
+        self.provider_url = PROVIDER_URL
+        self.private_key  = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" # Hardhat account #0
+        self.web3         = Web3(Web3.HTTPProvider(self.provider_url))
 
         self.contract_address = self.getContractDeployedInLatestBlock()
-        self.contract = self.web3.eth.contract(address=self.contract_address, abi=contract_abi)
-        self.acc = self.web3.eth.account.from_key(self.private_key)
+        self.contract         = self.web3.eth.contract(address=self.contract_address, abi=contract_abi)
+        self.acc              = self.web3.eth.account.from_key(self.private_key)
 
-        self.foundation_pool_address = self.contract.functions.foundationPool().call();
+        self.foundation_pool_address  = self.contract.functions.foundationPool().call();
         self.foundation_pool_contract = self.web3.eth.contract(address=self.foundation_pool_address, abi=foundation_pool_abi)
 
-        # NOTE: Start the rewards contract
-        unsent_tx = self.contract.functions.start().build_transaction({
-            "from": self.acc.address,
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-
-        self.erc20_address = self.contract.functions.designatedToken().call()
+        # NOTE: Setup ERC20 contract
+        self.erc20_address  = self.contract.functions.designatedToken().call()
         self.erc20_contract = self.web3.eth.contract(address=self.erc20_address, abi=erc20_contract_abi)
 
         # NOTE: Approve an amount to be sent from the hardhat account to the contract
@@ -29,11 +75,28 @@ class ServiceNodeRewardContract:
             "from": self.acc.address,
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash   = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+
+        # SENT Contract Address deployed to: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+        address_check_err_msg = ("If this assert triggers, the rewards contract ABI has been "
+        "changed OR we're reusing a wallet and creating the contract with a different nonce. The "
+        "ABI in this script is hardcoded to the instance of the contract with that hash. Verify "
+        "and re-update the ABI if necessary and any auxiliary contracts if the ABI has changed or "
+        "that the wallets are _not_ being reused.")
+
+        assert self.contract_address.lower()        == "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707".lower(), (f"{address_check_err_msg}\n\nAddress was: {self.contract_address}")
+        assert self.foundation_pool_address.lower() == "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0".lower(), (f"{address_check_err_msg}\n\nAddress was: {self.foundation_pool_address}")
 
     def call_function(self, function_name, *args, **kwargs):
         contract_function = self.contract.functions[function_name](*args)
         return contract_function.call(**kwargs)
+
+    def start(self):
+        unsent_tx = self.contract.functions.start().build_transaction({
+            "from": self.acc.address,
+            'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
     # Add more methods as needed to interact with the smart contract
     def getContractDeployedInLatestBlock(self):
@@ -106,8 +169,7 @@ class ServiceNodeRewardContract:
         return tx_hash
 
     def initiateRemoveBLSPublicKey(self, service_node_id):
-        # function initiateRemoveBLSPublicKey(uint64 serviceNodeID) public {
-
+        # function initiateRemoveBLSPublicKey(uint64 serviceNodeID) public
         unsent_tx = self.contract.functions.initiateRemoveBLSPublicKey(service_node_id
                     ).build_transaction({
                         "from": self.acc.address,
@@ -117,17 +179,21 @@ class ServiceNodeRewardContract:
         tx_hash = self.submitSignedTX("Remove BLS public key", signed_tx)
         return tx_hash
 
-    def removeBLSPublicKeyWithSignature(self, blsKey, blsSig, ids):
-        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(
-            self.getServiceNodeID(blsKey),
-            int(blsKey[:64], 16),
-            int(blsKey[64:128], 16),
-            int(blsSig[:64], 16),
-            int(blsSig[64:128], 16),
-            int(blsSig[128:192], 16),
-            int(blsSig[192:256], 16),
-            ids
-        ).build_transaction({
+    def removeBLSPublicKeyWithSignature(self, blsKey, timestamp, blsSig, ids):
+        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature({
+            'blsPubkey': {
+                'X': int(blsKey[:64],    16),
+                'Y': int(blsKey[64:128], 16),
+            },
+            'timestamp': timestamp,
+            'blsSignature': {
+                'sigs0': int(blsSig[:64],     16),
+                'sigs1': int(blsSig[64:128],  16),
+                'sigs2': int(blsSig[128:192], 16),
+                'sigs3': int(blsSig[192:256], 16),
+            },
+            'ids': ids
+        }).build_transaction({
             "from": self.acc.address,
             'gas': 3000000,  # Adjust gas limit as necessary
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
@@ -155,22 +221,35 @@ class ServiceNodeRewardContract:
         tx_hash = self.submitSignedTX("Liquidate BLS public key w/ signature", signed_tx)
         return tx_hash
 
-    def seedPublicKeyList(self, args):
-        pkX = []
-        pkY = []
-        amounts = []
-        for item in args:
-            pkX.append(int(item[0][:64], 16))  # First 32 bytes as pkX
-            pkY.append(int(item[0][64:], 16))  # Last 32 bytes as pkY
-            amounts.append(item[1])  # Corresponding amount
+    def seedPublicKeyList(self, seed_nodes):
+        contract_seed_nodes = []
+        for item in seed_nodes:
+            entry = {
+                'pubkey': {
+                    'X': int(item.pubkey[:64],    16),
+                    'Y': int(item.pubkey[64:128], 16),
+                },
+                'deposit': item.deposit,
+                'contributors': [],
+            }
 
-        unsent_tx = self.contract.functions.seedPublicKeyList(pkX, pkY, amounts).build_transaction({
-            "from": self.acc.address,
-            'gas': 3000000,  # Adjust gas limit as necessary
+            for contributor in item.contributors:
+                entry['contributors'].append({
+                    'addr':         contributor.addr,
+                    'stakedAmount': contributor.stakedAmount,
+                })
+
+            contract_seed_nodes.append(entry)
+
+        print(contract_seed_nodes)
+
+        unsent_tx = self.contract.functions.seedPublicKeyList(contract_seed_nodes).build_transaction({
+            "from":  self.acc.address,
+            'gas':   6000000,  # Adjust gas limit as necessary
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
         })
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.submitSignedTX("Seed public key list", signed_tx)
+        tx_hash   = self.submitSignedTX("Seed public key list", signed_tx)
         return tx_hash
 
     def numberServiceNodes(self):
@@ -234,9 +313,39 @@ class ServiceNodeRewardContract:
             if bls_key not in bls_public_keys:
                 non_signers.append(service_node_id)
             service_node_id = service_node[0]
-        return non_signers;
+        return non_signers
 
+    def serviceNodes(self, u64_id):
+        call_result                  = self.contract.functions.serviceNodes(u64_id).call()
+        result                       = ContractServiceNode()
+        index                        = 0;
 
+        result.next                  = call_result[index]
+        index += 1;
+
+        result.prev                  = call_result[index]
+        index += 1;
+
+        result.operator              = call_result[index]
+        index += 1;
+
+        result.pubkey_x              = call_result[index][0]
+        result.pubkey_y              = call_result[index][1]
+        index += 1;
+
+        result.addedTimestamp        = call_result[index]
+        index += 1;
+
+        result.leaveRequestTimestamp = call_result[index]
+        index += 1;
+
+        result.deposit               = call_result[index]
+        index += 1;
+
+        result.contributors          = call_result[index]
+        index += 1;
+
+        return result
 
 
 
@@ -262,11 +371,6 @@ contract_abi = json.loads("""
         }
       ],
       "name": "AddressInsufficientBalance",
-      "type": "error"
-    },
-    {
-      "inputs": [],
-      "name": "ArrayLengthMismatch",
       "type": "error"
     },
     {
@@ -558,6 +662,22 @@ contract_abi = json.loads("""
         }
       ],
       "name": "SignatureExpired",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "serviceNodeID",
+          "type": "uint64"
+        },
+        {
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        }
+      ],
+      "name": "SmallContributorLeaveTooEarly",
       "type": "error"
     },
     {
@@ -966,7 +1086,46 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "MAX_PERMITTED_PUBKEY_AGGREGATIONS_LOWER_BOUND",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "MAX_SERVICE_NODE_REMOVAL_WAIT_TIME",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "SMALL_CONTRIBUTOR_DIVISOR",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "SMALL_CONTRIBUTOR_LEAVE_DELAY",
       "outputs": [
         {
           "internalType": "uint256",
@@ -989,6 +1148,32 @@ contract_abi = json.loads("""
         {
           "internalType": "uint256",
           "name": "Y",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "_lastHeightPubkeyWasAggregated",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "_numPubkeyAggregationsForHeight",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
           "type": "uint256"
         }
       ],
@@ -1183,6 +1368,19 @@ contract_abi = json.loads("""
       "type": "function"
     },
     {
+      "inputs": [],
+      "name": "hashToG2Tag",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "address",
@@ -1346,6 +1544,19 @@ contract_abi = json.loads("""
         {
           "internalType": "uint256",
           "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "maxPermittedPubkeyAggregations",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "result",
           "type": "uint256"
         }
       ],
@@ -1585,19 +1796,50 @@ contract_abi = json.loads("""
     {
       "inputs": [
         {
-          "internalType": "uint256[]",
-          "name": "pkX",
-          "type": "uint256[]"
-        },
-        {
-          "internalType": "uint256[]",
-          "name": "pkY",
-          "type": "uint256[]"
-        },
-        {
-          "internalType": "uint256[]",
-          "name": "amounts",
-          "type": "uint256[]"
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "uint256",
+                  "name": "X",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "Y",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct BN256G1.G1Point",
+              "name": "pubkey",
+              "type": "tuple"
+            },
+            {
+              "internalType": "uint256",
+              "name": "deposit",
+              "type": "uint256"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "addr",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "stakedAmount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IServiceNodeRewards.Contributor[]",
+              "name": "contributors",
+              "type": "tuple[]"
+            }
+          ],
+          "internalType": "struct IServiceNodeRewards.SeedServiceNode[]",
+          "name": "nodes",
+          "type": "tuple[]"
         }
       ],
       "name": "seedPublicKeyList",
@@ -1667,6 +1909,11 @@ contract_abi = json.loads("""
               "internalType": "struct BN256G1.G1Point",
               "name": "pubkey",
               "type": "tuple"
+            },
+            {
+              "internalType": "uint256",
+              "name": "addedTimestamp",
+              "type": "uint256"
             },
             {
               "internalType": "uint256",
@@ -1881,6 +2128,7 @@ contract_abi = json.loads("""
     }
 ]
 """)
+
 erc20_contract_abi = json.loads("""
 [
     {
@@ -2361,7 +2609,7 @@ foundation_pool_abi = json.loads("""
     },
     {
       "inputs": [],
-      "name": "ANNUAL_INTEREST_RATE",
+      "name": "ANNUAL_SIMPLE_PAYOUT_RATE",
       "outputs": [
         {
           "internalType": "uint64",
@@ -2431,7 +2679,7 @@ foundation_pool_abi = json.loads("""
           "type": "uint256"
         }
       ],
-      "name": "calculateInterestAmount",
+      "name": "calculatePayoutAmount",
       "outputs": [
         {
           "internalType": "uint256",
@@ -2443,13 +2691,7 @@ foundation_pool_abi = json.loads("""
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "timestamp",
-          "type": "uint256"
-        }
-      ],
+      "inputs": [],
       "name": "calculateReleasedAmount",
       "outputs": [
         {
@@ -2546,13 +2788,7 @@ foundation_pool_abi = json.loads("""
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "timestamp",
-          "type": "uint256"
-        }
-      ],
+      "inputs": [],
       "name": "rewardRate",
       "outputs": [
         {

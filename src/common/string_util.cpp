@@ -75,6 +75,14 @@ std::string lowercase_ascii_string(std::string_view src) {
     return result;
 }
 
+std::string uppercase_ascii_string(std::string_view src) {
+    std::string result;
+    result.reserve(src.size());
+    for (char ch : src)
+        result += ch >= 'a' && ch <= 'z' ? ch - ('a' - 'A') : ch;
+    return result;
+}
+
 std::string friendly_duration(std::chrono::nanoseconds dur) {
     std::string friendly;
     auto append = std::back_inserter(friendly);

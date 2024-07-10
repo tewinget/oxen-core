@@ -30,6 +30,7 @@
 #include <oxenc/hex.h>
 
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/blockchain.h"
@@ -164,18 +165,8 @@ static void print_extra_fields(const std::vector<cryptonote::tx_extra_field>& fi
     }
 }
 
-constexpr static std::string_view network_type_str(network_type nettype) {
-    switch (nettype) {
-        case network_type::MAINNET: return "Mainnet"sv;
-        case network_type::TESTNET: return "Testnet"sv;
-        case network_type::DEVNET: return "Devnet"sv;
-        case network_type::FAKECHAIN: return "Fakenet"sv;
-        case network_type::UNDEFINED: return "Undefined Net"sv;
-    }
-    return "Unhandled Net"sv;
-}
-
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     uint32_t default_log_level = 0;
     std::string input;
 
@@ -266,13 +257,13 @@ int main(int argc, char* argv[]) {
         }
     } else {
         bool addr_decoded = false;
-        for (auto nettype : {network_type::MAINNET, network_type::TESTNET, network_type::DEVNET}) {
+        for (auto nettype : ALL_NETWORKS) {
             cryptonote::address_parse_info addr_info = {};
             if (cryptonote::get_account_address_from_str(
                         addr_info, static_cast<cryptonote::network_type>(nettype), input)) {
                 addr_decoded = true;
                 cryptonote::account_public_address const& address = addr_info.address;
-                fmt::print("Network Type: {}\n", network_type_str(nettype));
+                fmt::print("Network Type: {}\n", network_type_to_string(nettype));
                 fmt::print("Address: {}\n", input);
                 fmt::print("Subaddress: {}\n", addr_info.is_subaddress ? "Yes" : "No");
                 if (addr_info.has_payment_id)

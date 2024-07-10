@@ -43,6 +43,7 @@
 
 #include "common/guts.h"
 #include "common/string_util.h"
+#include "networks.h"
 #include "oxen_economy.h"
 #ifdef _WIN32
 #define __STDC_FORMAT_MACROS  // NOTE(oxen): Explicitly define the PRIu64 macro on Mingw
@@ -165,32 +166,28 @@ namespace {
             "mnemonic-language", sw::tr("Language for mnemonic"), ""};
     const command_line::arg_descriptor<std::string> arg_electrum_seed = {
             "electrum-seed", sw::tr("Specify Electrum seed for wallet recovery/creation"), ""};
-    const command_line::arg_descriptor<bool> arg_restore_deterministic_wallet = {
+    const command_line::arg_flag arg_restore_deterministic_wallet{
             "restore-deterministic-wallet",
-            sw::tr("Recover wallet using Electrum-style mnemonic seed"),
-            false};
-    const command_line::arg_descriptor<bool> arg_restore_multisig_wallet = {
+            sw::tr("Recover wallet using Electrum-style mnemonic seed")};
+    const command_line::arg_flag arg_restore_multisig_wallet{
             "restore-multisig-wallet",
-            sw::tr("Recover multisig wallet using Electrum-style mnemonic seed"),
-            false};
-    const command_line::arg_descriptor<bool> arg_non_deterministic = {
-            "non-deterministic", sw::tr("Generate non-deterministic view and spend keys"), false};
-    const command_line::arg_descriptor<bool> arg_allow_mismatched_daemon_version = {
+            sw::tr("Recover multisig wallet using Electrum-style mnemonic seed")};
+    const command_line::arg_flag arg_non_deterministic{
+            "non-deterministic", sw::tr("Generate non-deterministic view and spend keys")};
+    const command_line::arg_flag arg_allow_mismatched_daemon_version{
             "allow-mismatched-daemon-version",
-            sw::tr("Allow communicating with a daemon that uses a different RPC version"),
-            false};
+            sw::tr("Allow communicating with a daemon that uses a different RPC version")};
     const command_line::arg_descriptor<uint64_t> arg_restore_height = {
             "restore-height", sw::tr("Restore from specific blockchain height"), 0};
     const command_line::arg_descriptor<std::string> arg_restore_date = {
             "restore-date",
             sw::tr("Restore from estimated blockchain height on specified date"),
             ""};
-    const command_line::arg_descriptor<bool> arg_do_not_relay = {
+    const command_line::arg_flag arg_do_not_relay{
             "do-not-relay",
-            sw::tr("The newly created transaction will not be relayed to the oxen network"),
-            false};
-    const command_line::arg_descriptor<bool> arg_create_address_file = {
-            "create-address-file", sw::tr("Create an address file for new wallets"), false};
+            sw::tr("The newly created transaction will not be relayed to the oxen network")};
+    const command_line::arg_flag arg_create_address_file{
+            "create-address-file", sw::tr("Create an address file for new wallets")};
     const command_line::arg_descriptor<std::string> arg_create_hwdev_txt = {
             "create-hwdev-txt",
             sw::tr("Create a .hwdev.txt file for new hardware-backed wallets containing the given "
@@ -199,8 +196,8 @@ namespace {
             "subaddress-lookahead",
             tools::wallet2::tr("Set subaddress lookahead sizes to <major>:<minor>"),
             ""};
-    const command_line::arg_descriptor<bool> arg_use_english_language_names = {
-            "use-english-language-names", sw::tr("Display English language names"), false};
+    const command_line::arg_flag arg_use_english_language_names{
+            "use-english-language-names", sw::tr("Display English language names")};
 
     const command_line::arg_descriptor<std::vector<std::string>> arg_command = {"command", ""};
 
@@ -3549,15 +3546,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                                                      << msg;
     }
 
-    const bool testnet = tools::wallet2::has_testnet_option(vm);
-    const bool devnet = tools::wallet2::has_devnet_option(vm);
-    if (testnet && devnet) {
-        fail_msg_writer() << tr("Can't specify more than one of --testnet and --devnet");
-        return false;
-    }
-    network_type const nettype = testnet ? network_type::TESTNET
-                               : devnet  ? network_type::DEVNET
-                                         : network_type::MAINNET;
+    const auto nettype = command_line::get_network(vm);
 
     epee::wipeable_string multisig_keys;
     epee::wipeable_string password;
@@ -4884,6 +4873,36 @@ bool simple_wallet::save_bc(const std::vector<std::string>& args) {
         fail_msg_writer() << tr("blockchain can't be saved: ") << err;
     return true;
 }
+
+void simple_wallet::refresh_progress_reporter_t::update(uint64_t height, bool force) {
+    auto current_time = std::chrono::system_clock::now();
+    const auto node_update_threshold =
+            get_config(m_simple_wallet.m_wallet->nettype()).TARGET_BLOCK_TIME / 2;
+    if (node_update_threshold < current_time - m_blockchain_height_update_time ||
+        m_blockchain_height <= height) {
+        update_blockchain_height();
+        m_blockchain_height = (std::max)(m_blockchain_height, height);
+    }
+
+    if (std::chrono::milliseconds(20) < current_time - m_print_time || force) {
+        std::cout << QT_TRANSLATE_NOOP("cryptonote::simple_wallet", "Height ") << height << " / "
+                  << m_blockchain_height << '\r' << std::flush;
+        m_print_time = current_time;
+    }
+}
+void simple_wallet::refresh_progress_reporter_t::update_blockchain_height() {
+    std::string err;
+    uint64_t blockchain_height = m_simple_wallet.get_daemon_blockchain_height(err);
+    if (err.empty()) {
+        m_blockchain_height = blockchain_height;
+        m_blockchain_height_update_time = std::chrono::system_clock::now();
+    } else {
+        log::error(
+                log::Cat("wallet.simplewallet"),
+                "Failed to get current blockchain height: {}",
+                err);
+    }
+}
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::on_new_block(uint64_t height, const cryptonote::block& block) {
     if (m_locked)
@@ -4914,8 +4933,8 @@ void simple_wallet::on_money_received(
     }
 
     const uint64_t warn_height = m_wallet->nettype() == network_type::TESTNET ? 1000000
-                               : m_wallet->nettype() == network_type::DEVNET  ? 0
-                                                                              : 1650000;
+                               : m_wallet->nettype() == network_type::MAINNET ? 1650000
+                                                                              : 0;
     if (height >= warn_height) {
         std::vector<tx_extra_field> tx_extra_fields;
         parse_tx_extra(tx.extra, tx_extra_fields);  // failure ok
@@ -5255,7 +5274,7 @@ bool simple_wallet::show_balance_unlocked(bool detailed) {
                                       next_payout_block,
                                       tools::get_human_readable_timespan(
                                               (next_payout_block - blockchain_height) *
-                                              TARGET_BLOCK_TIME))
+                                              get_config(m_wallet->nettype()).TARGET_BLOCK_TIME))
                             : tr(" (next payout: unknown)");
             success_msg_writer() << tr("Pending SN rewards: ") << print_money(batched_amount)
                                  << ", " << next_batch_payout;
@@ -5870,7 +5889,8 @@ bool simple_wallet::confirm_and_send_tx(
                               print_money(dust_not_in_fee);
 
         if (lock_time_in_blocks > 0) {
-            double days = lock_time_in_blocks / (double)BLOCKS_PER_DAY;
+            double days =
+                    lock_time_in_blocks / (double)get_config(m_wallet->nettype()).BLOCKS_PER_DAY();
             prompt << boost::format(tr(".\nThis transaction (including %s change) will unlock on "
                                        "block %llu, in approximately %s days (assuming 2 minutes "
                                        "per block)")) %
@@ -6765,7 +6785,8 @@ bool simple_wallet::ons_buy_mapping(std::vector<std::string> args) {
                       : *type == ons::mapping_type::lokinet_5years  ? 5
                       : *type == ons::mapping_type::lokinet_2years  ? 2
                                                                     : 1;
-            int blocks = years * ons::REGISTRATION_YEAR_DAYS * BLOCKS_PER_DAY;
+            int blocks = years * ons::REGISTRATION_YEAR_DAYS *
+                         get_config(m_wallet->nettype()).BLOCKS_PER_DAY();
             std::cout << boost::format(tr("Registration: %d years (%d blocks)")) % years % blocks
                       << "\n";
         } else
@@ -6859,7 +6880,8 @@ bool simple_wallet::ons_renew_mapping(std::vector<std::string> args) {
             years = 5;
         else if (type == ons::mapping_type::lokinet_10years)
             years = 10;
-        int blocks = years * ons::REGISTRATION_YEAR_DAYS * BLOCKS_PER_DAY;
+        int blocks = years * ons::REGISTRATION_YEAR_DAYS *
+                     get_config(m_wallet->nettype()).BLOCKS_PER_DAY();
         std::cout << boost::format(tr("Renewal years: %d (%d blocks)")) % years % blocks << "\n";
         std::cout << boost::format(tr("New expiry:    Block %d")) %
                              (response[0]["expiration_height"].get<uint64_t>() + blocks)
@@ -9529,10 +9551,7 @@ bool simple_wallet::wallet_info(const std::vector<std::string>& args) {
     else
         type = tr("Normal");
     message_writer() << tr("Type: ") << type;
-    message_writer() << tr("Network type: ")
-                     << (m_wallet->nettype() == cryptonote::network_type::TESTNET  ? tr("Testnet")
-                         : m_wallet->nettype() == cryptonote::network_type::DEVNET ? tr("Devnet")
-                                                                                   : tr("Mainnet"));
+    message_writer() << tr("Network type: ") << cryptonote::network_type_to_string(m_wallet->nettype());
     return true;
 }
 
@@ -9879,6 +9898,8 @@ bool simple_wallet::show_transfer(const std::vector<std::string>& args) {
 
     const uint64_t last_block_height = m_wallet->get_blockchain_current_height();
 
+    auto& netconf = get_config(m_wallet->nettype());
+
     std::list<std::pair<crypto::hash, tools::wallet2::payment_details>> payments;
     m_wallet->get_payments(payments, 0, (uint64_t)-1, m_current_subaddress_account);
     for (std::list<std::pair<crypto::hash, tools::wallet2::payment_details>>::const_iterator i =
@@ -9923,9 +9944,9 @@ bool simple_wallet::show_transfer(const std::vector<std::string>& args) {
                             << std::to_string(last_block_height - bh) << " confirmations";
             } else {
                 uint64_t current_time = static_cast<uint64_t>(time(NULL));
-                uint64_t threshold =
-                        current_time +
-                        tools::to_seconds(LOCKED_TX_ALLOWED_DELTA_BLOCKS * TARGET_BLOCK_TIME);
+                uint64_t threshold = current_time + tools::to_seconds(
+                                                            LOCKED_TX_ALLOWED_DELTA_BLOCKS *
+                                                            netconf.TARGET_BLOCK_TIME);
                 if (threshold >= pd.m_unlock_time)
                     success_msg_writer() << "unlocked for "
                                          << tools::get_human_readable_timespan(std::chrono::seconds(
@@ -9988,9 +10009,9 @@ bool simple_wallet::show_transfer(const std::vector<std::string>& args) {
                             << std::to_string(last_block_height - bh) << " confirmations";
             } else {
                 uint64_t current_time = static_cast<uint64_t>(time(NULL));
-                uint64_t threshold =
-                        current_time +
-                        tools::to_seconds(LOCKED_TX_ALLOWED_DELTA_BLOCKS * TARGET_BLOCK_TIME);
+                uint64_t threshold = current_time + tools::to_seconds(
+                                                            LOCKED_TX_ALLOWED_DELTA_BLOCKS *
+                                                            netconf.TARGET_BLOCK_TIME);
                 if (threshold >= pd.m_unlock_time)
                     success_msg_writer() << "unlocked for "
                                          << tools::get_human_readable_timespan(std::chrono::seconds(
@@ -10127,6 +10148,7 @@ void simple_wallet::commit_or_save(
 
 //----------------------------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     setlocale(LC_CTYPE, "");
@@ -10166,7 +10188,7 @@ int main(int argc, char* argv[]) {
     command_line::add_arg(desc_params, arg_use_english_language_names);
 
     po::positional_options_description positional_options;
-    positional_options.add(arg_command.name, -1);
+    positional_options.add(arg_command.name.c_str(), -1);
 
     auto [vm, should_terminate] = wallet_args::main(
             argc,

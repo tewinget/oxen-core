@@ -8,8 +8,6 @@ static auto logcat = log::Cat("msgwriter");
 
 scoped_message_writer& scoped_message_writer::flush() {
     if (!m_content.empty()) {
-        logcat->log(m_log_level, "{}{}", m_prefix, m_content);
-
         if (m_color) {
             rdln::suspend_readline pause_readline;
             fmt::print(fg(*m_color), "{}{}\n", m_prefix, m_content);

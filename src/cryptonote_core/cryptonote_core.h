@@ -28,7 +28,9 @@
 
 #include "blockchain.h"
 #include "bls/bls_aggregator.h"
+#include "bls/bls_signer.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/connection_context.h"
@@ -52,13 +54,10 @@ struct test_options {
     size_t long_term_block_weight_window;
 };
 
-extern const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir;
-extern const command_line::arg_descriptor<bool, false> arg_testnet_on;
-extern const command_line::arg_descriptor<bool, false> arg_devnet_on;
-extern const command_line::arg_descriptor<bool, false> arg_regtest_on;
+extern const command_line::arg_descriptor<std::string> arg_data_dir;
 extern const command_line::arg_descriptor<difficulty_type> arg_fixed_difficulty;
-extern const command_line::arg_descriptor<bool> arg_dev_allow_local;
-extern const command_line::arg_descriptor<bool> arg_offline;
+extern const command_line::arg_flag arg_dev_allow_local;
+extern const command_line::arg_flag arg_offline;
 extern const command_line::arg_descriptor<size_t> arg_block_download_max_size;
 
 // Function pointers that are set to throwing stubs and get replaced by the actual functions in
@@ -755,7 +754,7 @@ class core : public i_miner_handler {
     /// node.
     eth::BLSSigner& get_bls_signer() {
         if (!m_bls_signer)
-            throw std::logic_error{"Not a service node: no BLS Signer available"};
+            throw oxen::traced<std::logic_error>{"Not a service node: no BLS Signer available"};
         return *m_bls_signer;
     }
 
@@ -1254,7 +1253,7 @@ class core : public i_miner_handler {
 
     std::unique_ptr<eth::L2Tracker> m_l2_tracker;
 
-    std::shared_ptr<eth::BLSSigner> m_bls_signer;
+    std::optional<eth::BLSSigner> m_bls_signer;
     std::unique_ptr<eth::BLSAggregator> m_bls_aggregator;
 
     i_cryptonote_protocol* m_pprotocol;        //!< cryptonote protocol instance

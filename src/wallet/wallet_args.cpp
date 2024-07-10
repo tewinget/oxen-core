@@ -33,9 +33,11 @@
 #include <fstream>
 #include <sstream>
 
+#include "common/command_line.h"
 #include "common/file.h"
 #include "common/i18n.h"
 #include "common/util.h"
+#include "common/exception.h"
 #include "epee/misc_log_ex.h"
 #include "epee/string_tools.h"
 #include "logging/oxen_logger.h"
@@ -101,9 +103,9 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
             wallet_args::tr("Max number of threads to use for a parallel job"),
             DEFAULT_MAX_CONCURRENCY};
     const command_line::arg_descriptor<std::string> arg_log_file = {
-            "log-file", wallet_args::tr("Specify log file"), ""};
+            "log-file", wallet_args::tr("Specify log file")};
     const command_line::arg_descriptor<std::string> arg_config_file = {
-            "config-file", wallet_args::tr("Config file"), "", true};
+            "config-file", wallet_args::tr("Config file")};
 
     std::string lang = i18n_get_language();
     tools::on_startup();
@@ -124,6 +126,8 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
     command_line::add_arg(desc_params, arg_max_log_files);
     command_line::add_arg(desc_params, arg_max_concurrency);
     command_line::add_arg(desc_params, arg_config_file);
+
+    command_line::add_network_args(desc_params);
 
     i18n_set_language("translations", "oxen", lang);
 
@@ -160,12 +164,12 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
             return true;
         }
 
-        if (command_line::has_arg(vm, arg_config_file)) {
+        if (!command_line::is_arg_defaulted(vm, arg_config_file)) {
             fs::path config{tools::convert_sv<char8_t>(command_line::get_arg(vm, arg_config_file))};
             if (std::error_code ec; fs::exists(config, ec)) {
                 std::ifstream cfg{config};
                 if (!cfg.is_open())
-                    throw std::runtime_error{"Unable to open config file: {}"_format(config)};
+                    throw oxen::traced<std::runtime_error>{"Unable to open config file: {}"_format(config)};
                 po::store(po::parse_config_file<char>(cfg, desc_params), vm);
             } else {
                 log::error(logcat, "{}{}", wallet_args::tr("Can't find config file "), config);
@@ -188,7 +192,8 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
     else
         log_path = epee::string_tools::get_current_module_name() + ".log";
 
-    oxen::logging::init(log_path, command_line::get_arg(vm, arg_log_level), false /*do not log to stdout.*/);
+    oxen::logging::init(
+            log_path, command_line::get_arg(vm, arg_log_level), false /*do not log to stdout.*/);
 
     if (notice)
         print("{}\n"_format(notice));

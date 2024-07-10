@@ -41,6 +41,7 @@
 #include <cstdint>
 #include <exception>
 
+#include "common/exception.h"
 #include "common/command_line.h"
 #include "common/guts.h"
 #include "common/i18n.h"
@@ -73,17 +74,17 @@ namespace {
 
     constexpr auto DEFAULT_AUTO_REFRESH_PERIOD = 20s;
 
-    const command_line::arg_descriptor<uint16_t, true> arg_rpc_bind_port = {
-            "rpc-bind-port", "Sets bind port for server"};
-    const command_line::arg_descriptor<bool> arg_disable_rpc_login = {
+    const command_line::arg_descriptor<uint16_t> arg_rpc_bind_port = {
+            "rpc-bind-port", "Sets bind port for server", command_line::required};
+    const command_line::arg_flag arg_disable_rpc_login = {
             "disable-rpc-login",
             "Disable HTTP authentication for RPC connections served by this process"};
-    const command_line::arg_descriptor<bool> arg_restricted = {
-            "restricted-rpc", "Restricts to view-only commands", false};
+    const command_line::arg_flag arg_restricted = {
+            "restricted-rpc", "Restricts to view-only commands"};
     const command_line::arg_descriptor<std::string> arg_wallet_dir = {
             "wallet-dir", "Directory for newly created wallets"};
-    const command_line::arg_descriptor<bool> arg_prompt_for_password = {
-            "prompt-for-password", "Prompts for password when not provided", false};
+    const command_line::arg_flag arg_prompt_for_password = {
+            "prompt-for-password", "Prompts for password when not provided"};
 
     constexpr const char default_rpc_username[] = "oxen";
 
@@ -129,7 +130,7 @@ namespace {
                                 throw tools::wallet_rpc_server::parse_error{
                                         "Failed to parse JSON parameters"};
                         } else
-                            throw std::runtime_error{
+                            throw oxen::traced<std::runtime_error>{
                                     "only top-level JSON object values are currently supported"};
                     }
                     epee::json_rpc::response<Response> r{
@@ -388,7 +389,7 @@ void wallet_rpc_server::run_loop() {
                     for (const auto& [addr, port, required] : m_bind)
                         error << ' ' << addr << ':' << port;
                 }
-                throw std::runtime_error{error.str()};
+                throw oxen::traced<std::runtime_error>{error.str()};
             }
         } catch (...) {
             loop_promise.set_exception(std::current_exception());
@@ -2525,8 +2526,7 @@ namespace {
     // great like that.
     po::variables_map password_arg_hack(const std::string& password, po::variables_map vm) {
         po::options_description desc("dummy");
-        const command_line::arg_descriptor<std::string, true> arg_password = {
-                "password", "password"};
+        const command_line::arg_descriptor<std::string> arg_password = {"password", "password"};
         const char* argv[3];
         int argc = 3;
         argv[0] = "wallet-rpc";
@@ -3036,15 +3036,16 @@ SUBMIT_MULTISIG::response wallet_rpc_server::invoke(SUBMIT_MULTISIG::request&& r
 VALIDATE_ADDRESS::response wallet_rpc_server::invoke(VALIDATE_ADDRESS::request&& req) {
     VALIDATE_ADDRESS::response res{};
     cryptonote::address_parse_info info;
-    constexpr std::pair<cryptonote::network_type, std::string_view> net_types[] = {
-            {cryptonote::network_type::MAINNET, "mainnet"},
-            {cryptonote::network_type::TESTNET, "testnet"},
-            {cryptonote::network_type::DEVNET, "devnet"},
+    constexpr std::array net_types = {
+            cryptonote::network_type::MAINNET,
+            cryptonote::network_type::TESTNET,
+            cryptonote::network_type::DEVNET,
+            cryptonote::network_type::STAGENET,
     };
     if (!req.any_net_type && !m_wallet)
         require_open();
 
-    for (const auto& [type, type_str] : net_types) {
+    for (const auto& type : net_types) {
         if (!req.any_net_type && (!m_wallet || type != m_wallet->nettype()))
             continue;
         if (req.allow_openalias) {
@@ -3063,7 +3064,7 @@ VALIDATE_ADDRESS::response wallet_rpc_server::invoke(VALIDATE_ADDRESS::request&&
         if (res.valid) {
             res.integrated = info.has_payment_id;
             res.subaddress = info.is_subaddress;
-            res.nettype = type_str;
+            res.nettype = network_type_to_string(type);
             return res;
         }
     }
@@ -3649,11 +3650,6 @@ ONS_ENCRYPT_VALUE::response wallet_rpc_server::invoke(ONS_ENCRYPT_VALUE::request
 std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
     std::unique_ptr<tools::wallet2> wal;
     {
-        const bool testnet = tools::wallet2::has_testnet_option(m_vm);
-        const bool devnet = tools::wallet2::has_devnet_option(m_vm);
-        if (testnet && devnet)
-            throw std::logic_error{tr("Can't specify more than one of --testnet and --devnet")};
-
         const auto arg_wallet_file = wallet_args::arg_wallet_file();
         const auto arg_from_json = wallet_args::arg_generate_from_json();
 
@@ -3664,14 +3660,14 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
         const auto password_prompt = prompt_for_password ? password_prompter : nullptr;
 
         if (!wallet_file.empty() && !from_json.empty())
-            throw std::logic_error{
+            throw oxen::traced<std::logic_error>{
                     tr("Can't specify more than one of --wallet-file and --generate-from-json")};
 
         if (!wallet_dir.empty())
             return nullptr;
 
         if (wallet_file.empty() && from_json.empty())
-            throw std::logic_error{
+            throw oxen::traced<std::logic_error>{
                     tr("Must specify --wallet-file or --generate-from-json or --wallet-dir")};
 
         log::warning(logcat, "{}", tools::wallet_rpc_server::tr("Loading wallet..."));
@@ -3681,7 +3677,7 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
             wal = tools::wallet2::make_from_json(m_vm, true, from_json, password_prompt).first;
 
         if (!wal)  // safety check (the above should throw on error)
-            throw std::runtime_error{"Failed to create wallet: (unknown reason)"};
+            throw oxen::traced<std::runtime_error>{"Failed to create wallet: (unknown reason)"};
 
         bool quit = false;
         tools::signal_handler::install([&wal, &quit](int) {
@@ -3696,7 +3692,7 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
             log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Saving wallet..."));
             wal->store();
             log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Successfully saved"));
-            throw std::runtime_error{
+            throw oxen::traced<std::runtime_error>{
                     tr("Wallet loading cancelled before initial refresh completed")};
         }
         log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Successfully loaded"));
@@ -3750,6 +3746,7 @@ void wallet_rpc_server::stop() {
 }  // namespace tools
 
 int main(int argc, char** argv) {
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     namespace po = boost::program_options;

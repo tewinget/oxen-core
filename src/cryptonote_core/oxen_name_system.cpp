@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "common/oxen.h"
+#include "common/exception.h"
 #include "common/string_util.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -697,7 +698,8 @@ std::optional<uint64_t> expiry_blocks(cryptonote::network_type nettype, mapping_
         const bool testnet_short = nettype == cryptonote::network_type::TESTNET &&
                                    type != mapping_type::lokinet_10years;
 
-        result = cryptonote::BLOCKS_PER_DAY * REGISTRATION_YEAR_DAYS *
+        auto bpd = get_config(nettype).BLOCKS_PER_DAY();
+        result = bpd * REGISTRATION_YEAR_DAYS *
                  (type == mapping_type::lokinet           ? 1
                   : type == mapping_type::lokinet_2years  ? 2
                   : type == mapping_type::lokinet_5years  ? 5
@@ -710,7 +712,7 @@ std::optional<uint64_t> expiry_blocks(cryptonote::network_type nettype, mapping_
         else if (nettype == cryptonote::network_type::FAKECHAIN)  // For fakenet testing we shorten
                                                                   // 1/2/5/10 years to 2/4/10/20
                                                                   // blocks
-            *result /= (cryptonote::BLOCKS_PER_DAY * REGISTRATION_YEAR_DAYS / 2);
+            *result /= (bpd * REGISTRATION_YEAR_DAYS / 2);
     }
 
     return result;
@@ -1198,7 +1200,7 @@ mapping_value::mapping_value() : buffer{0}, encrypted(false), len(0) {}
 
 std::string name_hash_bytes_to_base64(std::string_view bytes) {
     if (bytes.size() != NAME_HASH_SIZE)
-        throw std::runtime_error{"Invalid name hash: expected exactly 32 bytes"};
+        throw oxen::traced<std::runtime_error>{"Invalid name hash: expected exactly 32 bytes"};
     return oxenc::to_base64(bytes);
 }
 
