@@ -529,12 +529,18 @@ class service_node_list {
 
     /// Returns the (monero curve) pubkey associated with a x25519 pubkey.  Returns a null public
     /// key if not found.  (Note: this is just looking up the association, not derivation).
+    ///
+    /// As of feature::SN_PK_IS_ED25519 this is looked up in the state and will always be present
+    /// (if the given pubkey actually belongs to an active service node).  Before that HF, the
+    /// pubkey will only be available if a recent proof has been received from the SN.
     crypto::public_key get_pubkey_from_x25519(const crypto::x25519_public_key& x25519) const;
 
     // Returns a pubkey of a random service node in the service node list
     crypto::public_key get_random_pubkey();
 
-    /// Initializes the x25519 map from current pubkey state; called during initialization
+    /// Initializes the x25519 map from current pubkey state; called during initialization.
+    ///
+    /// TODO Deprecated: Can be removed after HF21 (replaced with a map in the state_t object).
     void initialize_x25519_map();
 
     /// Remote SN lookup address function for OxenMQ: given a string_view of a x25519 pubkey, this
@@ -562,19 +568,24 @@ class service_node_list {
         }
     }
 
-    /// Copies x25519 pubkeys (as strings) of all currently active SNs into the given output
-    /// iterator
+    /// Copies x25519 pubkeys (as strings) of all currently registered SNs into the given output
+    /// iterator.  (Before the feature::SN_PK_IS_ED25519 hardfork this only includes SNs with known
+    /// proofs.)
     template <std::output_iterator<std::string> OutputIt>
-    void copy_active_x25519_pubkeys(OutputIt out) const {
+    void copy_x25519_pubkeys(OutputIt out, cryptonote::network_type nettype) const {
         std::lock_guard lock{m_sn_mutex};
-        for (const auto& pk_info : m_state.service_nodes_infos) {
-            if (!pk_info.second->is_active())
-                continue;
-            auto it = proofs.find(pk_info.first);
-            if (it == proofs.end())
-                continue;
-            if (const auto& x2_pk = it->second.pubkey_x25519)
-                *out++ = std::string{reinterpret_cast<const char*>(&x2_pk), sizeof(x2_pk)};
+        if (cryptonote::is_hard_fork_at_least(
+                    nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height)) {
+            for (const auto& [xpk, _ignore] : m_state.x25519_map)
+                *out++ = std::string{reinterpret_cast<const char*>(&xpk), sizeof(xpk)};
+        } else {
+            for (const auto& pk_info : m_state.service_nodes_infos) {
+                auto it = proofs.find(pk_info.first);
+                if (it == proofs.end())
+                    continue;
+                if (const auto& x2_pk = it->second.pubkey_x25519)
+                    *out++ = std::string{reinterpret_cast<const char*>(&x2_pk), sizeof(x2_pk)};
+            }
         }
     }
 
@@ -763,6 +774,7 @@ class service_node_list {
         bool only_loaded_quorums{false};
         service_nodes_infos_t service_nodes_infos;
         std::vector<key_image_blacklist_entry> key_image_blacklist;
+        std::unordered_map<crypto::x25519_public_key, crypto::public_key> x25519_map;
         block_height height{0};
         mutable quorum_manager quorums;  // Mutable because we are allowed to (and need to) change
                                          // it via std::set iterator
@@ -774,6 +786,12 @@ class service_node_list {
         friend bool operator<(const state_t& a, const state_t& b) { return a.height < b.height; }
         friend bool operator<(const state_t& s, block_height h) { return s.height < h; }
         friend bool operator<(block_height h, const state_t& s) { return h < s.height; }
+
+        // Inserts/erase a service node_node_info from service_nodes_infos, with proper updating of
+        // dependent fields (such as x25519_map).
+        void insert_info(
+                const crypto::public_key& pubkey, std::shared_ptr<service_node_info>&& info_ptr);
+        service_nodes_infos_t::iterator erase_info(const service_nodes_infos_t::iterator& it);
 
         std::vector<pubkey_and_sninfo> active_service_nodes_infos() const;
         std::vector<pubkey_and_sninfo> decommissioned_service_nodes_infos()
@@ -857,6 +875,11 @@ class service_node_list {
                 const service_node_keys* my_keys);
         payout get_block_leader() const;
         payout get_block_producer(uint8_t pulse_round) const;
+
+      private:
+        // Rebuilds the x25519_map from the list of service nodes.  Does nothing if the
+        // feature::SN_PK_IS_ED25519 fork hasn't happened for this state height.
+        void initialize_xpk_map();
     };
 
     // Can be set to true (via --dev-allow-local-ips) for debugging a new testnet on a local private

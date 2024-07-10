@@ -1065,7 +1065,10 @@ bool core::init_service_keys() {
 
     auto style = fg(fmt::terminal_color::yellow) | fmt::emphasis::bold;
     if (m_service_node) {
-        log::info(globallogcat, fg(fmt::terminal_color::cyan) | fmt::emphasis::bold, "Service node public keys:");
+        log::info(
+                globallogcat,
+                fg(fmt::terminal_color::cyan) | fmt::emphasis::bold,
+                "Service node public keys:");
         log::info(globallogcat, style, "- primary: {:x}", keys.pub);
         log::info(globallogcat, style, "- ed25519: {:x}", keys.pub_ed25519);
         // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
@@ -1105,8 +1108,7 @@ oxenmq::AuthLevel core::omq_allow(
     using namespace oxenmq;
     AuthLevel auth = default_auth;
     if (x25519_pubkey_str.size() == sizeof(crypto::x25519_public_key)) {
-        crypto::x25519_public_key x25519_pubkey;
-        std::memcpy(x25519_pubkey.data(), x25519_pubkey_str.data(), x25519_pubkey_str.size());
+        auto x25519_pubkey = tools::make_from_guts<crypto::x25519_public_key>(x25519_pubkey_str);
         auto user_auth = omq_check_access(x25519_pubkey);
         if (user_auth >= AuthLevel::basic) {
             if (user_auth > auth)
@@ -2488,7 +2490,7 @@ bool core::check_incoming_block_size(const std::string& block_blob) const {
 void core::update_omq_sns() {
     // TODO: let callers (e.g. lokinet, ss) subscribe to callbacks when this fires
     oxenmq::pubkey_set active_sns;
-    m_service_node_list.copy_active_x25519_pubkeys(std::inserter(active_sns, active_sns.end()));
+    m_service_node_list.copy_x25519_pubkeys(std::inserter(active_sns, active_sns.end()), m_nettype);
     m_omq->set_active_sns(std::move(active_sns));
 }
 //-----------------------------------------------------------------------------------------------

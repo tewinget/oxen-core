@@ -2287,18 +2287,11 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
     auto& snode_keys = *maybe_keys;
 
     if (hf_version >= cryptonote::feature::ETH_BLS) {
-        // TODO FIXME XXX
-        tools::fail_msg_writer("FIXME: REPLACE THIS FOR feature::ETH_BLS");
-        assert(false);
-
-        tools::success_msg_writer(
-                "Service Node Pubkey: {}\n"
-                "Service Node Signature: {}\n",
-                snode_keys.value<std::string>("service_node_pubkey", ""),
-                snode_keys.value<std::string>(
-                        "service_node_signature",
-                        ""));  // Assuming 'service_node_signature' is the key for signature
-        return true;
+        tools::fail_msg_writer(
+                "prepare_registration is no longer usable as of HF {}; you should use the "
+                "`prepare_eth_registration` command instead",
+                static_cast<int>(cryptonote::feature::ETH_BLS));
+        return false;
     }
 
     auto nettype = cryptonote::network_type_from_string(info["nettype"].get<std::string_view>());
