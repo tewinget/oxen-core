@@ -600,7 +600,8 @@ uint64_t L2Tracker::get_latest_height() const {
 
 uint64_t L2Tracker::get_safe_height() const {
     std::shared_lock lock{mutex};
-    return SAFE_BLOCKS >= latest_height ? 0 : latest_height - SAFE_BLOCKS;
+    const cryptonote::network_config& config = cryptonote::get_config(core.get_nettype());
+    return config.L2_TRACKER_SAFE_BLOCKS >= latest_height ? 0 : latest_height - config.L2_TRACKER_SAFE_BLOCKS;
 }
 
 uint64_t L2Tracker::get_confirmed_height() const {
