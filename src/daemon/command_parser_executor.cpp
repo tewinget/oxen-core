@@ -313,7 +313,7 @@ bool command_parser_executor::prepare_eth_registration(const std::vector<std::st
         }
         contract_address = std::string_view{args[1]};
     }
-    else
+    else if (argc != 1)
     {
         log::error(logcat, usage);
         return false;
