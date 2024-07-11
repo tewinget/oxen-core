@@ -145,8 +145,8 @@ using MAXIMUM_ACCEPTABLE_STAKE = std::ratio<101, 100>;
 // precision of HF19+ registrations (i.e. to a percentage with two decimal places of precision).
 inline constexpr uint64_t STAKING_FEE_BASIS = 10'000;
 
-// We calculate and store batch rewards in thousanths of atomic OXEN, to reduce the size of errors
-// from integer division of rewards.
+// We calculate and store batch rewards in thousanths of atomic OXEN/SENT, to reduce the size of
+// errors from integer division of rewards.
 constexpr uint64_t BATCH_REWARD_FACTOR = 1000;
 
 // If we don't hear any SS ping/lokinet session test failures for more than this long then we
