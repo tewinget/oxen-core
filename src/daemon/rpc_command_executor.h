@@ -178,9 +178,7 @@ class rpc_command_executor final {
     bool print_quorum_state(
             std::optional<uint64_t> start_height, std::optional<uint64_t> end_height);
 
-    bool set_log_level(int8_t level);
-
-    bool set_log_categories(std::string categories);
+    bool set_log_level(std::string categories);
 
     bool print_height();
 

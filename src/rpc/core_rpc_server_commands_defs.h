@@ -873,47 +873,38 @@ struct GET_PEER_LIST : LEGACY {
 
 /// RPC: daemon/set_log_level
 ///
-/// Set the daemon log level. By default, log level is set to `0`.  For more fine-tuned logging
-/// control set the set_log_categories command instead.
+/// Set the daemon log level. The level is separated by any number of commas or spaces, and can
+/// contain a global level and/or category-specific log levels to update.  A level value should be
+/// one of "critical", "error", "warning", "info", "debug", or "trace".  To set the level of a
+/// specific category, use "category=LEVEL".  The category names are as provided in log messages,
+/// e.g. in the log line:
 ///
-/// Inputs:
-/// - `level` -- Daemon log level to set from `0` (less verbose) to `4` (most verbose)
+///     [2024-07-10 21:06:59] [+0.001s] [daemon:info|daemon/daemon.cpp:336] Starting core
+///
+/// "daemon" is the category.
+///
+/// Setting the global level is done by putting a level without a category, e.g. "info", or using
+/// the "*" category ("*=info").
+///
+/// For example:
+///
+///     warning, service_nodes=debug, rpc=error, cn=info
+///
+/// would reset all logging to the default "warning" log level, then apply the three specific
+/// category levels overrides: "service_nodes" gets debug logging; "rpc" gets only error logging;
+/// and "cn" logging gets set to info level.
+///
+/// For backwards compatibility you can pass a `level` integer set to 0-4: 0 means warning, 1 means
+/// info, 2 means debug, and 3 or 4 mean trace.  This usage is deprecated and the string form should
+/// be preferred.
 ///
 /// Output:
 ///
 /// - `status` -- General RPC status string. `"OK"` means everything looks good.
+/// - `applied` -- array of actually applied log levels (which might be less than requested for
+///   redundant or partially unparseable inputs).
 struct SET_LOG_LEVEL : LEGACY {
-    static constexpr auto names() { return NAMES("set_log_level"); }
-
-    struct request_parameters {
-        int8_t level;
-    } request;
-};
-
-/// RPC: daemon/set_log_categories
-///
-/// Set the daemon log categories for debugging purposes.
-///
-/// Categories are represented as a comma separated list of `<Category>:<level>`, where
-/// `<Category>` is is one of the various internal debugging categories defined in the oxen source
-/// code, or `*` to refer to all logging categories.
-///
-/// Level is one of the following: FATAL, ERROR, WARNING, INFO, DEBUG, TRACE.
-///
-/// You can append to the current the log level for updating just one or more categories while
-/// leaving other log levels unchanged by specifying one or more "<category>:<level>" pairs
-/// preceded by a "+", for example "+difficulty:DEBUG,net:WARNING".
-///
-/// Inputs:
-///
-/// - `categories` -- Optional, daemon log categores to enable
-///
-/// Output:
-///
-/// - `status` -- General RPC status string. `"OK"` means everything looks good.
-/// - `categories` -- Daemon log enabled categories
-struct SET_LOG_CATEGORIES : LEGACY {
-    static constexpr auto names() { return NAMES("set_log_categories"); }
+    static constexpr auto names() { return NAMES("set_log_level", "set_log_categories"); }
 
     struct request_parameters {
         std::string categories;
@@ -2801,7 +2792,6 @@ using core_rpc_types = tools::type_list<
         SAVE_BC,
         SET_BANS,
         SET_LIMIT,
-        SET_LOG_CATEGORIES,
         SET_LOG_LEVEL,
         START_MINING,
         STOP_DAEMON,

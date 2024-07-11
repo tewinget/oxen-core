@@ -83,7 +83,7 @@ void apply_categories_string(std::string_view categories) {
     extract_categories(categories).apply();
 }
 
-void LogCats::apply() {
+std::list<std::string> LogCats::apply() {
     std::list<std::string> applied;
     if (default_level) {
         log::reset_level(*default_level);
@@ -98,11 +98,13 @@ void LogCats::apply() {
 
     if (!applied.empty())
         log::info(logcat, "Applied log categories: {}", fmt::join(applied, ", "));
+
+    return applied;
 }
 
 void init(const std::string& log_location, std::string_view log_levels, bool log_to_stdout) {
     auto cats = extract_categories(log_levels);
-    if (!cats.default_level && cats.cat_levels.empty() && !log_levels.empty()) {
+    if (cats.empty() && !log_levels.empty()) {
         std::cerr << "Incorrect log level string: " << log_levels << std::endl;
         throw std::runtime_error{"Invalid log level or log categories"};
     }

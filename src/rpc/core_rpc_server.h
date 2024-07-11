@@ -155,7 +155,6 @@ class core_rpc_server {
     void invoke(GET_BLOCK_HASH& req, rpc_context context);
     void invoke(GET_PEER_LIST& pl, rpc_context context);
     void invoke(SET_LOG_LEVEL& set_log_level, rpc_context context);
-    void invoke(SET_LOG_CATEGORIES& set_log_categories, rpc_context context);
     void invoke(BANNED& banned, rpc_context context);
     void invoke(FLUSH_TRANSACTION_POOL& flush_transaction_pool, rpc_context context);
     void invoke(GET_VERSION& version, rpc_context context);

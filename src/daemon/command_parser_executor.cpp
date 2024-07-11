@@ -332,25 +332,12 @@ bool command_parser_executor::print_sn_status(const std::vector<std::string>& ar
 }
 
 bool command_parser_executor::set_log_level(const std::vector<std::string>& args) {
-    if (args.size() > 1) {
-        std::cout << "use: set_log [<log_level_number_0-4> | <categories>]" << std::endl;
+    if (args.empty()) {
+        std::cout << "use: set_log [critical|error|warning|info|debug|trace] [category=LEVEL ...]" << std::endl;
         return true;
     }
 
-    if (args.empty()) {
-        return m_executor.set_log_categories("+");
-    }
-
-    uint16_t l = 0;
-    if (epee::string_tools::get_xtype_from_string(l, args[0])) {
-        if (4 < l) {
-            std::cout << "wrong number range, use: set_log <log_level_number_0-4>" << std::endl;
-            return true;
-        }
-        return m_executor.set_log_level(l);
-    } else {
-        return m_executor.set_log_categories(args.front());
-    }
+    return m_executor.set_log_level("{}"_format(fmt::join(args, ", ")));
 }
 
 bool command_parser_executor::print_height(const std::vector<std::string>& args) {
