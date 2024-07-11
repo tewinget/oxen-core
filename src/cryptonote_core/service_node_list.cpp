@@ -78,7 +78,7 @@ size_t constexpr STORE_LONG_TERM_STATE_INTERVAL = 10000;
 constexpr auto X25519_MAP_PRUNING_INTERVAL = 5min;
 constexpr auto X25519_MAP_PRUNING_LAG = 24h;
 static_assert(
-        X25519_MAP_PRUNING_LAG > cryptonote::config::mainnet::UPTIME_PROOF_VALIDITY,
+        X25519_MAP_PRUNING_LAG > cryptonote::config::mainnet::config.UPTIME_PROOF_VALIDITY,
         "x25519 map pruning lag is too short!");
 
 static uint64_t short_term_state_cull_height(hf hf_version, uint64_t block_height) {

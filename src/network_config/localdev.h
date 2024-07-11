@@ -15,59 +15,55 @@
 //
 // A local-devnet can be deployed by running
 // `utils/local-devnet/service_node_network.py`
-
 namespace cryptonote::config::localdev {
-
-inline constexpr uint32_t ETHEREUM_CHAIN_ID = 31337;
-inline constexpr auto ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv;
-inline constexpr auto ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv;
-
-inline constexpr uint64_t L2_REWARD_POOL_UPDATE_BLOCKS = 1;
-static constexpr uint64_t L2_TRACKER_SAFE_BLOCKS = 0;
-
-inline constexpr auto TARGET_BLOCK_TIME = 6s;
-inline constexpr auto PULSE_STAGE_TIMEOUT = 1s;
-inline constexpr auto PULSE_ROUND_TIMEOUT = 3s;
-inline constexpr auto PULSE_MAX_START_ADJUSTMENT = 3s;
-
 inline constexpr network_config config{
-        network_type::LOCALDEV,
-        devnet::HEIGHT_ESTIMATE_HEIGHT,
-        devnet::HEIGHT_ESTIMATE_TIMESTAMP,
-        devnet::PUBLIC_ADDRESS_BASE58_PREFIX,
-        devnet::PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
-        devnet::PUBLIC_SUBADDRESS_BASE58_PREFIX,
-        devnet::P2P_DEFAULT_PORT,
-        devnet::RPC_DEFAULT_PORT,
-        devnet::QNET_DEFAULT_PORT,
-        devnet::NETWORK_ID,
-        devnet::GENESIS_TX,
-        devnet::GENESIS_NONCE,
-        mainnet::GOVERNANCE_REWARD_INTERVAL,
-        devnet::GOVERNANCE_WALLET_ADDRESS,
-        mainnet::UPTIME_PROOF_TOLERANCE,
-        mainnet::UPTIME_PROOF_STARTUP_DELAY,
-        mainnet::UPTIME_PROOF_CHECK_INTERVAL,
-        testnet::UPTIME_PROOF_FREQUENCY,
-        testnet::UPTIME_PROOF_VALIDITY,
-        false, // storage & lokinet
-        TARGET_BLOCK_TIME,
-        PULSE_STAGE_TIMEOUT,
-        PULSE_ROUND_TIMEOUT,
-        PULSE_MAX_START_ADJUSTMENT,
-        testnet::PULSE_MIN_SERVICE_NODES,
-        testnet::BATCHING_INTERVAL,
-        mainnet::MIN_BATCH_PAYMENT_AMOUNT,
-        mainnet::LIMIT_BATCH_OUTPUTS,
-        testnet::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
-        mainnet::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
-        mainnet::STORE_LONG_TERM_STATE_INTERVAL,
-        testnet::ETH_REMOVAL_BUFFER,
-        ETHEREUM_CHAIN_ID,
-        ETHEREUM_REWARDS_CONTRACT,
-        ETHEREUM_POOL_CONTRACT,
-        L2_REWARD_POOL_UPDATE_BLOCKS,
-        L2_TRACKER_SAFE_BLOCKS,
+        .NETWORK_TYPE = network_type::LOCALDEV,
+        .HEIGHT_ESTIMATE_HEIGHT = devnet::config.HEIGHT_ESTIMATE_HEIGHT,
+        .HEIGHT_ESTIMATE_TIMESTAMP = devnet::config.HEIGHT_ESTIMATE_TIMESTAMP,
+        .PUBLIC_ADDRESS_BASE58_PREFIX = devnet::config.PUBLIC_ADDRESS_BASE58_PREFIX,
+        .PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX =
+                devnet::config.PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
+        .PUBLIC_SUBADDRESS_BASE58_PREFIX = devnet::config.PUBLIC_SUBADDRESS_BASE58_PREFIX,
+        .P2P_DEFAULT_PORT = devnet::config.P2P_DEFAULT_PORT,
+        .RPC_DEFAULT_PORT = devnet::config.RPC_DEFAULT_PORT,
+        .QNET_DEFAULT_PORT = devnet::config.QNET_DEFAULT_PORT,
+        .NETWORK_ID = devnet::config.NETWORK_ID,
+        .GENESIS_TX = devnet::config.GENESIS_TX,
+        .GENESIS_NONCE = devnet::config.GENESIS_NONCE,
+        .GOVERNANCE_REWARD_INTERVAL = mainnet::config.GOVERNANCE_REWARD_INTERVAL,
+        .GOVERNANCE_WALLET_ADDRESS = devnet::config.GOVERNANCE_WALLET_ADDRESS,
+        .UPTIME_PROOF_TOLERANCE = mainnet::config.UPTIME_PROOF_TOLERANCE,
+        .UPTIME_PROOF_STARTUP_DELAY = mainnet::config.UPTIME_PROOF_STARTUP_DELAY,
+        .UPTIME_PROOF_CHECK_INTERVAL = mainnet::config.UPTIME_PROOF_CHECK_INTERVAL,
+        .UPTIME_PROOF_FREQUENCY = testnet::config.UPTIME_PROOF_FREQUENCY,
+        .UPTIME_PROOF_VALIDITY = testnet::config.UPTIME_PROOF_VALIDITY,
+        .HAVE_STORAGE_AND_LOKINET = false,
+        .TARGET_BLOCK_TIME = 6s,
+        .PULSE_STAGE_TIMEOUT = 1s,
+        .PULSE_ROUND_TIMEOUT = 3s,
+        .PULSE_MAX_START_ADJUSTMENT = 3s,
+        .PULSE_MIN_SERVICE_NODES = testnet::config.PULSE_MIN_SERVICE_NODES,
+        .BATCHING_INTERVAL = testnet::config.BATCHING_INTERVAL,
+        .MIN_BATCH_PAYMENT_AMOUNT = mainnet::config.MIN_BATCH_PAYMENT_AMOUNT,
+        .LIMIT_BATCH_OUTPUTS = mainnet::config.LIMIT_BATCH_OUTPUTS,
+        .SERVICE_NODE_PAYABLE_AFTER_BLOCKS = testnet::config.SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
+        .HARDFORK_DEREGISTRATION_GRACE_PERIOD =
+                mainnet::config.HARDFORK_DEREGISTRATION_GRACE_PERIOD,
+        .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,
+        .ETH_REMOVAL_BUFFER = testnet::config.ETH_REMOVAL_BUFFER,
+        .ETHEREUM_CHAIN_ID = 31337,
+        .ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv,
+        .ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv,
+        // Set the reward rate, polled from the smart contract to be sampled
+        // essentially every block because everything is running locally.
+        // This is needed for tests because we are running Pulse nodes
+        // which means block producing is slowed down due to round
+        // timings and IPC. The L2 similarly is updating in lock-step with
+        // the Oxen workchain.
+        .L2_REWARD_POOL_UPDATE_BLOCKS = 1,
+        // All Session nodes are connected to the same RPC provider (e.g.
+        // Foundry's Anvil) which is also running locally hence we have a very
+        // low threshold for the number of blocks to trail the tip by.
+        .L2_TRACKER_SAFE_BLOCKS = 0,
 };
-
 }  // namespace cryptonote::config::localdev

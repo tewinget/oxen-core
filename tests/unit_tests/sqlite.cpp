@@ -65,7 +65,7 @@ TEST(SQLITE, AddSNRewards)
   EXPECT_EQ(sqliteDB.batching_count(), 1);
 
   std::vector<cryptonote::batch_sn_payment> p1;
-  const auto expected_payout = wallet_address.address.next_payout_height(0, cryptonote::config::mainnet::BATCHING_INTERVAL);
+  const auto expected_payout = wallet_address.address.next_payout_height(0, cryptonote::config::mainnet::config.BATCHING_INTERVAL);
   p1 = sqliteDB.get_sn_payments(expected_payout - 1);
   EXPECT_EQ(p1.size(), 0);
 
