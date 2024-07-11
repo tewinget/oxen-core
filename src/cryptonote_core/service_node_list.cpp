@@ -2854,7 +2854,7 @@ void service_node_list::state_t::update_from_block(
             continue;
         if (my_keys && my_keys->pub == pubkey)
             log::info(
-                    logcat,
+                    globallogcat,
                     fg(fmt::terminal_color::green),
                     "Service node expired (yours): {} at block height: {}",
                     pubkey,
