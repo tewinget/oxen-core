@@ -28,6 +28,7 @@
 #ifndef BLOCKCHAIN_DB_H
 #define BLOCKCHAIN_DB_H
 
+#include <type_traits>
 #pragma once
 
 #include <boost/program_options.hpp>
@@ -107,7 +108,7 @@ struct checkpoint_t;
 typedef std::pair<crypto::hash, uint64_t> tx_out_index;
 
 extern const command_line::arg_descriptor<std::string> arg_db_sync_mode;
-extern const command_line::arg_descriptor<bool, false> arg_db_salvage;
+extern const command_line::arg_flag arg_db_salvage;
 
 #pragma pack(push, 1)
 
@@ -163,9 +164,16 @@ struct txpool_tx_meta_t {
     uint8_t do_not_relay;
     uint8_t double_spend_seen : 1;
     uint8_t bf_padding : 7;
-
-    uint8_t padding[76];  // till 192 bytes
+    // 116 bytes
+    uint8_t padding1[4];
+    // 120 bytes
+    uint64_t l2_height;
+    uint8_t padding2[64];  // till 192 bytes
 };
+
+static_assert(
+        sizeof(txpool_tx_meta_t) == 192 &&
+        std::has_unique_object_representations_v<txpool_tx_meta_t>);
 
 #define DBF_SAFE 1
 #define DBF_FAST 2
@@ -1961,15 +1969,13 @@ class db_txn_guard {
 class db_rtxn_guard : public db_txn_guard {
   public:
     explicit db_rtxn_guard(BlockchainDB& db) : db_txn_guard{db, true} {}
-    explicit db_rtxn_guard(BlockchainDB* db) : db_rtxn_guard{*db} {}
 };
 class db_wtxn_guard : public db_txn_guard {
   public:
     explicit db_wtxn_guard(BlockchainDB& db) : db_txn_guard{db, false} {}
-    explicit db_wtxn_guard(BlockchainDB* db) : db_wtxn_guard{*db} {}
 };
 
-BlockchainDB* new_db();
+std::unique_ptr<BlockchainDB> new_db();
 
 }  // namespace cryptonote
 

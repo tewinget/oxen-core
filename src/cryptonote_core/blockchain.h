@@ -35,6 +35,7 @@
 
 // Workaround for boost::serialization issue #219
 #include <boost/version.hpp>
+#include <type_traits>
 #if BOOST_VERSION == 107400
 #include <boost/serialization/library_version_type.hpp>
 #endif
@@ -45,13 +46,13 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/serialization/list.hpp>
+#include <ethyl/provider.hpp>
 #include <functional>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
-#include "blockchain_db/sqlite/db_sqlite.h"
 #include "checkpoints/checkpoints.h"
 #include "common/util.h"
 #include "crypto/hash.h"
@@ -64,6 +65,7 @@
 #include "epee/rolling_median.h"
 #include "epee/span.h"
 #include "epee/string_tools.h"
+#include "l2_tracker/l2_tracker.h"
 #include "pulse.h"
 #include "rpc/core_rpc_server_binary_commands.h"
 #include "rpc/core_rpc_server_commands_defs.h"
@@ -86,6 +88,7 @@ struct block_and_checkpoint {
 class tx_memory_pool;
 struct tx_pool_options;
 struct test_options;
+class BlockchainSQLite;
 
 /** Declares ways in which the BlockchainDB backend should be told to sync
  *
@@ -140,10 +143,19 @@ class Blockchain {
     ~Blockchain();
 
     /**
-     * @brief Initialize the Blockchain state
+     * @brief Initialize the Blockchain state.
      *
-     * @param db a pointer to the backing store to use for the blockchain
+     * @param db a pointer to the backing store to use for the blockchain.
      * @param nettype network type
+     * @param ons_db a raw, unmanaged pointer to the ONS sqlite3 database.  NOTE: the Blockchain
+     * object takes over ownership of this pointer, if not nullptr.  Should not be nullptr when
+     * operating as a regular oxen node.
+     * @param sqlite_db a raw, unmanaged pointer to the BlockchainSQLite object.  NOTE: the
+     * Blockchain object takes over ownership of this pointer, if not nullptr.  Should not be
+     * nullptr when operating as a regular oxen node.
+     * @param l2_tracker a pointer to the L2Tracker instance; this pointer is *not* managed by the
+     * Blockchain object, but must remain alive at least as long as the Blockchain object does.
+     * Should be nullptr if this node does not track L2 state.
      * @param offline true if running offline, else false
      * @param test_options test parameters
      * @param fixed_difficulty fixed difficulty for testing purposes; 0 means disabled
@@ -152,14 +164,30 @@ class Blockchain {
      * @return true on success, false if any initialization steps fail
      */
     bool init(
-            BlockchainDB* db,
-            sqlite3* ons_db,
-            std::shared_ptr<cryptonote::BlockchainSQLite> sqlite_db,
-            const network_type nettype = network_type::MAINNET,
+            std::unique_ptr<BlockchainDB> db,
+            const network_type nettype,
+            sqlite3* ons_db = nullptr,
+            cryptonote::BlockchainSQLite* sqlite_db = nullptr,
+            eth::L2Tracker* l2_tracker = nullptr,
             bool offline = false,
             const cryptonote::test_options* test_options = nullptr,
             difficulty_type fixed_difficulty = 0,
             const GetCheckpointsCallback& get_checkpoints = nullptr);
+
+    // Common initializer for test code
+    bool init(
+            std::unique_ptr<BlockchainDB> db,
+            const cryptonote::test_options& test_options,
+            cryptonote::BlockchainSQLite* sqlite_db = nullptr) {
+        return init(
+                std::move(db),
+                network_type::FAKECHAIN,
+                nullptr,
+                sqlite_db,
+                nullptr,
+                true,
+                &test_options);
+    }
 
     /**
      * @brief Uninitializes the blockchain state
@@ -698,11 +726,12 @@ class Blockchain {
      */
     bool check_tx_inputs(
             transaction& tx,
-            uint64_t& pmax_used_block_height,
-            crypto::hash& max_used_block_id,
             tx_verification_context& tvc,
-            bool kept_by_block = false,
-            std::unordered_set<crypto::key_image>* key_image_conflicts = nullptr);
+            eth::TransactionReviewSession* ethereum_transaction_review_session,
+            crypto::hash& max_used_block_id,
+            uint64_t& pmax_used_block_height,
+            std::unordered_set<crypto::key_image>* key_image_conflicts = nullptr,
+            bool kept_by_block = false);
 
     /**
      * @brief get fee quantization mask
@@ -1000,7 +1029,7 @@ class Blockchain {
     bool for_all_outputs(uint64_t amount, std::function<bool(uint64_t height)>) const;
 
     /// Returns true if we have a BlockchainDB reference, i.e. if we have been initialized
-    bool has_db() const { return m_db; }
+    bool has_db() const { return static_cast<bool>(m_db); }
 
     /**
      * @brief get a reference to the BlockchainDB in use by Blockchain
@@ -1151,7 +1180,9 @@ class Blockchain {
 
     const ons::name_system_db& name_system_db() const { return m_ons_db; }
 
-    std::shared_ptr<cryptonote::BlockchainSQLite> sqlite_db() { return m_sqlite_db; }
+    cryptonote::BlockchainSQLite& sqlite_db();
+
+    eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
 
     /**
      * @brief flush the invalid blocks set
@@ -1203,12 +1234,12 @@ class Blockchain {
 
     typedef std::unordered_map<crypto::hash, block_extended_info> blocks_ext_by_hash;
 
-    BlockchainDB* m_db;
+    std::unique_ptr<BlockchainDB> m_db;
 
     tx_memory_pool& m_tx_pool;
     service_nodes::service_node_list& m_service_node_list;
     ons::name_system_db m_ons_db;
-    std::shared_ptr<cryptonote::BlockchainSQLite> m_sqlite_db;
+    std::unique_ptr<cryptonote::BlockchainSQLite> m_sqlite_db;
 
     mutable std::recursive_mutex m_blockchain_lock;  // TODO: add here reader/writer lock
 
@@ -1280,6 +1311,7 @@ class Blockchain {
 
     checkpoints m_checkpoints;
 
+    eth::L2Tracker* m_l2_tracker;
     network_type m_nettype;
     bool m_offline;
     difficulty_type m_fixed_difficulty;
@@ -1385,6 +1417,7 @@ class Blockchain {
     bool check_tx_inputs(
             transaction& tx,
             tx_verification_context& tvc,
+            eth::TransactionReviewSession* ethereum_transaction_review_session = nullptr,
             uint64_t* pmax_used_block_height = nullptr,
             std::unordered_set<crypto::key_image>* key_image_conflicts = nullptr);
 

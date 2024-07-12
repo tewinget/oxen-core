@@ -80,6 +80,7 @@ struct tx_verification_context {
     bool m_invalid_type;
     bool m_key_image_locked_by_snode;
     bool m_key_image_blacklisted;
+    bool m_duplicate_nonstandard;
     std::string m_verbose_error;
     vote_verification_context m_vote_ctx;
 
@@ -101,6 +102,7 @@ struct tx_verification_context {
     KV_SERIALIZE(m_key_image_locked_by_snode);
     KV_SERIALIZE(m_key_image_blacklisted);
     KV_SERIALIZE(m_verbose_error);
+    KV_SERIALIZE(m_duplicate_nonstandard);
     KV_SERIALIZE(m_vote_ctx)
 
     END_KV_SERIALIZE_MAP()

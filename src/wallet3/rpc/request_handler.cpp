@@ -209,14 +209,14 @@ void RequestHandler::invoke(INCOMING_TRANSFERS& command, rpc_context context) {}
 void RequestHandler::invoke(EXPORT_VIEW_KEY& command, rpc_context context) {
     if (auto w = wallet.lock()) {
         const auto& keys = w->export_keys();
-        command.response["key"] = tools::type_to_hex(keys.m_view_secret_key);
+        command.response["key"] = tools::hex_guts(keys.m_view_secret_key);
     }
 }
 
 void RequestHandler::invoke(EXPORT_SPEND_KEY& command, rpc_context context) {
     if (auto w = wallet.lock()) {
         const auto& keys = w->export_keys();
-        command.response["key"] = tools::type_to_hex(keys.m_spend_secret_key);
+        command.response["key"] = tools::hex_guts(keys.m_spend_secret_key);
     }
 }
 

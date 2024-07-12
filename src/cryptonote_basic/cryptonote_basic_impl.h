@@ -75,13 +75,16 @@ struct address_parse_info {
 };
 
 struct batch_sn_payment {
-    cryptonote::address_parse_info address_info;
+    cryptonote::address_parse_info address_info{};
+    eth::address eth_address{};
     uint64_t amount;
     batch_sn_payment() = default;
     batch_sn_payment(const cryptonote::address_parse_info& addr_info, uint64_t amt) :
             address_info{addr_info}, amount{amt} {}
     batch_sn_payment(const cryptonote::account_public_address& addr, uint64_t amt) :
             address_info{addr, 0}, amount{amt} {}
+    batch_sn_payment(const eth::address& addr, uint64_t amt) :
+            eth_address{addr}, amount{amt} {}
 };
 
 #pragma pack(push, 1)

@@ -28,13 +28,15 @@
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
-#include "common/command_line.h"
-#include "common/fs-format.h"
-#include "common/median.h"
-#include "common/varint.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_core/uptime_proof.h"
 #include "version.h"
+
+#include <common/command_line.h>
+#include <common/guts.h>
+#include <common/median.h>
+#include <common/exception.h>
+
+#include <fmt/std.h>
 
 namespace po = boost::program_options;
 using namespace cryptonote;
@@ -42,6 +44,7 @@ using namespace cryptonote;
 static auto logcat = log::Cat("bcutil");
 
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -58,12 +61,11 @@ int main(int argc, char* argv[]) {
             "txid", "Get min depth for this txid", ""};
     const command_line::arg_descriptor<uint64_t> arg_height = {
             "height", "Get min depth for all txes at this height", 0};
-    const command_line::arg_descriptor<bool> arg_include_coinbase = {
-            "include-coinbase", "Include coinbase in the average", false};
+    const command_line::arg_flag arg_include_coinbase{
+            "include-coinbase", "Include coinbase in the average"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_txid);
     command_line::add_arg(desc_cmd_sett, arg_height);
@@ -91,22 +93,10 @@ int main(int argc, char* argv[]) {
 
     auto m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
     auto log_file_path = m_config_folder + "oxen-blockchain-depth.log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level).c_str())) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
-    oxen::logging::init(log_file_path, log_level);
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    network_type net_type = opt_testnet ? network_type::TESTNET
-                          : opt_devnet  ? network_type::DEVNET
-                                        : network_type::MAINNET;
+    auto net_type = command_line::get_network(vm);
     std::string opt_txid_string = command_line::get_arg(vm, arg_txid);
     uint64_t opt_height = command_line::get_arg(vm, arg_height);
     bool opt_include_coinbase = command_line::get_arg(vm, arg_include_coinbase);
@@ -117,7 +107,7 @@ int main(int argc, char* argv[]) {
     }
     crypto::hash opt_txid{};
     if (!opt_txid_string.empty()) {
-        if (!tools::hex_to_type(opt_txid_string, opt_txid)) {
+        if (!tools::try_load_from_hex_guts(opt_txid_string, opt_txid)) {
             std::cerr << "Invalid txid" << std::endl;
             return 1;
         }
@@ -126,33 +116,35 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
-    BlockchainDB* db = new_db();
-    if (db == NULL) {
+    auto bdb = new_db();
+    if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 
     const fs::path filename =
-            fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)) / db->get_db_name();
+            tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir)) /
+            bdb->get_db_name();
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {
-        db->open(filename, core_storage->nettype(), DBF_RDONLY);
+        bdb->open(filename, core_storage->nettype(), DBF_RDONLY);
     } catch (const std::exception& e) {
         log::warning(logcat, "Error opening database: {}", e.what());
         return 1;
     }
-    r = core_storage->init(db, nullptr /*ons_db*/, nullptr, net_type);
+    r = core_storage->init(std::move(bdb), net_type);
 
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
     log::warning(logcat, "Source blockchain storage initialized OK");
 
+    auto& db = core_storage->get_db();
     std::vector<crypto::hash> start_txids;
     if (!opt_txid_string.empty()) {
         start_txids.push_back(opt_txid);
     } else {
-        const std::string bd = db->get_block_blob_from_height(opt_height);
+        const std::string bd = db.get_block_blob_from_height(opt_height);
         cryptonote::block b;
         if (!cryptonote::parse_and_validate_block_from_blob(bd, b)) {
             log::warning(logcat, "Bad block from db");
@@ -181,7 +173,7 @@ int main(int argc, char* argv[]) {
             std::vector<crypto::hash> new_txids;
             for (const crypto::hash& txid : txids) {
                 std::string bd;
-                if (!db->get_pruned_tx_blob(txid, bd)) {
+                if (!db.get_pruned_tx_blob(txid, bd)) {
                     log::warning(logcat, "Failed to get txid {} from db", txid);
                     return 1;
                 }
@@ -201,10 +193,10 @@ int main(int argc, char* argv[]) {
                         auto absolute_offsets =
                                 cryptonote::relative_output_offsets_to_absolute(txin->key_offsets);
                         for (uint64_t offset : absolute_offsets) {
-                            const output_data_t od = db->get_output_key(amount, offset);
+                            const output_data_t od = db.get_output_key(amount, offset);
                             const crypto::hash block_hash =
-                                    db->get_block_hash_from_height(od.height);
-                            bd = db->get_block_blob(block_hash);
+                                    db.get_block_hash_from_height(od.height);
+                            bd = db.get_block_blob(block_hash);
                             cryptonote::block b;
                             if (!cryptonote::parse_and_validate_block_from_blob(bd, b)) {
                                 log::warning(logcat, "Bad block from db");
@@ -236,7 +228,7 @@ int main(int argc, char* argv[]) {
                             for (const crypto::hash& block_txid : b.tx_hashes) {
                                 if (found)
                                     break;
-                                if (!db->get_pruned_tx_blob(block_txid, bd)) {
+                                if (!db.get_pruned_tx_blob(block_txid, bd)) {
                                     log::warning(
                                             logcat, "Failed to get txid {} from db", block_txid);
                                     return 1;

@@ -28,6 +28,7 @@
 
 #include <string>
 #include <string_view>
+#include <cstdint>
 
 namespace epee::misc_utils::parse
 {

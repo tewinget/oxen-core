@@ -1,5 +1,7 @@
 #include "database.hpp"
 
+#include <common/exception.h>
+
 #include <fmt/core.h>
 #include <sqlite3.h>
 
@@ -35,17 +37,17 @@ Database::StatementWrapper Database::prepared_st(const std::string& query) {
 }
 
 Database::Database(const fs::path& db_path, const std::string_view db_password) :
-        db{db_path.u8string(),
+        db{db_path,
            SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE | SQLite::OPEN_FULLMUTEX,
            5000 /*ms*/} {
     // Don't fail on these because we can still work even if they fail
     if (int rc = db.tryExec("PRAGMA journal_mode = WAL"); rc != SQLITE_OK)
-        log::error(sqlitedb_logcat, "Failed to set journal mode to WAL: {}{}", sqlite3_errstr(rc));
+        log::error(sqlitedb_logcat, "Failed to set journal mode to WAL: {}", sqlite3_errstr(rc));
 
     if (int rc = db.tryExec("PRAGMA synchronous = NORMAL"); rc != SQLITE_OK)
         log::error(
                 sqlitedb_logcat,
-                "Failed to set synchronous mode to NORMAL: {}{}",
+                "Failed to set synchronous mode to NORMAL: {}",
                 sqlite3_errstr(rc));
 
     if (int rc = db.tryExec("PRAGMA foreign_keys = ON"); rc != SQLITE_OK) {
@@ -53,7 +55,7 @@ Database::Database(const fs::path& db_path, const std::string_view db_password) 
                 sqlitedb_logcat,
                 "Failed to enable foreign keys constraints: {}",
                 sqlite3_errstr(rc));
-        throw std::runtime_error{"Foreign key constrains required"};
+        throw oxen::traced<std::runtime_error>{"Foreign key constrains required"};
     }
     int fk_enabled = db.execAndGet("PRAGMA foreign_keys").getInt();
     if (fk_enabled != 1) {
@@ -61,7 +63,7 @@ Database::Database(const fs::path& db_path, const std::string_view db_password) 
                 sqlitedb_logcat,
                 "Failed to enable foreign key constraints; perhaps this sqlite3 is compiled "
                 "without it?");
-        throw std::runtime_error{"Foreign key support is required"};
+        throw oxen::traced<std::runtime_error>{"Foreign key support is required"};
     }
 
     // FIXME: SQLite / SQLiteCPP may not have encryption available

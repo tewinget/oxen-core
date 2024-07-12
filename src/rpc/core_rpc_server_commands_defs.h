@@ -51,7 +51,6 @@
 #include <unordered_set>
 
 #include "checkpoints/checkpoints.h"
-#include "common/hex.h"
 #include "common/meta.h"
 #include "common/oxen.h"
 #include "common/varint.h"
@@ -172,7 +171,7 @@ struct GET_HEIGHT : PUBLIC, LEGACY, NO_ARGS {
 ///     for mempool transactions.
 ///   - `last_failed_block` -- the hash of the last block where this transaction was attempted to
 ///     be mined (but failed).
-///   - `max_used_height` -- the height of the last block where this transaction failed to be
+///   - `last_failed_height` -- the height of the last block where this transaction failed to be
 ///     acceptable for a block.
 ///   - `weight` -- the transaction "weight" which is the size of the transaction with padding
 ///     removed.  Only included for mempool transactions (for mined transactions the size and
@@ -503,6 +502,7 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 ///
 /// - `status` -- General RPC status string. `"OK"` means everything looks good.
 /// - `height` -- Current length of longest chain known to daemon.
+/// - `l2_height` -- Current Arbitrum height that the network is synchronized to
 /// - `target_height` -- The height of the next block in the chain.
 /// - `immutable_height` -- The latest height in the blockchain that can not be reorganized (i.e.
 ///   is backed by at least 2 Service Node, or 1 hardcoded checkpoint, 0 if N/A).  Omitted if it
@@ -520,13 +520,7 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 /// - `tx_count` -- Total number of non-coinbase transaction in the chain.
 /// - `tx_pool_size` -- Number of transactions that have been broadcast but not included in a block.
 /// - `mainnet` -- Indicates whether the node is on the main network (`true`) or not (`false`).
-/// - `testnet` -- Indicates that the node is on the test network (`true`). Will be omitted for
-///   non-testnet.
-/// - `devnet` -- Indicates that the node is on the dev network (`true`). Will be omitted for
-///   non-devnet.
-/// - `fakechain` -- States that the node is running in "fakechain" mode (`true`).  Omitted
-///   otherwise.
-/// - `nettype` -- String value of the network type (mainnet, testnet, devnet, or fakechain).
+/// - `nettype` -- String value of the network type (mainnet, stagenet, testnet, devnet, localdev, or fakechain).
 /// - `top_block_hash` -- Hash of the highest block in the chain.  Will be hex for JSON requests,
 ///   32-byte binary value for bt requests.
 /// - `immutable_block_hash` -- Hash of the highest block in the chain that can not be reorganized.
@@ -682,6 +676,7 @@ struct block_header_response {
     std::string miner_tx_hash;
     std::vector<std::string> tx_hashes;
     std::string service_node_winner;
+    uint64_t l2_height;
 };
 
 void to_json(nlohmann::json& j, const block_header_response& h);
@@ -1529,7 +1524,7 @@ struct GET_COINBASE_TX_SUM : RPC_COMMAND {
 /// ```
 ///
 /// Example-JSON-Fetch
-struct GET_BASE_FEE_ESTIMATE : PUBLIC {
+struct GET_FEE_ESTIMATE : PUBLIC {
     static constexpr auto names() { return NAMES("get_fee_estimate"); }
 
     struct request_parameters {
@@ -1835,35 +1830,18 @@ struct GET_SERVICE_NODE_REGISTRATION_CMD_RAW : RPC_COMMAND {
     } request;
 };
 
-OXEN_RPC_DOC_INTROSPECT
 struct GET_SERVICE_NODE_REGISTRATION_CMD : RPC_COMMAND {
     static constexpr auto names() { return NAMES("get_service_node_registration_cmd"); }
-
-    struct contribution_t {
-        std::string address;  // The wallet address for the contributor
-        uint64_t amount;      // The amount that the contributor will reserve in Loki atomic units
-                              // towards the staking requirement
-
-        KV_MAP_SERIALIZABLE
-    };
 
     struct request {
         std::string operator_cut;  // The percentage of cut per reward the operator receives
                                    // expressed as a string, i.e. "1.1%"
-        std::vector<contribution_t> contributions;  // Array of contributors for this Service Node
+        std::vector<std::string> contributor_addresses;
+        std::vector<uint64_t> contributor_amounts;
         uint64_t staking_requirement;  // The staking requirement to become a Service Node the
                                        // registration command will be generated upon
 
-        KV_MAP_SERIALIZABLE
-    };
-
-    struct response {
-        std::string status;            // Generic RPC error code. "OK" is the success value.
-        std::string registration_cmd;  // The command to execute in the wallet CLI to register the
-                                       // queried daemon as a Service Node.
-
-        KV_MAP_SERIALIZABLE
-    };
+    } request;
 };
 
 /// RPC: service_node/get_service_keys
@@ -1881,6 +1859,7 @@ struct GET_SERVICE_NODE_REGISTRATION_CMD : RPC_COMMAND {
 ///   running as a service node.
 /// - `service_node_ed25519_pubkey` -- The daemon's ed25519 auxiliary public key.
 /// - `service_node_x25519_pubkey` -- The daemon's x25519 auxiliary public key.
+/// - `service_node_bls_pubkey` -- The daemon's BLS auxiliary public key.
 struct GET_SERVICE_KEYS : NO_ARGS {
     static constexpr auto names() { return NAMES("get_service_keys", "get_service_node_key"); }
 };
@@ -2299,6 +2278,108 @@ struct GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("get_service_node_blacklisted_key_images"); }
 };
 
+/// RPC: bls rewards request
+///
+/// Sends a request out for all nodes to sign a BLS signature of the rewards amount that an address
+/// is allowed to withdraw
+///
+/// Inputs:
+///
+/// - `address` -- this address will be looked up in the batching database at the latest height to
+/// see how much they can withdraw
+///
+/// Outputs:
+///
+/// - `status` -- generic RPC error code; "OK" means the request was successful.
+/// - `address` -- The requested address
+/// - `amount` -- The amount that the address can claim
+/// - `height` -- The oxen blockchain height that the rewards have been calculated at
+/// - `signed_message` -- The message that has been signed by the network
+/// - `signature` -- BLS signature of the message
+/// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
+struct BLS_REWARDS_REQUEST : PUBLIC {
+    static constexpr auto names() { return NAMES("bls_rewards_request"); }
+
+    struct request_parameters {
+        eth::address address;
+    } request;
+};
+
+/// RPC: bls exit request
+///
+/// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls
+/// pubkey can exit
+///
+/// Inputs:
+///
+/// - `bls_pubkey` -- this bls_pubkey will be searched to see if the node can exit
+///
+/// Outputs:
+///
+/// - `status` -- generic RPC error code; "OK" means the request was successful.
+/// - `bls_pubkey` -- The bls pubkey of the node requesting to exit
+/// - `signed_message` -- The message that has been signed by the network
+/// - `signature` -- BLS signature of the message
+/// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
+struct BLS_EXIT_REQUEST : PUBLIC {
+    static constexpr auto names() { return NAMES("bls_exit_request"); }
+
+    struct request_parameters {
+        eth::bls_public_key bls_pubkey;
+    } request;
+};
+
+/// RPC: bls liquidation request
+///
+/// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls
+/// pubkey can be liquidated
+///
+/// Inputs:
+///
+/// - `bls_pubkey` -- this bls_pubkey will be searched to see if the node can be liquidated
+///
+/// Outputs:
+///
+/// - `status` -- generic RPC error code; "OK" means the request was successful.
+/// - `bls_pubkey` -- The bls pubkey of the node requested to be liquidated
+/// - `signed_message` -- The message that has been signed by the network
+/// - `signature` -- BLS signature of the message
+/// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
+struct BLS_LIQUIDATION_REQUEST : PUBLIC {
+    static constexpr auto names() { return NAMES("bls_liquidation_request"); }
+
+    struct request_parameters {
+        eth::bls_public_key bls_pubkey;
+    } request;
+};
+
+/// RPC: bls registration request
+///
+/// Sends a request out to get parameters necessary to register a service node through the ethereum
+/// smart contract
+///
+/// Inputs:
+///
+/// - `address` -- this address will be looked up in the batching database at the latest height to
+/// see how much they can withdraw
+///
+/// Outputs:
+///
+/// - `status` -- generic RPC error code; "OK" means the request was successful.
+/// - `address` -- The requested address
+/// - `bls_pubkey` -- The nodes BLS public key
+/// - `proof_of_possession` -- A signature over the bls pubkey to prove ownership of the private key
+/// - `service_node_pubkey` -- The oxen nodes service node pubkey
+/// - `service_node_signature` -- A signature over the registration parameters
+///
+struct BLS_REGISTRATION : RPC_COMMAND {
+    static constexpr auto names() { return NAMES("bls_registration_request"); }
+
+    struct request_parameters {
+        eth::address address;
+    } request;
+};
+
 /// RPC: blockchain/get_checkpoints
 ///
 /// Query hardcoded/service node checkpoints stored for the blockchain. Omit all arguments to
@@ -2669,7 +2750,7 @@ using core_rpc_types = tools::type_list<
         GET_ACCRUED_BATCHED_EARNINGS,
         GET_ALTERNATE_CHAINS,
         GET_BANS,
-        GET_BASE_FEE_ESTIMATE,
+        GET_FEE_ESTIMATE,
         GET_BLOCK,
         GET_BLOCK_COUNT,
         GET_BLOCK_HASH,
@@ -2691,6 +2772,11 @@ using core_rpc_types = tools::type_list<
         GET_SERVICE_KEYS,
         GET_SERVICE_NODES,
         GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES,
+        BLS_REWARDS_REQUEST,
+        BLS_EXIT_REQUEST,
+        BLS_LIQUIDATION_REQUEST,
+        BLS_REGISTRATION,
+        GET_SERVICE_NODE_REGISTRATION_CMD,
         GET_SERVICE_NODE_REGISTRATION_CMD_RAW,
         GET_SERVICE_NODE_STATUS,
         GET_SERVICE_PRIVKEYS,
@@ -2727,7 +2813,6 @@ using core_rpc_types = tools::type_list<
         TEST_TRIGGER_UPTIME_PROOF,
         ONS_NAMES_TO_OWNERS>;
 
-using FIXME_old_rpc_types =
-        tools::type_list<RELAY_TX, GET_OUTPUT_DISTRIBUTION, GET_SERVICE_NODE_REGISTRATION_CMD>;
+using FIXME_old_rpc_types = tools::type_list<RELAY_TX, GET_OUTPUT_DISTRIBUTION>;
 
 }  // namespace cryptonote::rpc

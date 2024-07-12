@@ -73,7 +73,7 @@ int main(int argc, char* argv[])
   epee::string_tools::set_module_name_and_folder(argv[0]);
 
   //set up logging options
-  oxen::logging::init("core_proxy.log", oxen::log::Level::debug);
+  oxen::logging::init("core_proxy.log", "*=debug");
 
 
   po::options_description desc("Allowed options");
@@ -143,7 +143,7 @@ int main(int argc, char* argv[])
   oxen::log::info(logcat, "Node stopped.");
   return 0;
 
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }
 
 /*
@@ -232,13 +232,7 @@ bool tests::proxy_core::handle_incoming_block(const std::string& block_blob, con
     return true;
 }
 
-bool tests::proxy_core::handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof, bool &my_uptime_proof_confirmation)
-{
-  // TODO: add tests for core uptime proof checking.
-  return false; // never relay these for tests.
-}
-
-bool tests::proxy_core::handle_btencoded_uptime_proof(const cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request &proof, bool &my_uptime_proof_confirmation)
+bool tests::proxy_core::handle_uptime_proof(const cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request &proof, bool &my_uptime_proof_confirmation)
 {
   // TODO: add tests for core uptime proof checking.
   return false; // never relay these for tests.

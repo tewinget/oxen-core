@@ -6,7 +6,9 @@
 #include <fmt/core.h>
 
 #include <iostream>
+#include <common/exception.h>
 
+#include "common/guts.h"
 #include "wallet3/block.hpp"
 
 namespace wallet {
@@ -22,7 +24,7 @@ void WalletDB::create_schema(cryptonote::network_type nettype) {
                             cryptonote::network_type_to_string(nettype),
                             cryptonote::network_type_to_string(stored_nettype));
             // TODO: log error as well
-            throw std::invalid_argument(err);
+            throw oxen::traced<std::invalid_argument>(err);
         }
         return;
     }
@@ -246,7 +248,7 @@ void WalletDB::add_address(int32_t major_index, int32_t minor_index, const std::
 
         // FIXME: better error type
         if (existing_addr != address)
-            throw std::invalid_argument(
+            throw oxen::traced<std::invalid_argument>(
                     "WalletDB address insertion, new address mismatch with existing address.");
     } else {
         prepared_exec(
@@ -267,7 +269,7 @@ std::string WalletDB::get_address(int32_t major_index, int32_t minor_index) {
     if (addr)
         return *addr;
 
-    throw std::invalid_argument(
+    throw oxen::traced<std::invalid_argument>(
             "WalletDB address fetch, address for subaddress indices not found in database.");
     return "";  // compilers can be dumb
 }
@@ -282,7 +284,7 @@ void WalletDB::store_block(const Block& block) {
             "INSERT INTO blocks(height,output_count,hash,timestamp) VALUES(?,?,?,?)",
             block.height,
             output_count,
-            tools::type_to_hex(block.hash),
+            tools::hex_guts(block.hash),
             block.timestamp);
 }
 
@@ -292,13 +294,12 @@ void WalletDB::pop_block() {
 
 void WalletDB::store_transaction(
         const crypto::hash& tx_hash, const int64_t height, const std::vector<Output>& outputs) {
-    auto hash_str = tools::type_to_hex(tx_hash);
+    auto hash_str = tools::hex_guts(tx_hash);
     prepared_exec("INSERT INTO transactions(block,hash) VALUES(?,?)", height, hash_str);
 
     for (const auto& output : outputs) {
         prepared_exec(
-                "INSERT INTO key_images(key_image) VALUES(?)",
-                tools::type_to_hex(output.key_image));
+                "INSERT INTO key_images(key_image) VALUES(?)", tools::hex_guts(output.key_image));
         prepared_exec(
                 R"(
           INSERT INTO outputs(
@@ -326,10 +327,10 @@ void WalletDB::store_transaction(
                 output.unlock_time,
                 output.block_height,
                 hash_str,
-                tools::type_to_hex(output.key),
-                tools::type_to_hex(output.derivation),
-                tools::type_to_hex(output.rct_mask),
-                tools::type_to_hex(output.key_image),
+                tools::hex_guts(output.key),
+                tools::hex_guts(output.derivation),
+                tools::hex_guts(output.rct_mask),
+                tools::hex_guts(output.key_image),
                 output.subaddress_index.major,
                 output.subaddress_index.minor);
     }
@@ -339,7 +340,7 @@ void WalletDB::store_spends(
         const crypto::hash& tx_hash,
         const int64_t height,
         const std::vector<crypto::key_image>& spends) {
-    auto hash_hex = tools::type_to_hex(tx_hash);
+    auto hash_hex = tools::hex_guts(tx_hash);
     prepared_exec(
             "INSERT INTO transactions(block,hash) VALUES(?,?) ON CONFLICT DO NOTHING",
             height,
@@ -351,7 +352,7 @@ void WalletDB::store_spends(
           VALUES((SELECT id FROM key_images WHERE key_image = ?),
           ?,
           (SELECT id FROM transactions WHERE hash = ?));)",
-                tools::type_to_hex(key_image),
+                tools::hex_guts(key_image),
                 height,
                 hash_hex);
     }
@@ -371,7 +372,7 @@ int64_t WalletDB::current_height() {
 
 void WalletDB::update_top_block_info(int64_t height, const crypto::hash& hash) {
     set_metadata_int("scan_target_height", height);
-    set_metadata_text("scan_target_hash", tools::type_to_hex(hash));
+    set_metadata_text("scan_target_hash", tools::hex_guts(hash));
 }
 
 int64_t WalletDB::overall_balance() {
@@ -436,10 +437,10 @@ std::vector<Output> WalletDB::available_outputs(std::optional<int64_t> min_amoun
         out.global_index = std::get<2>(from_db);
         out.unlock_time = std::get<3>(from_db);
         out.block_height = std::get<4>(from_db);
-        tools::hex_to_type(std::get<5>(from_db), out.key);
-        tools::hex_to_type(std::get<6>(from_db), out.derivation);
-        tools::hex_to_type(std::get<7>(from_db), out.rct_mask);
-        tools::hex_to_type(std::get<8>(from_db), out.key_image);
+        tools::load_from_hex_guts(std::get<5>(from_db), out.key);
+        tools::load_from_hex_guts(std::get<6>(from_db), out.derivation);
+        tools::load_from_hex_guts(std::get<7>(from_db), out.rct_mask);
+        tools::load_from_hex_guts(std::get<8>(from_db), out.key_image);
         out.spent_height = std::get<9>(from_db);
         out.spending = std::get<10>(from_db);
     }
@@ -461,7 +462,7 @@ void WalletDB::save_keys(const std::shared_ptr<WalletKeys> keys) {
              tools::view_guts(keys->view_privkey())) ||
             (tools::view_guts(maybe_db_keys->view_pubkey()) !=
              tools::view_guts(keys->view_pubkey())))
-            throw std::runtime_error("provided keys do not match database file");
+            throw oxen::traced<std::runtime_error>("provided keys do not match database file");
     }
 
     set_metadata_blob_guts("spend_priv", keys->spend_privkey());

@@ -32,7 +32,7 @@
 #include <forward_list>
 
 #include "common/command_line.h"
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/scoped_message_writer.h"
 #include "common/string_util.h"
 #include "rpc/core_rpc_server_commands_defs.h"
@@ -267,6 +267,60 @@ bool command_parser_executor::prepare_registration(const std::vector<std::string
     return m_executor.prepare_registration(force_registration);
 }
 
+bool command_parser_executor::prepare_eth_registration(const std::vector<std::string>& args) {
+    constexpr auto usage = "Eth registration args: <operator address> [multi-contributor contract address] [\"print_only\"]"sv;
+
+    auto argc = args.size();
+    if (argc < 1)
+    {
+        log::error(logcat, usage);
+        return false;
+    }
+    if (args[0].size() != 42)
+    {
+        log::error(logcat, usage);
+        return false;
+    }
+    const auto operator_address = std::string_view{args[0]};
+    auto contract_address = ""sv;
+    bool print_only = false;
+    if (argc == 2)
+    {
+        if (args[1] != "print_only")
+        {
+            if (args[1].size() != 42)
+            {
+                log::error(logcat, usage);
+                return false;
+            }
+            contract_address = std::string_view{args[1]};
+        }
+        else
+            print_only = true;
+    }
+    else if (argc == 3)
+    {
+        if (args[2] != "print_only")
+        {
+            log::error(logcat, usage);
+            return false;
+        }
+        print_only = true;
+        if (args[1].size() != 42)
+        {
+            log::error(logcat, usage);
+            return false;
+        }
+        contract_address = std::string_view{args[1]};
+    }
+    else if (argc != 1)
+    {
+        log::error(logcat, usage);
+        return false;
+    }
+    return m_executor.prepare_eth_registration(operator_address, contract_address, print_only);
+}
+
 bool command_parser_executor::print_sn(const std::vector<std::string>& args) {
     bool result = m_executor.print_sn(args);
     return result;
@@ -329,7 +383,7 @@ bool command_parser_executor::print_block(const std::vector<std::string>& args) 
         return m_executor.print_block_by_height(height, include_hex);
     } catch (const boost::bad_lexical_cast&) {
         crypto::hash block_hash;
-        if (tools::hex_to_type(arg, block_hash))
+        if (tools::try_load_from_hex_guts(arg, block_hash))
             return m_executor.print_block_by_hash(block_hash, include_hex);
         log::error(logcat, "Invalid hash or height value: {}", arg);
     }
@@ -362,7 +416,7 @@ bool command_parser_executor::print_transaction(const std::vector<std::string>& 
 
     const std::string& str_hash = args.front();
     crypto::hash tx_hash;
-    if (tools::hex_to_type(str_hash, tx_hash))
+    if (tools::try_load_from_hex_guts(str_hash, tx_hash))
         m_executor.print_transaction(tx_hash, include_metadata, include_hex, include_json);
     else
         log::error(logcat, "Invalid transaction hash: {}", str_hash);
@@ -379,7 +433,7 @@ bool command_parser_executor::is_key_image_spent(const std::vector<std::string>&
 
     std::vector<crypto::key_image> kis;
     for (const auto& hex : args) {
-        if (!tools::hex_to_type(hex, kis.emplace_back())) {
+        if (!tools::try_load_from_hex_guts(hex, kis.emplace_back())) {
             tools::fail_msg_writer("Invalid key image: '{}'", hex);
             return true;
         }
@@ -429,6 +483,9 @@ bool command_parser_executor::start_mining(const std::vector<std::string>& args)
     else if (cryptonote::get_account_address_from_str(
                      info, cryptonote::network_type::DEVNET, args.front()))
         nettype = cryptonote::network_type::DEVNET;
+    else if (cryptonote::get_account_address_from_str(
+                     info, cryptonote::network_type::STAGENET, args.front()))
+        nettype = cryptonote::network_type::STAGENET;
     else {
         std::cout << "target account address has wrong format" << std::endl;
         return true;
@@ -584,7 +641,7 @@ bool command_parser_executor::flush_txpool(const std::vector<std::string>& args)
     std::string txid;
     if (args.size() == 1) {
         crypto::hash hash;
-        if (!tools::hex_to_type(args[0], hash)) {
+        if (!tools::try_load_from_hex_guts(args[0], hash)) {
             std::cout << "failed to parse tx id: " << args[0] << "\n";
             return true;
         }
@@ -684,7 +741,7 @@ bool command_parser_executor::relay_tx(const std::vector<std::string>& args) {
 
     std::string txid;
     crypto::hash hash;
-    if (!tools::hex_to_type(args[0], hash)) {
+    if (!tools::try_load_from_hex_guts(args[0], hash)) {
         std::cout << "failed to parse tx id: " << args[0] << std::endl;
         return true;
     }
@@ -773,6 +830,10 @@ show_list:
     std::cout << "Invalid cache type: " << arg << std::endl;
     std::cout << "Cache types: bad-txs bad-blocks" << std::endl;
     return true;
+}
+
+bool command_parser_executor::claim_rewards(const std::vector<std::string>& args) {
+    return m_executor.claim_rewards(args[0]);
 }
 
 }  // namespace daemonize

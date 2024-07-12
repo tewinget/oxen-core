@@ -39,8 +39,8 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/locked_txn.h"
 #include "common/boost_serialization_helper.h"
-#include "common/hex.h"
 #include "common/lock.h"
+#include "common/exception.h"
 #include "common/median.h"
 #include "common/util.h"
 #include "crypto/hash.h"
@@ -48,7 +48,6 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_tx_utils.h"
-#include "epee/int-util.h"
 #include "epee/warnings.h"
 
 DISABLE_VS_WARNINGS(4244 4345 4503)  //'boost::foreach_detail_::or_' : decorated name length
@@ -69,7 +68,6 @@ namespace {
     time_t const MIN_RELAY_TIME =
             (60 * 5);  // only start re-relaying transactions after that many seconds
     time_t const MAX_RELAY_TIME = (60 * 60 * 4);  // at most that many seconds between resends
-    float const ACCEPT_THRESHOLD = 1.0f;
 
     // a kind of increasing backoff within min/max bounds
     uint64_t get_relay_delay(time_t now, time_t received) {
@@ -90,10 +88,10 @@ namespace {
 //---------------------------------------------------------------------------------
 // warning: bchs is passed here uninitialized, so don't do anything but store it
 tx_memory_pool::tx_memory_pool(Blockchain& bchs) :
+        m_cookie(0),
         m_blockchain(bchs),
         m_txpool_max_weight(DEFAULT_MEMPOOL_MAX_WEIGHT),
-        m_txpool_weight(0),
-        m_cookie(0) {}
+        m_txpool_weight(0) {}
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::have_duplicated_non_standard_tx(
         transaction const& tx, hf hard_fork_version) const {
@@ -237,6 +235,46 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
                 return true;
             }
         }
+    } else if (tx.type == txtype::ethereum_new_service_node) {
+        cryptonote::tx_extra_ethereum_new_service_node data = {};
+        if (!cryptonote::get_field_from_tx_extra(tx.extra, data)) {
+            log::error(
+                    logcat,
+                    "Could not get ethereum new service node data from tx: {}, tx to add is "
+                    "possibly invalid, rejecting",
+                    get_transaction_hash(tx));
+            return true;
+        }
+    } else if (tx.type == txtype::ethereum_service_node_leave_request) {
+        cryptonote::tx_extra_ethereum_service_node_leave_request data = {};
+        if (!cryptonote::get_field_from_tx_extra(tx.extra, data)) {
+            log::error(
+                    logcat,
+                    "Could not get ethereum service node leave request data from tx: {}, tx to add "
+                    "is possibly invalid, rejecting",
+                    get_transaction_hash(tx));
+            return true;
+        }
+    } else if (tx.type == txtype::ethereum_service_node_exit) {
+        cryptonote::tx_extra_ethereum_service_node_exit data = {};
+        if (!cryptonote::get_field_from_tx_extra(tx.extra, data)) {
+            log::error(
+                    logcat,
+                    "Could not get ethereum service node exit data from tx: {}, tx to add is "
+                    "possibly invalid, rejecting",
+                    get_transaction_hash(tx));
+            return true;
+        }
+    } else if (tx.type == txtype::ethereum_service_node_deregister) {
+        cryptonote::tx_extra_ethereum_service_node_deregister data = {};
+        if (!cryptonote::get_field_from_tx_extra(tx.extra, data)) {
+            log::error(
+                    logcat,
+                    "Could not get ethereum service node leave request data from tx: {}, tx to add "
+                    "is possibly invalid, rejecting",
+                    get_transaction_hash(tx));
+            return true;
+        }
     } else {
         if (tx.type != txtype::standard && tx.type != txtype::stake) {
             // NOTE(oxen): This is a developer error. If we come across this in production, be
@@ -270,6 +308,10 @@ bool tx_memory_pool::add_tx(
         uint64_t* blink_rollback_height) {
     // this should already be called with that lock, but let's make it explicit for clarity
     std::unique_lock lock{m_transactions_lock};
+    if (blob.size() == 0) {
+        oxen::log::error(logcat, "Could not add to txpool, blob is empty of tx: {}", id);
+        throw oxen::traced<std::runtime_error>("Could not add to txpool, blob empty");
+    }
 
     if (tx.version == txversion::v0) {
         // v0 never accepted
@@ -382,6 +424,7 @@ bool tx_memory_pool::add_tx(
         log::info(logcat, "Transaction with id= {} already has a duplicate tx for height", id);
         tvc.m_verifivation_failed = true;
         tvc.m_double_spend = true;
+        tvc.m_duplicate_nonstandard = true;
         return false;
     }
 
@@ -409,6 +452,7 @@ bool tx_memory_pool::add_tx(
             opts.kept_by_block,
             opts.approved_blink ? blink_rollback_height : nullptr);
     const bool non_standard_tx = !tx.is_transfer();
+
     if (!inputs_okay) {
         // if the transaction was valid before (kept_by_block), then it
         // may become valid again, so ignore the failed inputs check.
@@ -421,14 +465,16 @@ bool tx_memory_pool::add_tx(
             meta.last_failed_id = null<hash>;
             meta.kept_by_block = opts.kept_by_block;
             meta.receive_time = receive_time;
-            meta.last_relayed_time = time(NULL);
+            meta.last_relayed_time = receive_time;
             meta.relayed = opts.relayed;
             meta.do_not_relay = opts.do_not_relay;
+            meta.l2_height = opts.l2_height;
             meta.double_spend_seen =
                     (have_tx_keyimges_as_spent(tx) ||
                      have_duplicated_non_standard_tx(tx, hf_version));
             meta.bf_padding = 0;
-            memset(meta.padding, 0, sizeof(meta.padding));
+            memset(meta.padding1, 0, sizeof(meta.padding1));
+            memset(meta.padding2, 0, sizeof(meta.padding2));
             try {
                 m_parsed_tx_cache.insert(std::make_pair(id, tx));
                 std::unique_lock b_lock{m_blockchain};
@@ -465,12 +511,14 @@ bool tx_memory_pool::add_tx(
         meta.last_failed_height = 0;
         meta.last_failed_id = null<hash>;
         meta.receive_time = receive_time;
-        meta.last_relayed_time = time(NULL);
+        meta.last_relayed_time = receive_time;
         meta.relayed = opts.relayed;
         meta.do_not_relay = opts.do_not_relay;
+        meta.l2_height = opts.l2_height;
         meta.double_spend_seen = false;
         meta.bf_padding = 0;
-        memset(meta.padding, 0, sizeof(meta.padding));
+        memset(meta.padding1, 0, sizeof(meta.padding1));
+        memset(meta.padding2, 0, sizeof(meta.padding2));
 
         try {
             if (opts.kept_by_block)
@@ -479,8 +527,10 @@ bool tx_memory_pool::add_tx(
             LockedTXN lock(m_blockchain);
             m_blockchain.remove_txpool_tx(id);
             m_blockchain.add_txpool_tx(id, blob, meta);
-            if (!insert_key_images(tx, id, opts.kept_by_block))
+            if (!insert_key_images(tx, id, opts.kept_by_block)) {
+                oxen::log::error(logcat, "Failed to insert key images for tx: ", id);
                 return false;
+            }
             m_txs_by_fee_and_receive_time.emplace(
                     std::tuple<bool, double, std::time_t>(
                             non_standard_tx,
@@ -520,14 +570,23 @@ bool tx_memory_pool::add_tx(
 }
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::add_tx(
-        transaction& tx, tx_verification_context& tvc, const tx_pool_options& opts, hf version) {
+        transaction& tx,
+        tx_verification_context& tvc,
+        const tx_pool_options& opts,
+        hf version) {
     crypto::hash h{};
-    size_t blob_size = 0;
     std::string bl;
     t_serializable_object_to_blob(tx, bl);
     if (bl.size() == 0 || !get_transaction_hash(tx, h))
         return false;
-    return add_tx(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, opts, version);
+    return add_tx(
+            tx,
+            h,
+            bl,
+            get_transaction_weight(tx, bl.size()),
+            tvc,
+            opts,
+            version);
 }
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::add_new_blink(
@@ -549,7 +608,11 @@ bool tx_memory_pool::add_new_blink(
 
     bool approved = blink.approved();
     auto hf_version = m_blockchain.get_network_version(blink.height);
-    bool result = add_tx(tx, tvc, tx_pool_options::new_blink(approved, hf_version), hf_version);
+    bool result =
+            add_tx(tx,
+                   tvc,
+                   tx_pool_options::new_blink(approved, hf_version),
+                   hf_version);
     if (result && approved) {
         auto lock = blink_unique_lock();
         m_blinks[txhash] = blink_ptr;
@@ -881,9 +944,12 @@ bool tx_memory_pool::insert_key_images(
         CHECK_AND_ASSERT_MES(
                 kept_by_block || kei_image_set.size() == 0,
                 false,
-                "internal error: kept_by_block="
-                        << kept_by_block << ",  kei_image_set.size()=" << kei_image_set.size()
-                        << "\ntxin.k_image=" << txin.k_image << "\ntx_id=" << id);
+                "internal error: kept_by_block={}, "
+                "kei_image_set.size()={}\ntxin.k_image={}\ntx_id={}",
+                kept_by_block,
+                kei_image_set.size(),
+                txin.k_image,
+                id);
         auto ins_res = kei_image_set.insert(id);
         CHECK_AND_ASSERT_MES(
                 ins_res.second,
@@ -908,21 +974,24 @@ bool tx_memory_pool::remove_transaction_keyimages(
         CHECK_AND_ASSERT_MES(
                 it != m_spent_key_images.end(),
                 false,
-                "failed to find transaction input in key images. img="
-                        << txin.k_image << "\ntransaction id = " << actual_hash);
+                "failed to find transaction input in key images. img={}, txid={}",
+                txin.k_image,
+                actual_hash);
         std::unordered_set<crypto::hash>& key_image_set = it->second;
         CHECK_AND_ASSERT_MES(
                 key_image_set.size(),
                 false,
-                "empty key_image set, img=" << txin.k_image
-                                            << "\ntransaction id = " << actual_hash);
+                "empty key_image set, img={}, txid={}",
+                txin.k_image,
+                actual_hash);
 
         auto it_in_set = key_image_set.find(actual_hash);
         CHECK_AND_ASSERT_MES(
                 it_in_set != key_image_set.end(),
                 false,
-                "transaction id not found in key_image set, img="
-                        << txin.k_image << "\ntransaction id = " << actual_hash);
+                "transaction id not found in key_image set, img={}, txid={}",
+                txin.k_image,
+                actual_hash);
         key_image_set.erase(it_in_set);
         if (!key_image_set.size()) {
             // it is now empty hash container for this key_image
@@ -1119,10 +1188,10 @@ bool tx_memory_pool::get_relayable_transactions(
                                 crypto::hash max_used_block_id{};
                                 if (!m_blockchain.check_tx_inputs(
                                             tx,
-                                            max_used_block_height,
-                                            max_used_block_id,
                                             tvc,
-                                            /*kept_by_block*/ false)) {
+                                            nullptr /* tx review session */,
+                                            max_used_block_id,
+                                            max_used_block_height)) {
                                     log::info(
                                             logcat,
                                             "TX type: {} considered for relaying failed tx inputs "
@@ -1200,7 +1269,7 @@ void tx_memory_pool::get_transactions(
 
     txs.reserve(m_blockchain.get_txpool_tx_count(include_unrelayed_txes));
     m_blockchain.for_all_txpool_txes(
-            [&txs](const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
+            [&txs](const crypto::hash& txid, const txpool_tx_meta_t&, const std::string* bd) {
                 transaction tx;
                 if (!parse_and_validate_tx_from_blob(*bd, tx)) {
                     log::error(logcat, "Failed to parse tx from txpool");
@@ -1224,7 +1293,7 @@ void tx_memory_pool::get_transaction_hashes(
     txs.reserve(m_blockchain.get_txpool_tx_count(include_unrelayed_txes));
     m_blockchain.for_all_txpool_txes(
             [&txs, include_only_blinked, this](
-                    const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
+                    const crypto::hash& txid, const txpool_tx_meta_t&, const std::string*) {
                 bool include_tx = true;
                 if (include_only_blinked)
                     include_tx = has_blink(txid);
@@ -1247,7 +1316,7 @@ tx_memory_pool::tx_stats tx_memory_pool::get_transaction_stats(bool include_unre
     weights.reserve(stats.txs_total);
     m_blockchain.for_all_txpool_txes(
             [&stats, &weights, now, &agebytes](
-                    const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
+                    const crypto::hash&, const txpool_tx_meta_t& meta, const std::string*) {
                 weights.push_back(meta.weight);
                 stats.bytes_total += meta.weight;
                 if (!stats.bytes_min || meta.weight < stats.bytes_min)
@@ -1527,13 +1596,15 @@ bool tx_memory_pool::check_tx_inputs(
         }
     }
     std::unordered_set<crypto::key_image> key_image_conflicts;
+
     bool ret = m_blockchain.check_tx_inputs(
             get_tx(),
-            max_used_block_height,
-            max_used_block_id,
             tvc,
-            kept_by_block,
-            blink_rollback_height ? &key_image_conflicts : nullptr);
+            nullptr /* tx review session */,
+            max_used_block_id,
+            max_used_block_height,
+            blink_rollback_height ? &key_image_conflicts : nullptr,
+            kept_by_block);
 
     if (ret && !key_image_conflicts.empty()) {
         // There are some key image conflicts, but since we have blink_rollback_height this is an
@@ -1633,7 +1704,7 @@ bool tx_memory_pool::is_transaction_ready_to_go(
         cryptonote::transaction& operator()() {
             if (!parsed) {
                 if (!parse_and_validate_tx_from_blob(txblob, tx))
-                    throw std::runtime_error("failed to parse transaction blob");
+                    throw oxen::traced<std::runtime_error>("failed to parse transaction blob");
                 tx.set_hash(txid);
                 parsed = true;
             }
@@ -1656,7 +1727,11 @@ bool tx_memory_pool::is_transaction_ready_to_go(
 
         tx_verification_context tvc;
         if (!check_tx_inputs(
-                    lazy_tx, txid, txd.max_used_block_height, txd.max_used_block_id, tvc)) {
+                    lazy_tx,
+                    txid,
+                    txd.max_used_block_height,
+                    txd.max_used_block_id,
+                    tvc)) {
             txd.last_failed_height = m_blockchain.get_current_blockchain_height() - 1;
             txd.last_failed_id = m_blockchain.get_block_id_by_height(txd.last_failed_height);
             return false;
@@ -1672,7 +1747,11 @@ bool tx_memory_pool::is_transaction_ready_to_go(
             // transaction become again valid
             tx_verification_context tvc;
             if (!check_tx_inputs(
-                        lazy_tx, txid, txd.max_used_block_height, txd.max_used_block_id, tvc)) {
+                        lazy_tx,
+                        txid,
+                        txd.max_used_block_height,
+                        txd.max_used_block_id,
+                        tvc)) {
                 txd.last_failed_height = m_blockchain.get_current_blockchain_height() - 1;
                 txd.last_failed_id = m_blockchain.get_block_id_by_height(txd.last_failed_height);
                 return false;
@@ -1725,8 +1804,8 @@ static bool append_key_images(
         CHECK_AND_ASSERT_MES(
                 i_res.second,
                 false,
-                "internal error: key images pool cache - inserted duplicate image in set: "
-                        << itk.k_image);
+                "internal error: key images pool cache - inserted duplicate image in set: {}",
+                itk.k_image);
     }
     return true;
 }
@@ -1775,7 +1854,8 @@ bool tx_memory_pool::fill_block_template(
         uint64_t& raw_fee,
         uint64_t& expected_reward,
         hf version,
-        uint64_t height) {
+        uint64_t height,
+        std::optional<std::pair<uint64_t, uint64_t>> l2_range) {
     auto locks = tools::unique_locks(m_transactions_lock, m_blockchain);
 
     total_weight = 0;
@@ -1830,6 +1910,12 @@ bool tx_memory_pool::fill_block_template(
                 total_weight,
                 max_total_weight,
                 print_money(best_reward));
+
+        if (l2_range && meta.l2_height != 0 && (meta.l2_height < l2_range->first || meta.l2_height > l2_range->second)) {
+            log::debug(logcat, "  state change from L2 height {} is not in L2 range [{}, {}]",
+                    meta.l2_height, l2_range->first, l2_range->second);
+            continue;
+        }
 
         // Can not exceed maximum block weight
         if (max_total_weight < total_weight + meta.weight) {

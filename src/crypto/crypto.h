@@ -118,37 +118,51 @@ inline void rand(size_t N, uint8_t* bytes) {
     generate_random_bytes_thread_safe(N, bytes);
 }
 
+template <typename T>
+concept trivially_copyable = std::is_trivially_copyable_v<T>;
+
 /* Generate a value filled with random bytes.
  */
-template <typename T>
-typename std::enable_if<std::is_pod<T>::value, T>::type rand() {
-    typename std::remove_cv<T>::type res;
-    generate_random_bytes_thread_safe(sizeof(T), (uint8_t*)&res);
+template <trivially_copyable T>
+T rand() {
+    using Plain = std::remove_cvref_t<T>;
+    Plain res;
+    generate_random_bytes_thread_safe(sizeof(res), reinterpret_cast<uint8_t*>(&res));
     return res;
 }
 
 /* UniformRandomBitGenerator using crypto::rand<uint64_t>()
  */
 struct random_device {
-    typedef uint64_t result_type;
+    using result_type = uint64_t;
     static constexpr result_type min() { return 0; }
-    static constexpr result_type max() { return result_type(-1); }
+    static constexpr result_type max() { return std::numeric_limits<result_type>::max(); }
     result_type operator()() const { return crypto::rand<result_type>(); }
 };
 
 /* Generate a random value between range_min and range_max
  */
-template <typename T>
-typename std::enable_if<std::is_integral<T>::value, T>::type rand_range(T range_min, T range_max) {
-    crypto::random_device rd;
-    std::uniform_int_distribution<T> dis(range_min, range_max);
-    return dis(rd);
+template <std::integral T>
+T rand_range(T range_min, T range_max) {
+    random_device rd;
+    return std::uniform_int_distribution<T>{range_min, range_max}(rd);
+}
+
+/* Generate a random time interval between range_min and range_max.  This is just a wrapper around
+ * rand_range with integers (not that this does *not* yield a smaller interval, i.e. `rand_range(1s,
+ * 2s)` will return 1s or 2s but not 1278ms).
+ */
+template <std::integral Rep, typename Period>
+std::chrono::duration<Rep, Period> rand_range(
+        std::chrono::duration<Rep, Period> range_min,
+        std::chrono::duration<Rep, Period> range_max) {
+    return std::chrono::duration<Rep, Period>{rand_range(range_min.count(), range_max.count())};
 }
 
 /* Generate a random index between 0 and sz-1
  */
-template <typename T>
-typename std::enable_if<std::is_unsigned<T>::value, T>::type rand_idx(T sz) {
+template <std::integral T>
+T rand_idx(T sz) {
     return crypto::rand_range<T>(0, sz - 1);
 }
 

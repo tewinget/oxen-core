@@ -51,18 +51,18 @@ namespace cryptonote { template class t_cryptonote_protocol_handler<cryptonote::
 
 int main(int argc, char** argv)
 {
+  auto logcat = oxen::log::Cat("tests");
   TRY_ENTRY();
 
   tools::on_startup();
   epee::string_tools::set_module_name_and_folder(argv[0]);
-  epee::debug::get_set_enable_assert(true, false);
 
   ::testing::InitGoogleTest(&argc, argv);
 
   po::options_description desc_options("Command line options");
   const command_line::arg_descriptor<std::string> arg_data_dir = { "data-dir", "Data files directory", DEFAULT_DATA_DIR };
   command_line::add_arg(desc_options, arg_data_dir);
-  const command_line::arg_descriptor<int> arg_log_level = { "log-level", "Log level (0-4)", 1 };
+  const command_line::arg_descriptor<std::string> arg_log_level = { "log-level", "Log level (0-4)", "1" };
   command_line::add_arg(desc_options, arg_log_level);
 
   po::variables_map vm;
@@ -77,16 +77,10 @@ int main(int argc, char** argv)
 
   unit_test::data_dir = command_line::get_arg(vm, arg_data_dir);
 
-  oxen::log::Level log_level;
-  if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level))) {
-      log_level = *level;
-  } else {
-      throw std::runtime_error{"Incorrect log level"};
-  }
-  oxen::logging::init("unit_tests.log", log_level);
+  oxen::logging::init("unit_tests.log", command_line::get_arg(vm, arg_log_level));
 
 
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 
   return RUN_ALL_TESTS();
 }

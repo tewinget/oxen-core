@@ -4,6 +4,10 @@
 #ifndef KECCAK_H
 #define KECCAK_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include <string.h>
 
@@ -26,14 +30,19 @@ typedef struct KECCAK_CTX {
 } KECCAK_CTX;
 
 // compute a keccak hash (md) of given byte length from "in"
-void keccak(const uint8_t* in, size_t inlen, uint8_t* md, int mdlen);
+void keccak(const uint8_t* in, size_t inlen, uint8_t* md, size_t mdlen);
 
 // update the state
 void keccakf(uint64_t st[25], int norounds);
 
 void keccak1600(const uint8_t* in, size_t inlen, uint8_t* md);
 
+// Piecewise version of keccak
 void keccak_init(KECCAK_CTX* ctx);
 void keccak_update(KECCAK_CTX* ctx, const uint8_t* in, size_t inlen);
-void keccak_finish(KECCAK_CTX* ctx, uint8_t* md);
+void keccak_finish(KECCAK_CTX* ctx, uint8_t* md, size_t mdlen);
+
+#ifdef __cplusplus
+}
+#endif
 #endif

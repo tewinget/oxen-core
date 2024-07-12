@@ -31,19 +31,20 @@
 #pragma once
 
 #include <cstddef>
-#include <ostream>
+#include <span>
+#include <type_traits>
 
 #include "base.h"
-
-extern "C" {
 #include "hash-ops.h"
-}
+#include "keccak.h"
 
 namespace crypto {
 
 struct hash8 : bytes<8, true> {
     explicit operator bool() const { return data_ != null<hash8>.data_; }
 };
+
+struct hash4 : bytes<4, true, uint32_t> {};
 
 struct hash : bytes<HASH_SIZE, true> {
     explicit operator bool() const { return data_ != null<hash>.data_; }
@@ -70,6 +71,68 @@ inline hash cn_fast_hash(const void* data, std::size_t length) {
     hash h;
     cn_fast_hash(data, length, h);
     return h;
+}
+
+inline void keccak_update(KECCAK_CTX& ctx, std::span<const unsigned char> piece) {
+    ::keccak_update(&ctx, piece.data(), piece.size());
+}
+inline void keccak_update(KECCAK_CTX& ctx, std::span<const char> piece) {
+    ::keccak_update(&ctx, reinterpret_cast<const uint8_t*>(piece.data()), piece.size());
+}
+inline void keccak_update(KECCAK_CTX& ctx, std::span<const std::byte> piece) {
+    ::keccak_update(&ctx, reinterpret_cast<const uint8_t*>(piece.data()), piece.size());
+}
+
+template <typename T>
+concept byte_span_convertible = std::convertible_to<T, std::span<const char>> ||
+                                std::convertible_to<T, std::span<const unsigned char>> ||
+                                std::convertible_to<T, std::span<const std::byte>>;
+
+template <typename Hash>
+concept keccak_hashable = Hash::size() % 8 == 0 && (Hash::size() <= 100 || Hash::size() == 200);
+
+// C++ version of keccak() that takes any number of char or unsigned char character spans (such as
+// vectors, arrays, strings) and keccaks them, writing the hash into a `Hash` that gets returned.
+template <keccak_hashable Hash = crypto::hash, byte_span_convertible... T>
+Hash keccak(T&&... piece) {
+    Hash hash;
+    if constexpr (sizeof...(T) == 1) {
+        (::keccak(
+                 reinterpret_cast<const uint8_t*>(piece.data()),
+                 piece.size(),
+                 hash.data(),
+                 hash.size()),
+         ...);
+    } else {
+        KECCAK_CTX ctx;
+        ::keccak_init(&ctx);
+        (crypto::keccak_update(ctx, std::forward<T>(piece)), ...);
+        ::keccak_finish(&ctx, hash.data(), hash.size());
+    }
+    return hash;
+}
+
+// Multi-argument version of keccak_update (so that you can provide multiple update arguments at
+// once), like with the `keccak()` function above, when building a more complex hashed value.
+template <byte_span_convertible... T>
+    requires(sizeof...(T) > 1)
+void keccak_update(KECCAK_CTX& ctx, T&&... piece) {
+    (keccak_update(ctx, std::forward<T>(piece)), ...);
+}
+
+// Version of keccak that always does a 32-byte keccak but then truncates the results to fit into
+// the given Hash type.  This is used for some ETH smart contract functionality (such as calling
+// functions inside contracts) that does a 32-byte keccak but then keeps just the first 4 bytes of
+// it by using this with `Hash=crypto::hash4`.
+//
+// (This is in contract with the `keccak()` function above that does a `Hash`-sized keccak hash).
+template <typename Hash, byte_span_convertible... T>
+requires (std::is_trivially_copyable_v<Hash> && Hash::size() < crypto::hash::size())
+Hash keccak_prefix(T&&... piece) {
+    crypto::hash full = keccak(std::forward<T>(piece)...);
+    Hash result;
+    std::memcpy(result.data(), full.data(), result.size());
+    return result;
 }
 
 enum struct cn_slow_hash_type {

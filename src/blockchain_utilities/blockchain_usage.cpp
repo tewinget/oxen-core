@@ -29,12 +29,13 @@
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
-#include "common/command_line.h"
-#include "common/fs-format.h"
-#include "common/varint.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_core/uptime_proof.h"
 #include "version.h"
+
+#include <common/exception.h>
+#include <common/command_line.h>
+
+#include <fmt/std.h>
 
 namespace po = boost::program_options;
 using namespace cryptonote;
@@ -76,6 +77,7 @@ struct reference {
 };
 
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -87,12 +89,10 @@ int main(int argc, char* argv[]) {
             "Command line options and settings options", opt_size.first, opt_size.second);
     const command_line::arg_descriptor<std::string> arg_log_level = {
             "log-level", "0-4 or categories", ""};
-    const command_line::arg_descriptor<bool> arg_rct_only = {
-            "rct-only", "Only work on ringCT outputs", false};
+    const command_line::arg_flag arg_rct_only{"rct-only", "Only work on ringCT outputs"};
     const command_line::arg_descriptor<std::string> arg_input = {"input", ""};
 
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_rct_only);
     command_line::add_arg(desc_cmd_sett, arg_input);
@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
     desc_options.add(desc_cmd_only).add(desc_cmd_sett);
 
     po::positional_options_description positional_options;
-    positional_options.add(arg_input.name, -1);
+    positional_options.add(arg_input.name.c_str(), -1);
 
     po::variables_map vm;
     bool r = command_line::handle_error_helper(desc_options, [&]() {
@@ -124,22 +124,9 @@ int main(int argc, char* argv[]) {
 
     auto m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
     auto log_file_path = m_config_folder + "oxen-blockchain-usage.log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level).c_str())) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
-    oxen::logging::init(log_file_path, log_level);
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    network_type net_type = opt_testnet ? network_type::TESTNET
-                          : opt_devnet  ? network_type::DEVNET
-                                        : network_type::MAINNET;
     bool opt_rct_only = command_line::get_arg(vm, arg_rct_only);
 
     // If we wanted to use the memory pool, we would set up a fake_core.
@@ -158,15 +145,14 @@ int main(int argc, char* argv[]) {
     const std::string input = command_line::get_arg(vm, arg_input);
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
-    tx_memory_pool& m_mempool = blockchain_objects.m_mempool;
-    BlockchainDB* db = new_db();
-    if (db == NULL) {
+    auto db = new_db();
+    if (!db) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 
-    const fs::path filename = fs::u8path(input);
+    const fs::path filename = tools::utf8_path(input);
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {
@@ -176,14 +162,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    r = core_storage->init(db, nullptr /*ons_db*/, nullptr, net_type);
+    r = core_storage->init(std::move(db), command_line::get_network(vm));
 
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
     log::warning(logcat, "Source blockchain storage initialized OK");
 
     log::warning(logcat, "Building usage patterns...");
 
-    size_t done = 0;
     std::unordered_map<output_data, std::list<reference>> outputs;
     std::unordered_map<uint64_t, uint64_t> indices;
 
@@ -198,8 +183,8 @@ int main(int argc, char* argv[]) {
                 for (const auto& out : tx.vout) {
                     if (opt_rct_only && out.amount)
                         continue;
-                    uint64_t index = indices[out.amount]++;
-                    output_data od(out.amount, indices[out.amount], coinbase, height);
+                    uint64_t index = ++indices[out.amount];
+                    output_data od(out.amount, index, coinbase, height);
                     auto itb = outputs.emplace(od, std::list<reference>());
                     itb.first->first.info(coinbase, height);
                 }

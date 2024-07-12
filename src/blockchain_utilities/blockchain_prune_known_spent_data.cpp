@@ -32,10 +32,12 @@
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
-#include "common/command_line.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "serialization/crypto.h"
 #include "version.h"
+
+#include <common/exception.hpp>
+#include <common/command_line.h>
 
 namespace po = boost::program_options;
 using namespace cryptonote;
@@ -92,6 +94,7 @@ static std::map<uint64_t, uint64_t> load_outputs(const fs::path& filename) {
 }
 
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -107,15 +110,13 @@ int main(int argc, char* argv[]) {
             "Command line options and settings options", opt_size.first, opt_size.second);
     const command_line::arg_descriptor<std::string> arg_log_level = {
             "log-level", "0-4 or categories", ""};
-    const command_line::arg_descriptor<bool> arg_verbose = {"verbose", "Verbose output", false};
-    const command_line::arg_descriptor<bool> arg_dry_run = {
-            "dry-run", "Do not actually prune", false};
+    const command_line::arg_flag arg_verbose{"verbose", "Verbose output"};
+    const command_line::arg_flag arg_dry_run{"dry-run", "Do not actually prune"};
     const command_line::arg_descriptor<std::string> arg_input = {
             "input", "Path to the known spent outputs file"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_verbose);
     command_line::add_arg(desc_cmd_sett, arg_dry_run);
@@ -149,15 +150,11 @@ int main(int argc, char* argv[]) {
 
     log::warning(logcat, "Starting...");
 
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    network_type net_type = opt_testnet ? network_type::TESTNET
-                          : opt_devnet  ? network_type::DEVNET
-                                        : network_type::MAINNET;
+    auto net_type = command_line::get_network(vm);
     bool opt_verbose = command_line::get_arg(vm, arg_verbose);
     bool opt_dry_run = command_line::get_arg(vm, arg_dry_run);
 
-    const auto input = fs::u8path(command_line::get_arg(vm, arg_input));
+    const auto input = tools::utf8_path(command_line::get_arg(vm, arg_input));
 
     log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
     blockchain_objects_t blockchain_objects = {};
@@ -165,11 +162,12 @@ int main(int argc, char* argv[]) {
     BlockchainDB* db = new_db();
     if (db == NULL) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
 
     const fs::path filename =
-            fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)) / db->get_db_name();
+            tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir)) /
+            db->get_db_name();
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {

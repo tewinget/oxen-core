@@ -5,6 +5,7 @@
 #include <boost/lexical_cast.hpp>
 #include <cfenv>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "common/oxen.h"
@@ -12,27 +13,94 @@
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "epee/int-util.h"
+#include "networks.h"
 #include "oxen_economy.h"
 
 using cryptonote::hf;
 
 namespace service_nodes {
 
+using namespace cryptonote;
+using namespace oxen;
+
 static auto logcat = log::Cat("service_nodes");
+
+template <cryptonote::network_type Net>
+static constexpr bool has_valid_parameters() {
+    constexpr auto& conf = get_config(Net);
+
+    static_assert(conf.PULSE_MIN_SERVICE_NODES >= PULSE_QUORUM_SIZE);
+
+    // Some sanity checks on the recommission credit value:
+    static_assert(
+            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT), 0) <=
+                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+            "Max recommission credit should not be higher than DECOMMISSION_MAX_CREDIT");
+
+    // These are by no means exhaustive, but will at least catch simple mistakes
+    static_assert(
+            RECOMMISSION_CREDIT(
+                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT)) <=
+                            RECOMMISSION_CREDIT(
+                                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                                    conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2) &&
+                    RECOMMISSION_CREDIT(
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2) <=
+                            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT), 0) &&
+                    RECOMMISSION_CREDIT(
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2,
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2) <=
+                            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2, 0),
+            "Recommission credit should be (weakly) decreasing in the length of decommissioning");
+    static_assert(
+            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2, 1) <=
+                            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT), 1) &&
+                    RECOMMISSION_CREDIT(0, 1) <=
+                            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT) / 2, 1),
+            "Recommission credit should be (weakly) increasing in initial credit blocks");
+
+    // This one actually could be supported (i.e. you can have negative credit and have to crawl out
+    // of that hole), but the current code is entirely untested as to whether or not that actually
+    // works.
+    static_assert(
+            RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT), 0) >= 0 &&
+                    RECOMMISSION_CREDIT(
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT)) >= 0 &&
+                    RECOMMISSION_CREDIT(
+                            conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT),
+                            2 * conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT)) >=
+                            0,  // delayed recommission that overhangs your time
+            "Recommission credit should not be negative");
+
+    return true;
+}
+
+static_assert([]<size_t... I>(std::index_sequence<I...>) {
+    return (has_valid_parameters<ALL_NETWORKS[I]>() && ...);
+}(std::make_index_sequence<ALL_NETWORKS.size()>{}));
 
 uint64_t get_staking_requirement(cryptonote::network_type nettype, hf hardfork) {
     assert(hardfork >= hf::hf16_pulse);
-    return nettype == cryptonote::network_type::MAINNET ? oxen::STAKING_REQUIREMENT
-                                                        : oxen::STAKING_REQUIREMENT_TESTNET;
+    if (hardfork >= feature::ETH_BLS)
+        return nettype == network_type::MAINNET ? SENT_STAKING_REQUIREMENT
+                                                : SENT_STAKING_REQUIREMENT_TESTNET;
+
+    return nettype == network_type::MAINNET ? OXEN_STAKING_REQUIREMENT
+                                            : OXEN_STAKING_REQUIREMENT_TESTNET;
 }
 
 // TODO(oxen): Move to oxen_economy, this will also need access to oxen::exp2
 uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height) {
-    if (nettype != cryptonote::network_type::MAINNET)
-        return oxen::STAKING_REQUIREMENT_TESTNET;
 
-    if (is_hard_fork_at_least(nettype, hf::hf16_pulse, height))
-        return oxen::STAKING_REQUIREMENT;
+    auto hf_version = get_network_version(nettype, height);
+    if (hf_version >= hf::hf16_pulse)
+        return get_staking_requirement(nettype, hf_version);
+
+    if (nettype != cryptonote::network_type::MAINNET)
+        return OXEN_STAKING_REQUIREMENT_TESTNET;
 
     if (is_hard_fork_at_least(nettype, hf::hf13_enforce_checkpoints, height)) {
         constexpr int64_t heights[] = {
@@ -148,10 +216,7 @@ bool check_service_node_portions(
 }
 
 bool check_service_node_stakes(
-        hf hf_version,
-        cryptonote::network_type nettype,
-        uint64_t staking_requirement,
-        const std::vector<std::pair<cryptonote::account_public_address, uint64_t>>& stakes) {
+        hf hf_version, uint64_t staking_requirement, const std::vector<uint64_t>& stakes) {
     if (hf_version < hf::hf19_reward_batching) {
         log::info(
                 logcat,
@@ -167,9 +232,7 @@ bool check_service_node_stakes(
         return false;
     }
 
-    const auto operator_requirement = nettype == cryptonote::network_type::MAINNET
-                                            ? oxen::MINIMUM_OPERATOR_CONTRIBUTION
-                                            : oxen::MINIMUM_OPERATOR_CONTRIBUTION_TESTNET;
+    const auto operator_requirement = MINIMUM_OPERATOR_CONTRIBUTION(staking_requirement);
 
     uint64_t reserved = 0;
     uint64_t remaining = staking_requirement;
@@ -178,28 +241,28 @@ bool check_service_node_stakes(
                 i == 0 ? operator_requirement
                        : get_min_node_contribution(hf_version, staking_requirement, reserved, i);
 
-        if (stakes[i].second < min_stake) {
+        if (stakes[i] < min_stake) {
             log::info(
                     logcat,
                     "Registration tx rejected: stake {} too small ({} < {})",
                     i,
-                    stakes[i].second,
+                    stakes[i],
                     min_stake);
             return false;
         }
-        if (stakes[i].second > remaining) {
+        if (stakes[i] > remaining) {
             log::info(
                     logcat,
                     "Registration tx rejected: stake {} ({}) exceeds available remaining stake "
                     "({})",
                     i,
-                    stakes[i].second,
+                    stakes[i],
                     remaining);
             return false;
         }
 
-        reserved += stakes[i].second;
-        remaining -= stakes[i].second;
+        reserved += stakes[i];
+        remaining -= stakes[i];
     }
 
     return true;
@@ -214,6 +277,14 @@ crypto::hash generate_request_stake_unlock_hash(uint32_t nonce) {
     for (size_t i = 0; i < 8; i++)
         reinterpret_cast<uint32_t*>(result.data())[i] = nonce;
     return result;
+}
+
+uint64_t staking_num_lock_blocks(cryptonote::network_type nettype) {
+    switch (nettype) {
+        case cryptonote::network_type::FAKECHAIN: return 30;
+        case cryptonote::network_type::TESTNET: return get_config(nettype).BLOCKS_IN(48h);
+        default: return get_config(nettype).BLOCKS_IN(30 * 24h);
+    }
 }
 
 uint64_t get_locked_key_image_unlock_height(
@@ -282,7 +353,7 @@ uint64_t get_portions_to_make_amount(
 }
 
 std::optional<double> parse_fee_percent(std::string_view fee) {
-    if (tools::ends_with(fee, "%"))
+    if (fee.ends_with("%"))
         fee.remove_suffix(1);
 
     double percent;
@@ -301,10 +372,10 @@ std::optional<double> parse_fee_percent(std::string_view fee) {
 uint16_t percent_to_basis_points(std::string percent_string) {
     const auto percent = parse_fee_percent(percent_string);
     if (!percent)
-        throw invalid_registration{"could not parse fee percent"};
+        throw oxen::traced<invalid_registration>{"could not parse fee percent"};
 
     if (*percent < 0.0 || *percent > 100.0)
-        throw invalid_registration{"fee percent out of bounds"};
+        throw oxen::traced<invalid_registration>{"fee percent out of bounds"};
 
     auto basis_points =
             static_cast<uint16_t>(std::lround(*percent / 100.0 * cryptonote::STAKING_FEE_BASIS));

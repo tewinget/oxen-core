@@ -35,7 +35,6 @@
 
 #include "blockchain.h"
 #include "common/apply_permutation.h"
-#include "common/hex.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -48,6 +47,8 @@
 #include "ringct/rctSigs.h"
 
 using namespace crypto;
+
+static auto logcat = oxen::log::Cat("tx");
 
 namespace cryptonote {
 //---------------------------------------------------------------
@@ -112,15 +113,18 @@ bool get_deterministic_output_key(
     CHECK_AND_ASSERT_MES(
             r,
             false,
-            "failed to generate_key_derivation(" << address.m_view_public_key << ", " << tx_key.sec
-                                                 << ")");
+            "failed to generate_key_derivation({}, {})",
+            address.m_view_public_key,
+            tools::hex_guts(tx_key.sec));
 
     r = crypto::derive_public_key(derivation, output_index, address.m_spend_public_key, output_key);
     CHECK_AND_ASSERT_MES(
             r,
             false,
-            "failed to derive_public_key(" << derivation << ", " << output_index << ", "
-                                           << address.m_spend_public_key << ")");
+            "failed to derive_public_key({}, {}, {}",
+            derivation,
+            output_index,
+            address.m_spend_public_key);
 
     return true;
 }
@@ -168,10 +172,14 @@ bool height_has_governance_output(network_type nettype, hf hard_fork_version, ui
     if (height == 0)
         return false;
 
+    if (hard_fork_version >= feature::ETH_BLS)
+        return false;
+
     if (hard_fork_version <= hf::hf9_service_nodes || hard_fork_version >= hf::hf19_reward_batching)
         return true;
 
-    if (height % cryptonote::get_config(nettype).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS != 0) {
+    auto& conf = get_config(nettype);
+    if (height % conf.BLOCKS_IN(conf.GOVERNANCE_REWARD_INTERVAL) != 0) {
         return false;
     }
 
@@ -207,9 +215,10 @@ uint64_t derive_governance_from_block_reward(
     CHECK_AND_ASSERT_MES(
             block_reward <= actual_reward,
             false,
-            "Rederiving the base block reward from the service node reward "
-            "exceeded the actual amount paid in the block, derived block reward: "
-                    << block_reward << ", actual reward: " << actual_reward);
+            "Rederiving the base block reward from the service node reward exceeded the actual "
+            "amount paid in the block, derived block reward: {}, actual reward: {}",
+            block_reward,
+            actual_reward);
 
     result = governance;
     return result;
@@ -376,8 +385,8 @@ std::pair<bool, uint64_t> construct_miner_tx(
         CHECK_AND_ASSERT_MES(
                 hard_fork_version >= hf::hf16_pulse,
                 std::make_pair(false, block_rewards),
-                "Pulse Block Producer is not valid until HF16, current HF"
-                        << static_cast<int>(hard_fork_version));
+                "Pulse Block Producer is not valid until HF16, currently HF{}",
+                static_cast<int>(hard_fork_version));
 
         uint64_t leader_reward = reward_parts.service_node_total;
         if (miner_tx_context.block_leader.key == miner_tx_context.pulse_block_producer.key) {
@@ -447,8 +456,8 @@ std::pair<bool, uint64_t> construct_miner_tx(
             CHECK_AND_ASSERT_MES(
                     hard_fork_version >= hf::hf10_bulletproofs,
                     std::make_pair(false, block_rewards),
-                    "Governance reward can NOT be 0 before hardfork 10, hard_fork_version: "
-                            << static_cast<int>(hard_fork_version));
+                    "Governance reward can NOT be 0 before hardfork 10, hard_fork_version: {}",
+                    static_cast<int>(hard_fork_version));
         }
         // Governance reward paid out through SN rewards batching from HF19
         else if (hard_fork_version < hf::hf19_reward_batching) {
@@ -480,8 +489,9 @@ std::pair<bool, uint64_t> construct_miner_tx(
         CHECK_AND_ASSERT_MES(
                 rewards.size() <= 9,
                 std::make_pair(false, block_rewards),
-                "More rewards specified than supported, number of rewards: "
-                        << rewards.size() << ", capacity: " << rewards.size());
+                "More rewards specified than supported, number of rewards: {}, capacity: {}",
+                rewards.size(),
+                rewards.size());
         CHECK_AND_ASSERT_MES(
                 rewards.size() > 0,
                 std::make_pair(false, block_rewards),
@@ -538,13 +548,15 @@ std::pair<bool, uint64_t> construct_miner_tx(
     CHECK_AND_ASSERT_MES(
             summary_amounts == expected_amount,
             std::make_pair(false, block_rewards),
-            "Failed to construct miner tx, summary_amounts = "
-                    << summary_amounts << " not equal total block_reward = " << expected_amount);
+            "Failed to construct miner tx, summary_amounts = {} not equal total block_reward = {}",
+            summary_amounts,
+            expected_amount);
     CHECK_AND_ASSERT_MES(
             tx.vout.size() == rewards.size(),
             std::make_pair(false, block_rewards),
-            "TX output mis-match with rewards expected: " << rewards.size()
-                                                          << ", tx outputs: " << tx.vout.size());
+            "TX output mis-match with rewards expected: {}, tx outputs: {}",
+            rewards.size(),
+            tx.vout.size());
 
     block_rewards = std::accumulate(
             batched_rewards.begin(), batched_rewards.end(), uint64_t{0}, [](uint64_t x, auto&& y) {
@@ -853,8 +865,8 @@ bool construct_tx_with_tx_key(
                     "{}!\nderived_key: {}\nreal output_public_key: {}",
                     idx,
                     src_entr.real_output,
-                    tools::type_to_hex(in_ephemeral.pub),
-                    tools::type_to_hex(src_entr.outputs[src_entr.real_output].second.dest));
+                    in_ephemeral.pub,
+                    tools::hex_guts(src_entr.outputs[src_entr.real_output].second.dest));
             log::error(globallogcat, "amount {}, rct {}", src_entr.amount, src_entr.rct);
             log::error(
                     globallogcat,

@@ -32,10 +32,10 @@ class Keyring : public WalletKeys {
             std::string _view_public_key,
             cryptonote::network_type _nettype = cryptonote::network_type::TESTNET) :
             nettype(_nettype) {
-        tools::hex_to_type<crypto::secret_key>(_spend_private_key, spend_private_key);
-        tools::hex_to_type<crypto::public_key>(_spend_public_key, spend_public_key);
-        tools::hex_to_type<crypto::secret_key>(_view_private_key, view_private_key);
-        tools::hex_to_type<crypto::public_key>(_view_public_key, view_public_key);
+        tools::load_from_hex_guts<crypto::secret_key>(_spend_private_key, spend_private_key);
+        tools::load_from_hex_guts<crypto::public_key>(_spend_public_key, spend_public_key);
+        tools::load_from_hex_guts<crypto::secret_key>(_view_private_key, view_private_key);
+        tools::load_from_hex_guts<crypto::public_key>(_view_public_key, view_public_key);
     }
 
     Keyring() {}

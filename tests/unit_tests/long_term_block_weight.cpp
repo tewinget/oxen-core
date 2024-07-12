@@ -118,8 +118,8 @@ static uint32_t lcg()
     window, \
   }; \
   cryptonote::Blockchain *bc = &bc_objects.m_blockchain; \
-  auto sqliteDB = std::make_shared<cryptonote::BlockchainSQLite>(cryptonote::network_type::FAKECHAIN, ":memory:"); \
-  bool r = bc->init(new ::TestDB(), nullptr /*ons_db*/, sqliteDB /*sqlite_db*/, cryptonote::network_type::FAKECHAIN, true, &test_options, 0); \
+  auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(cryptonote::network_type::FAKECHAIN, ":memory:"); \
+  bool r = bc->init(std::make_unique<TestDB>(), test_options, sqliteDB.release()); \
   ASSERT_TRUE(r)
 
 #define PREFIX(hf_version) PREFIX_WINDOW(hf_version, TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW)

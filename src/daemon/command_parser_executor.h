@@ -70,6 +70,8 @@ class command_parser_executor final {
 
     bool prepare_registration(const std::vector<std::string>& args);
 
+    bool prepare_eth_registration(const std::vector<std::string>& args);
+
     bool print_sn(const std::vector<std::string>& args);
 
     bool print_sn_status(const std::vector<std::string>& args);
@@ -141,6 +143,8 @@ class command_parser_executor final {
     bool print_sn_state_changes(const std::vector<std::string>& args);
 
     bool flush_cache(const std::vector<std::string>& args);
+
+    bool claim_rewards(const std::vector<std::string>& args);
 
     void test_trigger_uptime_proof() { m_executor.test_trigger_uptime_proof(); }
 };

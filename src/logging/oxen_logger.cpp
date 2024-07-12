@@ -2,10 +2,15 @@
 
 #include <spdlog/sinks/rotating_file_sink.h>
 
-#include <filesystem>
 #include <oxen/log.hpp>
 
+#include "common/format.h"
+#include "common/string_util.h"
+
 namespace oxen::logging {
+
+using namespace std::literals;
+
 static auto logcat = log::Cat("logging");
 
 void set_additional_log_categories(log::Level& log_level) {
@@ -22,6 +27,7 @@ void set_additional_log_categories(log::Level& log_level) {
             log::set_level("serialization", log::Level::err);
             log::set_level("logging", log::Level::info);
             log::set_level("msgwriter", log::Level::info);
+            log::set_level("daemon", log::Level::info);
             break;
         case log::Level::info:
             log::set_level("net", log::Level::err);
@@ -35,6 +41,7 @@ void set_additional_log_categories(log::Level& log_level) {
             log::set_level("service_nodes", log::Level::warn);
             log::set_level("txpool", log::Level::warn);
             log::set_level("construct_tx", log::Level::warn);
+            log::set_level("pulse", log::Level::warn);
             break;
         case log::Level::debug: break;
         case log::Level::trace: break;
@@ -42,34 +49,71 @@ void set_additional_log_categories(log::Level& log_level) {
     }
 }
 
-void process_categories_string(const std::string& categories) {
-    std::istringstream iss(categories);
-    std::string single_category_and_level, single_category, level_str;
-    std::optional<log::Level> log_level;
-    std::string::size_type level_separator = 0;
+LogCats extract_categories(std::string_view categories) {
+    LogCats result;
+    for (auto cat : tools::split_any(categories, " ,;", true)) {
+        auto pieces = tools::split_any(cat, ":=", true);
+        if (pieces.size() < 1 || pieces.size() > 2) {
+            log::error(
+                    logcat,
+                    "Invalid or unparseable log category/level '{}'; expected 'level' or "
+                    "'category=level'",
+                    cat);
+            continue;
+        }
+        auto lvl = parse_level(pieces.back());
+        if (!lvl) {
+            log::error(logcat, "Invalid log level '{}' in log input '{}'", pieces.back(), cat);
+            continue;
+        }
+        auto cat_name = pieces.size() == 1 ? "*"sv : pieces.front();
 
-    while (getline(iss, single_category_and_level, ',')) {
-        if ((level_separator = single_category_and_level.find(':')) != std::string::npos) {
-            single_category = single_category_and_level.substr(0, level_separator);
-            level_str = single_category_and_level.substr(level_separator + 1, std::string::npos);
-            log_level = parse_level(level_str);
-            if (log_level.has_value()) {
-                if (single_category == "*")
-                    log::reset_level(*log_level);
-                else
-                    log::set_level(single_category, *log_level);
-            }
+        if (cat_name == "*") {
+            result.default_level = *lvl;
+            result.cat_levels.clear();
+        } else {
+            result.cat_levels[std::string{pieces.front()}] = *lvl;
         }
     }
-    log::info(logcat, "New log categories");
+
+    return result;
 }
 
-void init(const std::string& log_location, log::Level log_level, bool log_to_stdout) {
-    log::reset_level(log_level);
+void apply_categories_string(std::string_view categories) {
+    extract_categories(categories).apply();
+}
+
+void LogCats::apply() {
+    std::list<std::string> applied;
+    if (default_level) {
+        log::reset_level(*default_level);
+        set_additional_log_categories(*default_level);
+        applied.push_back("*={}"_format(log::to_string(*default_level)));
+    }
+
+    for (const auto& [cat, lvl] : cat_levels) {
+        log::set_level(cat, lvl);
+        applied.push_back("{}={}"_format(cat, log::to_string(lvl)));
+    }
+
+    if (!applied.empty())
+        log::info(logcat, "Applied log categories: {}", fmt::join(applied, ", "));
+}
+
+void init(const std::string& log_location, std::string_view log_levels, bool log_to_stdout) {
+    auto cats = extract_categories(log_levels);
+    if (!cats.default_level && cats.cat_levels.empty() && !log_levels.empty()) {
+        std::cerr << "Incorrect log level string: " << log_levels << std::endl;
+        throw std::runtime_error{"Invalid log level or log categories"};
+    }
+    if (!cats.default_level)
+        cats.default_level = log::Level::warn;
+
     if (log_to_stdout)
         log::add_sink(log::Type::Print, "stdout");
-    set_file_sink(log_location);
-    set_additional_log_categories(log_level);
+    if (!log_location.empty())
+        set_file_sink(log_location);
+    cats.apply();
 }
 
 void set_file_sink(const std::string& log_location) {
@@ -100,7 +144,7 @@ using namespace std::literals;
 
 using strlvl = std::pair<std::string_view, log::Level>;
 static constexpr std::array logLevels = {
-        strlvl{""sv, log::Level::info},         strlvl{"4"sv, log::Level::trace},
+        strlvl{""sv, log::Level::warn},         strlvl{"4"sv, log::Level::trace},
         strlvl{"3"sv, log::Level::trace},       strlvl{"2"sv, log::Level::debug},
         strlvl{"1"sv, log::Level::info},        strlvl{"0"sv, log::Level::warn},
         strlvl{"trace"sv, log::Level::trace},   strlvl{"trc"sv, log::Level::trace},
@@ -112,14 +156,11 @@ static constexpr std::array logLevels = {
         strlvl{"crit"sv, log::Level::critical}, strlvl{"crt"sv, log::Level::critical},
 };
 
-std::optional<spdlog::level::level_enum> parse_level(std::string input) {
-    // Lower-case the input:
-    for (auto& c : input)
-        if (c >= 'A' && c <= 'Z')
-            c += ('A' - 'a');
+std::optional<spdlog::level::level_enum> parse_level(std::string_view input) {
 
+    auto in = tools::lowercase_ascii_string(input);
     for (const auto& [str, lvl] : logLevels)
-        if (str == input)
+        if (str == in)
             return lvl;
 
     return std::nullopt;

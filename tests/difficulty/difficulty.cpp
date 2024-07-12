@@ -40,10 +40,12 @@
 #include "common/util.h"
 #include "cryptonote_config.h"
 #include "cryptonote_basic/difficulty.h"
+#include "networks.h"
 
 #define DIFFICULTY_LAG                        15
 
 int main(int argc, char *argv[]) {
+    auto logcat = oxen::log::Cat("difficulty");
     TRY_ENTRY();
 
     if (argc < 2) {
@@ -68,7 +70,7 @@ int main(int argc, char *argv[]) {
         uint64_t res = cryptonote::next_difficulty_v2(
             std::vector<uint64_t>(timestamps.begin() + begin, timestamps.begin() + end),
             std::vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end),
-            tools::to_seconds(cryptonote::TARGET_BLOCK_TIME),
+            tools::to_seconds(cryptonote::get_config(cryptonote::network_type::MAINNET).TARGET_BLOCK_TIME),
             cryptonote::difficulty_calc_mode::normal);
         if (res != difficulty) {
             std::cerr << "Wrong difficulty for block " << n
@@ -85,5 +87,5 @@ int main(int argc, char *argv[]) {
     }
     return 0;
 
-    CATCH_ENTRY_L0("main", 1);
+    CATCH_ENTRY("main", 1);
 }

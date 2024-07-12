@@ -30,7 +30,7 @@
 #include <oxenc/hex.h>
 
 #include "common/command_line.h"
-#include "common/hex.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/blockchain.h"
@@ -85,7 +85,7 @@ struct extra_printer {
         return "SN deregistration (pre-HF12)";
     }
     std::string operator()(const tx_extra_tx_secret_key& x) {
-        return "TX secret key: {}" + tools::type_to_hex(x.key);
+        return "TX secret key: {}" + tools::hex_guts(x.key);
     }
     std::string operator()(const tx_extra_tx_key_image_proofs& x) {
         return "TX key image proofs ({})"_format(x.proofs.size());
@@ -125,6 +125,35 @@ struct extra_printer {
         return "SN state change: {} for block height {}, SN index {}"_format(
                 type, x.block_height, x.service_node_index);
     }
+    std::string operator()(const tx_extra_ethereum_new_service_node& x) {
+        std::string contributors_info;
+        for (const auto& contributor : x.contributors) {
+            contributors_info += fmt::format(
+                    "{{address: {}, amount: {}}}, ",
+                    contributor.address,
+                    print_money(contributor.amount));
+        }
+        return "New Ethereum Service Node: version {}, bls key {}, eth address {}, sn pubkey {}, fee {}, contributors [{}] signature {}"_format(
+                x.version,
+                x.bls_pubkey,
+                x.eth_address,
+                x.service_node_pubkey,
+                print_money(x.fee),
+                contributors_info,
+                x.signature);
+    }
+    std::string operator()(const tx_extra_ethereum_service_node_leave_request& x) {
+        return "Ethereum Service Node Leave Request: version {}, bls key {}"_format(
+                x.version, x.bls_pubkey);
+    }
+    std::string operator()(const tx_extra_ethereum_service_node_exit& x) {
+        return "Ethereum Service Node Exit: version {}, eth address {}, amount {}, bls key {}"_format(
+                x.version, x.eth_address, print_money(x.amount), x.bls_pubkey);
+    }
+    std::string operator()(const tx_extra_ethereum_service_node_deregister& x) {
+        return "Ethereum Service Node Deregister: version {}, bls key {}"_format(
+                x.version, x.bls_pubkey);
+    }
 };
 
 static void print_extra_fields(const std::vector<cryptonote::tx_extra_field>& fields) {
@@ -136,18 +165,8 @@ static void print_extra_fields(const std::vector<cryptonote::tx_extra_field>& fi
     }
 }
 
-constexpr static std::string_view network_type_str(network_type nettype) {
-    switch (nettype) {
-        case network_type::MAINNET: return "Mainnet"sv;
-        case network_type::TESTNET: return "Testnet"sv;
-        case network_type::DEVNET: return "Devnet"sv;
-        case network_type::FAKECHAIN: return "Fakenet"sv;
-        case network_type::UNDEFINED: return "Undefined Net"sv;
-    }
-    return "Unhandled Net"sv;
-}
-
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     uint32_t default_log_level = 0;
     std::string input;
 
@@ -195,15 +214,7 @@ int main(int argc, char* argv[]) {
     }
 
     auto log_file_path = "cn_deserialize.log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level))) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level)
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
-    oxen::logging::init(log_file_path, log_level);
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
     if (oxenc::is_hex(input)) {
@@ -246,13 +257,13 @@ int main(int argc, char* argv[]) {
         }
     } else {
         bool addr_decoded = false;
-        for (auto nettype : {network_type::MAINNET, network_type::TESTNET, network_type::DEVNET}) {
+        for (auto nettype : ALL_NETWORKS) {
             cryptonote::address_parse_info addr_info = {};
             if (cryptonote::get_account_address_from_str(
                         addr_info, static_cast<cryptonote::network_type>(nettype), input)) {
                 addr_decoded = true;
                 cryptonote::account_public_address const& address = addr_info.address;
-                fmt::print("Network Type: {}\n", network_type_str(nettype));
+                fmt::print("Network Type: {}\n", network_type_to_string(nettype));
                 fmt::print("Address: {}\n", input);
                 fmt::print("Subaddress: {}\n", addr_info.is_subaddress ? "Yes" : "No");
                 if (addr_info.has_payment_id)

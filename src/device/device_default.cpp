@@ -31,6 +31,7 @@
 
 #include <sodium/crypto_generichash.h>
 
+#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/subaddress_index.h"
@@ -40,6 +41,8 @@
 #include "ringct/rctOps.h"
 
 namespace hw::core {
+
+static auto logcat = log::Cat("device");
 
 /* ======================================================================= */
 /*                              SETUP/TEARDOWN                             */
@@ -94,10 +97,10 @@ bool device_default::generate_chacha_key(
     return true;
 }
 bool device_default::get_public_address(cryptonote::account_public_address& pubkey) {
-    throw std::runtime_error{"device function not supported: get_public_address"};
+    throw oxen::traced<std::runtime_error>{"device function not supported: get_public_address"};
 }
 bool device_default::get_secret_keys(crypto::secret_key& viewkey, crypto::secret_key& spendkey) {
-    throw std::runtime_error{"device function not supported: get_secret_keys"};
+    throw oxen::traced<std::runtime_error>{"device function not supported: get_secret_keys"};
 }
 /* ======================================================================= */
 /*                               SUB ADDRESS                               */
@@ -403,8 +406,9 @@ bool device_default::generate_output_ephemeral_keys(
         CHECK_AND_ASSERT_MES(
                 r,
                 false,
-                "at creation outs: failed to generate_key_derivation("
-                        << txkey_pub << ", " << sender_account_keys.m_view_secret_key << ")");
+                "at creation outs: failed to generate_key_derivation({}, {})",
+                txkey_pub,
+                tools::hex_guts(sender_account_keys.m_view_secret_key));
 
     } else {
         // sending to the recipient; derivation = r*A (or s*C in the subaddress scheme)
@@ -415,11 +419,11 @@ bool device_default::generate_output_ephemeral_keys(
         CHECK_AND_ASSERT_MES(
                 r,
                 false,
-                "at creation outs: failed to generate_key_derivation("
-                        << dst_entr.addr.m_view_public_key << ", "
-                        << (dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec
-                                                                             : tx_key)
-                        << ")");
+                "at creation outs: failed to generate_key_derivation({}, {})",
+                dst_entr.addr.m_view_public_key,
+                tools::hex_guts(
+                        dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec
+                                                                         : tx_key));
     }
 
     if (need_additional_txkeys) {
@@ -437,9 +441,10 @@ bool device_default::generate_output_ephemeral_keys(
     CHECK_AND_ASSERT_MES(
             r,
             false,
-            "at creation outs: failed to derive_public_key("
-                    << derivation << ", " << output_index << ", "
-                    << dst_entr.addr.m_spend_public_key << ")");
+            "at creation outs: failed to derive_public_key({}, {}, {})",
+            derivation,
+            output_index,
+            dst_entr.addr.m_spend_public_key);
     return r;
 }
 

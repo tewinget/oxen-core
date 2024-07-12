@@ -31,12 +31,13 @@
 
 #include "checkpoints.h"
 
+#include <fmt/std.h>
+
 #include <vector>
 
 #include "blockchain_db/blockchain_db.h"
 #include "common/file.h"
-#include "common/fs-format.h"
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/service_node_rules.h"
@@ -86,7 +87,7 @@ crypto::hash get_newest_hardcoded_checkpoint(cryptonote::network_type nettype, u
         uint64_t last_index = oxen::array_count(HARDCODED_MAINNET_CHECKPOINTS) - 1;
         height_to_hash const& entry = HARDCODED_MAINNET_CHECKPOINTS[last_index];
 
-        if (tools::hex_to_type(entry.hash, result))
+        if (tools::try_load_from_hex_guts(entry.hash, result))
             *height = entry.height;
     }
     return result;
@@ -112,7 +113,7 @@ bool load_checkpoints_from_json(
 
 bool checkpoints::get_checkpoint(uint64_t height, checkpoint_t& checkpoint) const {
     try {
-        auto guard = db_rtxn_guard(m_db);
+        auto guard = db_rtxn_guard{*m_db};
         return m_db->get_block_checkpoint(height, checkpoint);
     } catch (const std::exception& e) {
         log::error(
@@ -126,7 +127,7 @@ bool checkpoints::get_checkpoint(uint64_t height, checkpoint_t& checkpoint) cons
 //---------------------------------------------------------------------------
 bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str) {
     crypto::hash h{};
-    bool r = tools::hex_to_type(hash_str, h);
+    bool r = tools::try_load_from_hex_guts(hash_str, h);
     CHECK_AND_ASSERT_MES(
             r, false, "Failed to parse checkpoint hash string into binary representation!");
 
@@ -192,7 +193,7 @@ void checkpoints::block_add(const block_add_info& info) {
                  (start_cull_height % service_nodes::CHECKPOINT_INTERVAL));
 
     m_last_cull_height = std::max(m_last_cull_height, start_cull_height);
-    auto guard = db_wtxn_guard(m_db);
+    auto guard = db_wtxn_guard{*m_db};
     for (; m_last_cull_height < end_cull_height;
          m_last_cull_height += service_nodes::CHECKPOINT_INTERVAL) {
         if (m_last_cull_height % service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
@@ -218,7 +219,7 @@ void checkpoints::blockchain_detached(uint64_t height) {
     m_last_cull_height = std::min(m_last_cull_height, height);
 
     checkpoint_t top_checkpoint;
-    auto guard = db_wtxn_guard(m_db);
+    auto guard = db_wtxn_guard{*m_db};
     if (m_db->get_top_checkpoint(top_checkpoint)) {
         uint64_t start_height = top_checkpoint.height;
         for (size_t delete_height = start_height;

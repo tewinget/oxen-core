@@ -129,7 +129,7 @@ static void test(test_t t, uint64_t blocks)
   const cryptonote::test_options test_options{hard_forks, 5000};
 
   auto& bc = bc_objects.m_blockchain;
-  if (!bc.init(new TestDB(), nullptr /*ons_db*/, nullptr /*sqlite_db*/, cryptonote::network_type::FAKECHAIN, true, &test_options, 0, NULL)) {
+  if (!bc.init(std::make_unique<TestDB>(), test_options)) {
     fprintf(stderr, "Failed to init blockchain\n");
     exit(1);
   };
@@ -187,10 +187,11 @@ static void test(test_t t, uint64_t blocks)
 
 int main()
 {
+  auto logcat = oxen::log::Cat("block_weight");
   TRY_ENTRY();
   test(test_max, 2 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
   test(test_lcg, 9 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
   test(test_min, 1 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
   return 0;
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }

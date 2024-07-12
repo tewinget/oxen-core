@@ -29,35 +29,34 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include <fmt/color.h>
+#include <fmt/std.h>
 #include <oxenc/base32z.h>
+#include <oxenmq/fmt.h>
+#include <sodium.h>
+#include <sqlite3.h>
 
 #include <boost/algorithm/string.hpp>
+#include <csignal>
 #include <iomanip>
 #include <unordered_set>
 
-#include "epee/string_tools.h"
+#include "common/exception.h"
+#include "common/guts.h"
 
 extern "C" {
-#include <sodium.h>
 #ifdef ENABLE_SYSTEMD
 #include <systemd/sd-daemon.h>
 #endif
 }
 
-#include <fmt/color.h>
-#include <oxenmq/fmt.h>
-#include <sqlite3.h>
-
-#include <csignal>
-
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
+#include "bls/bls_signer.h"
 #include "checkpoints/checkpoints.h"
 #include "common/base58.h"
 #include "common/command_line.h"
 #include "common/file.h"
-#include "common/fs-format.h"
-#include "common/hex.h"
 #include "common/i18n.h"
 #include "common/notify.h"
 #include "common/sha256sum.h"
@@ -68,7 +67,9 @@ extern "C" {
 #include "cryptonote_core.h"
 #include "epee/memwipe.h"
 #include "epee/net/local_ip.h"
+#include "epee/string_tools.h"
 #include "epee/warnings.h"
+#include "ethyl/utils.hpp"
 #include "logging/oxen_logger.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
@@ -87,40 +88,28 @@ namespace cryptonote {
 static auto logcat = log::Cat("cn");
 static auto omqlogcat = log::Cat("omq");
 
-const command_line::arg_descriptor<bool, false> arg_testnet_on = {
-        "testnet", "Run on testnet. The wallet must be launched with --testnet flag.", false};
-const command_line::arg_descriptor<bool, false> arg_devnet_on = {
-        "devnet", "Run on devnet. The wallet must be launched with --devnet flag.", false};
-const command_line::arg_descriptor<bool> arg_regtest_on = {
-        "regtest", "Run in a regression testing mode.", false};
-const command_line::arg_descriptor<bool> arg_keep_fakechain = {
-        "keep-fakechain", "Don't delete any existing database when in fakechain mode.", false};
+const command_line::arg_flag arg_keep_fakechain{
+        "keep-fakechain", "Don't delete any existing database when in fakechain mode."};
 const command_line::arg_descriptor<difficulty_type> arg_fixed_difficulty = {
         "fixed-difficulty", "Fixed difficulty used for testing.", 0};
-const command_line::arg_descriptor<bool> arg_dev_allow_local = {
+const command_line::arg_flag arg_dev_allow_local{
         "dev-allow-local-ips",
-        "Allow a local IPs for local and received service node public IP (for local testing only)",
-        false};
-const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir = {
-        "data-dir",
-        "Specify data directory",
-        tools::get_default_data_dir().u8string(),
-        {{&arg_testnet_on, &arg_devnet_on}},
-        [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val) -> std::string {
-            if (testnet_devnet[0])
-                return (fs::u8path(val) / "testnet").u8string();
-            else if (testnet_devnet[1])
-                return (fs::u8path(val) / "devnet").u8string();
-            return val;
+        "Allow a local IPs for local and received service node public IP (for local testing only)"};
+const command_line::arg_descriptor<std::string> arg_data_dir{
+        "data-dir", "Specify data directory"s, [](network_type nettype) {
+            fs::path base = tools::get_default_data_dir();
+            if (auto subdir = cryptonote::network_config_subdir(nettype); !subdir.empty())
+                base /= subdir;
+            return tools::convert_str<char>(base.u8string());
         }};
-const command_line::arg_descriptor<bool> arg_offline = {
+const command_line::arg_flag arg_offline = {
         "offline", "Do not listen for peers, nor connect to any"};
 const command_line::arg_descriptor<size_t> arg_block_download_max_size = {
         "block-download-max-size",
         "Set maximum size of block download queue in bytes (0 for default)",
         0};
 
-static const command_line::arg_descriptor<bool> arg_test_drop_download = {
+static const command_line::arg_flag arg_test_drop_download = {
         "test-drop-download",
         "For net tests: in download, discard ALL blocks instead checking/saving them (very fast)"};
 static const command_line::arg_descriptor<uint64_t> arg_test_drop_download_height = {
@@ -133,21 +122,18 @@ static const command_line::arg_descriptor<uint64_t> arg_prep_blocks_threads = {
         "prep-blocks-threads",
         "Max number of threads to use when preparing block hashes in groups.",
         4};
-static const command_line::arg_descriptor<uint64_t> arg_show_time_stats = {
-        "show-time-stats",
-        "Show time-stats when processing blocks/txs and disk synchronization.",
-        0};
+static const command_line::arg_flag arg_show_time_stats = {
+        "show-time-stats", "Show time-stats when processing blocks/txs and disk synchronization."};
 static const command_line::arg_descriptor<size_t> arg_block_sync_size = {
         "block-sync-size",
         "How many blocks to sync at once during chain synchronization (0 = adaptive).",
         0};
-static const command_line::arg_descriptor<bool> arg_pad_transactions = {
+static const command_line::arg_flag arg_pad_transactions = {
         "pad-transactions",
-        "Pad relayed transactions to help defend against traffic volume analysis",
-        false};
+        "Pad relayed transactions to help defend against traffic volume analysis"};
 static const command_line::arg_descriptor<size_t> arg_max_txpool_weight = {
         "max-txpool-weight", "Set maximum txpool weight in bytes.", DEFAULT_MEMPOOL_MAX_WEIGHT};
-static const command_line::arg_descriptor<bool> arg_service_node = {
+static const command_line::arg_flag arg_service_node = {
         "service-node", "Run as a service node, option 'service-node-public-ip' must be set"};
 static const command_line::arg_descriptor<std::string> arg_public_ip = {
         "service-node-public-ip",
@@ -157,40 +143,66 @@ static const command_line::arg_descriptor<std::string> arg_public_ip = {
         "service node."};
 static const command_line::arg_descriptor<uint16_t> arg_storage_server_port = {
         "storage-server-port", "Deprecated option, ignored.", 0};
-static const command_line::arg_descriptor<uint16_t, false, true, 2> arg_quorumnet_port = {
+static const command_line::arg_descriptor<uint16_t> arg_quorumnet_port = {
         "quorumnet-port",
         "The port on which this service node listen for direct connections from other "
         "service nodes for quorum messages.  The port must be publicly reachable "
         "on the `--service-node-public-ip' address and binds to the p2p IP address."
         " Only applies when running as a service node.",
-        config::QNET_DEFAULT_PORT,
-        {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
-        [](std::array<bool, 2> testnet_devnet, bool defaulted, uint16_t val) -> uint16_t {
-            return defaulted && testnet_devnet[0] ? config::testnet::QNET_DEFAULT_PORT
-                 : defaulted && testnet_devnet[1] ? config::devnet::QNET_DEFAULT_PORT
-                                                  : val;
-        }};
-static const command_line::arg_descriptor<bool> arg_omq_quorumnet_public{
+        [](cryptonote::network_type nettype) { return get_config(nettype).QNET_DEFAULT_PORT; }};
+static const command_line::arg_flag arg_omq_quorumnet_public{
         "lmq-public-quorumnet",
         "Allow the curve-enabled quorumnet address (for a Service Node) to be used for public RPC "
         "commands as if passed to --lmq-curve-public. "
         "Note that even without this option the quorumnet port can be used for RPC commands by "
-        "--lmq-admin and --lmq-user pubkeys.",
-        false};
+        "--lmq-admin and --lmq-user pubkeys."};
+static const command_line::arg_descriptor<std::vector<std::string>> arg_l2_provider = {
+        "l2-provider",
+        "Specify a provider HTTP or HTTPS URL to which this service node will query the Ethereum "
+        "L2 blockchain when tracking the rewards smart contract. Required if operating as a "
+        "service node. Can be specified multiple times to add backup providers."};
+
+// Floating point duration, to which all integer durations are implicitly convertible
+using dseconds = std::chrono::duration<double>;
+
+static const command_line::arg_descriptor<double> arg_l2_refresh = {
+        "l2-refresh",
+        "Specify the time (in seconds) between refreshes of the Ethereum L2 provider current state",
+        dseconds{ETH_L2_DEFAULT_REFRESH}.count()};
+static const command_line::arg_descriptor<double> arg_l2_timeout = {
+        "l2-timeout",
+        "Specify the timeout (in seconds) for requests to the L2 provider current state; if "
+        "multiple providers are configured then after a timeout the next provider will be tried.",
+        dseconds{ETH_L2_DEFAULT_REQUEST_TIMEOUT}.count()};
+static const command_line::arg_descriptor<int> arg_l2_max_logs = {
+        "l2-max-logs",
+        "Specify the maximum number of logs we will request at once in a single request to the L2 "
+        "provider.  If more logs are needed than this at once then multiple requests will be used.",
+        ETH_L2_DEFAULT_MAX_LOGS};
+static const command_line::arg_descriptor<double> arg_l2_check_interval = {
+        "l2-check-interval",
+        "When multiple L2 providers are specified, this specifies how often (in seconds) all of "
+        "them should be checked to see if they are synced and, if not, switch to a backup "
+        "provider. Earlier L2 providers will be preferred when all providers are reasonably close",
+        dseconds{ETH_L2_DEFAULT_CHECK_INTERVAL}.count()};
+static const command_line::arg_descriptor<int> arg_l2_check_threshold = {
+        "l2-check-threshold",
+        "When multiple L2 providers are specified, this is the threshold (in number of blocks) "
+        "behind the best provider height before we consider a given provider out of sync",
+        ETH_L2_DEFAULT_CHECK_THRESHOLD};
 static const command_line::arg_descriptor<std::string> arg_block_notify = {
         "block-notify",
         "Run a program for each new block, '%s' will be replaced by the block hash",
         ""};
-static const command_line::arg_descriptor<bool> arg_prune_blockchain = {
-        "prune-blockchain", "Prune blockchain", false};
+static const command_line::arg_flag arg_prune_blockchain = {"prune-blockchain", "Prune blockchain"};
 static const command_line::arg_descriptor<std::string> arg_reorg_notify = {
         "reorg-notify",
         "Run a program for each reorg, '%s' will be replaced by the split height, "
         "'%h' will be replaced by the new blockchain height, and '%n' will be "
         "replaced by the number of new blocks in the new chain",
         ""};
-static const command_line::arg_descriptor<bool> arg_keep_alt_blocks = {
-        "keep-alt-blocks", "Keep alternative blocks on restart", false};
+static const command_line::arg_flag arg_keep_alt_blocks{
+        "keep-alt-blocks", "Keep alternative blocks on restart"};
 
 static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
         "store-quorum-history",
@@ -204,7 +216,7 @@ static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
 // Loads stubs that fail if invoked.  The stubs are replaced in the
 // cryptonote_protocol/quorumnet.cpp glue code.
 [[noreturn]] static void need_core_init(std::string_view stub_name) {
-    throw std::logic_error(
+    throw oxen::traced<std::logic_error>(
             "Internal error: core callback initialization was not performed for "s +
             std::string(stub_name));
 }
@@ -229,6 +241,8 @@ quorumnet_pulse_relay_message_to_quorum_proc* quorumnet_pulse_relay_message_to_q
 };
 
 //-----------------------------------------------------------------------------------------------
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuninitialized"
 core::core() :
         m_mempool(m_blockchain_storage),
         m_service_node_list(m_blockchain_storage),
@@ -253,6 +267,7 @@ core::core() :
         m_pad_transactions(false),
         ss_version{0},
         lokinet_version{0} {
+#pragma GCC diagnostic pop
     m_checkpoints_updating.clear();
 }
 void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol) {
@@ -291,10 +306,7 @@ void core::init_options(boost::program_options::options_description& desc) {
 
     command_line::add_arg(desc, arg_test_drop_download);
     command_line::add_arg(desc, arg_test_drop_download_height);
-
-    command_line::add_arg(desc, arg_testnet_on);
-    command_line::add_arg(desc, arg_devnet_on);
-    command_line::add_arg(desc, arg_regtest_on);
+    command_line::add_network_args(desc);
     command_line::add_arg(desc, arg_keep_fakechain);
     command_line::add_arg(desc, arg_fixed_difficulty);
     command_line::add_arg(desc, arg_dev_allow_local);
@@ -307,6 +319,12 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_max_txpool_weight);
     command_line::add_arg(desc, arg_service_node);
     command_line::add_arg(desc, arg_public_ip);
+    command_line::add_arg(desc, arg_l2_provider);
+    command_line::add_arg(desc, arg_l2_refresh);
+    command_line::add_arg(desc, arg_l2_timeout);
+    command_line::add_arg(desc, arg_l2_max_logs);
+    command_line::add_arg(desc, arg_l2_check_interval);
+    command_line::add_arg(desc, arg_l2_check_threshold);
     command_line::add_arg(desc, arg_storage_server_port);
     command_line::add_arg(desc, arg_quorumnet_port);
 
@@ -326,16 +344,12 @@ void core::init_options(boost::program_options::options_description& desc) {
 }
 //-----------------------------------------------------------------------------------------------
 bool core::handle_command_line(const boost::program_options::variables_map& vm) {
-    if (m_nettype != network_type::FAKECHAIN) {
-        const bool testnet = command_line::get_arg(vm, arg_testnet_on);
-        const bool devnet = command_line::get_arg(vm, arg_devnet_on);
-        m_nettype = testnet ? network_type::TESTNET
-                  : devnet  ? network_type::DEVNET
-                            : network_type::MAINNET;
-    }
+    if (m_nettype != network_type::FAKECHAIN)
+        m_nettype = command_line::get_network(vm);
+
     m_check_uptime_proof_interval.interval(get_net_config().UPTIME_PROOF_CHECK_INTERVAL);
 
-    m_config_folder = fs::u8path(command_line::get_arg(vm, arg_data_dir));
+    m_config_folder = tools::utf8_path(command_line::get_arg(vm, arg_data_dir));
 
     test_drop_download_height(command_line::get_arg(vm, arg_test_drop_download_height));
     m_pad_transactions = get_arg(vm, arg_pad_transactions);
@@ -390,6 +404,13 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
                     "Please specify an IPv4 public address which the service node & storage server "
                     "is accessible from with: '--{} <ip address>'",
                     arg_public_ip.name);
+            args_okay = false;
+        }
+
+        if (command_line::get_arg(vm, arg_l2_provider).empty()) {
+            log::error(
+                    logcat,
+                    "At least one ethereum L2 provider must be specified for a service node");
             args_okay = false;
         }
 
@@ -540,6 +561,11 @@ std::string core::get_status_string() const {
     return s;
 }
 
+template <typename Duration>
+static Duration as_duration(double seconds) {
+    return std::chrono::duration_cast<Duration>(dseconds(seconds));
+}
+
 //-----------------------------------------------------------------------------------------------
 bool core::init(
         const boost::program_options::variables_map& vm,
@@ -547,10 +573,8 @@ bool core::init(
         const GetCheckpointsCallback& get_checkpoints /* = nullptr */) {
     start_time = std::time(nullptr);
 
-    const bool regtest = command_line::get_arg(vm, arg_regtest_on);
-    if (test_options != NULL || regtest) {
+    if (test_options != NULL)
         m_nettype = network_type::FAKECHAIN;
-    }
 
     bool r = handle_command_line(vm);
     /// Currently terminating before blockchain is initialized results in a crash
@@ -566,13 +590,6 @@ bool core::init(
     bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
     bool keep_fakechain = command_line::get_arg(vm, arg_keep_fakechain);
 
-    r = init_service_keys();
-    CHECK_AND_ASSERT_MES(r, false, "Failed to create or load service keys");
-    if (m_service_node) {
-        // Only use our service keys for our service node if we are running in SN mode:
-        m_service_node_list.set_my_service_node_keys(&m_service_keys);
-    }
-
     auto folder = m_config_folder;
     if (m_nettype == network_type::FAKECHAIN)
         folder /= "fake";
@@ -580,14 +597,18 @@ bool core::init(
     // make sure the data directory exists, and try to lock it
     if (std::error_code ec;
         !fs::is_directory(folder, ec) && !fs::create_directories(folder, ec) && ec) {
-        log::error(
-                logcat,
-                "Failed to create directory " + folder.u8string() +
-                        (ec ? ": " + ec.message() : ""s));
+        log::error(logcat, "Failed to create directory {}: {}", folder, ec.message());
         return false;
     }
 
-    std::unique_ptr<BlockchainDB> db(new_db());
+    r = init_service_keys();
+    CHECK_AND_ASSERT_MES(r, false, "Failed to create or load service keys");
+    if (m_service_node) {
+        // Only use our service keys for our service node if we are running in SN mode:
+        m_service_node_list.set_my_service_node_keys(&m_service_keys);
+    }
+
+    auto db = new_db();
     if (!db) {
         log::error(logcat, "Failed to initialize a database");
         return false;
@@ -601,10 +622,10 @@ bool core::init(
     if (m_nettype == network_type::FAKECHAIN) {
         sqlite_db_file_path = ":memory:";
     }
-    auto sqliteDB = std::make_shared<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
+    auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
 
     folder /= db->get_db_name();
-    log::info(logcat, "Loading blockchain from folder {} ...", folder);
+    log::info(globallogcat, "Loading blockchain from folder {} ...", folder);
 
     // default to fast:async:1 if overridden
     blockchain_db_sync_mode sync_mode = db_defaultsync;
@@ -715,17 +736,17 @@ bool core::init(
             m_blockchain_storage.hook_block_post_add(
                     [notify = tools::Notify(command_line::get_arg(vm, arg_block_notify))](
                             const auto& info) {
-                        notify.notify("%s", tools::type_to_hex(get_block_hash(info.block)));
+                        notify.notify("%s", tools::hex_guts(get_block_hash(info.block)));
                     });
     } catch (const std::exception& e) {
         log::error(logcat, "Failed to parse block rate notify spec");
     }
 
     cryptonote::test_options regtest_test_options{};
-    for (auto [it, end] = get_hard_forks(network_type::MAINNET); it != end; it++) {
+    for (auto& hf : get_hard_forks(network_type::MAINNET)) {
         regtest_test_options.hard_forks.push_back(hard_fork{
-                it->version,
-                it->snode_revision,
+                hf.version,
+                hf.snode_revision,
                 regtest_test_options.hard_forks.size(),
                 std::time(nullptr)});
     }
@@ -744,7 +765,7 @@ bool core::init(
             [this](const auto& info) { m_service_node_list.alt_block_add(info); });
 
     m_blockchain_storage.hook_blockchain_detached([this](const auto& info) {
-        m_blockchain_storage.sqlite_db()->blockchain_detached(info.height);
+        m_blockchain_storage.sqlite_db().blockchain_detached(info.height);
     });
 
     // NOTE: There is an implicit dependency on service node lists being hooked first!
@@ -758,23 +779,50 @@ bool core::init(
     m_blockchain_storage.hook_block_post_add([this](const auto&) { update_omq_sns(); });
 
     // Checkpoints
-    m_checkpoints_path = m_config_folder / fs::u8path(JSON_HASH_FILE_NAME);
+    m_checkpoints_path = m_config_folder / JSON_HASH_FILE_NAME;
 
     sqlite3* ons_db = ons::init_oxen_name_system(ons_db_file_path, db->is_read_only());
     if (!ons_db)
         return false;
 
     init_oxenmq(vm);
+    m_bls_aggregator = std::make_unique<eth::BLSAggregator>(*this);
 
-    const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
+    // FIXME: this is optional if we aren't a service node
+    m_l2_tracker = std::make_unique<eth::L2Tracker>(
+            *this,
+            as_duration<std::chrono::milliseconds>(command_line::get_arg(vm, arg_l2_refresh)));
+    m_l2_tracker->provider.setTimeout(as_duration<std::chrono::milliseconds>(
+            1000 * command_line::get_arg(vm, arg_l2_timeout)));
+    m_l2_tracker->GETLOGS_MAX_BLOCKS = command_line::get_arg(vm, arg_l2_max_logs);
+
+    const auto l2_provider = command_line::get_arg(vm, arg_l2_provider);
+    if (!l2_provider.empty()) {
+        for (auto provider : l2_provider) {
+            auto provider_urls = tools::split_any(provider, ", \t\n", /*trim=*/true);
+
+            try {
+                for (size_t index = 0; index < provider_urls.size(); index++)
+                    m_l2_tracker->provider.addClient(
+                            index == 0 ? "Primary L2 provider"s
+                                       : "Backup L2 provider #{}"_format(index),
+                            std::string{provider_urls[index]});
+            } catch (const std::exception& e) {
+                log::critical(logcat, "Invalid l2-provider argument '{}': {}", provider, e.what());
+                return false;
+            }
+        }
+    }
+
     r = m_blockchain_storage.init(
-            db.release(),
-            ons_db,
-            std::move(sqliteDB),
+            std::move(db),
             m_nettype,
+            ons_db,
+            sqliteDB.release(),
+            m_l2_tracker.get(),
             m_offline,
-            regtest ? &regtest_test_options : test_options,
-            fixed_difficulty,
+            m_nettype == network_type::FAKECHAIN ? &regtest_test_options : test_options,
+            command_line::get_arg(vm, arg_fixed_difficulty),
             get_checkpoints);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
@@ -795,7 +843,7 @@ bool core::init(
                 "Error --block-sync-size cannot be greater than {}",
                 BLOCKS_SYNCHRONIZING_MAX_COUNT);
 
-    log::info(logcat, "Loading checkpoints");
+    log::info(globallogcat, "Loading checkpoints");
     CHECK_AND_ASSERT_MES(
             update_checkpoints_from_json_file(),
             false,
@@ -810,7 +858,7 @@ bool core::init(
     if (prune_blockchain) {
         // display a message if the blockchain is not pruned yet
         if (!m_blockchain_storage.get_blockchain_pruning_seed()) {
-            log::info(logcat, "Pruning blockchain...");
+            log::info(globallogcat, "Pruning blockchain...");
             CHECK_AND_ASSERT_MES(
                     m_blockchain_storage.prune_blockchain(), false, "Failed to prune blockchain");
         } else {
@@ -824,45 +872,80 @@ bool core::init(
     return true;
 }
 
-/// Loads a key pair from disk, if it exists, otherwise generates a new key pair and saves it to
-/// disk.
+/// Loads a key from disk, if it exists, otherwise generates a new key pair and saves it to disk.
+///
+/// The existing key can be encoded as raw bytes; or hex (with or without a 0x prefix and/or \n
+/// suffix).
 ///
 /// get_pubkey - a function taking (privkey &, pubkey &) that sets the pubkey from the privkey;
 ///              returns true for success/false for failure
 /// generate_pair - a void function taking (privkey &, pubkey &) that sets them to the generated
 /// values; can throw on error.
-template <typename Privkey, typename Pubkey, typename GetPubkey, typename GeneratePair>
+///
+/// Any extra arguments (passed in `extra...`) are appended to the get_pubkey or generate_pair
+/// function calls.
+template <
+        typename Privkey,
+        typename Pubkey,
+        typename... Extra,
+        std::invocable<const Privkey&, Pubkey&, Extra&...> GetPubkey,
+        std::invocable<Privkey&, Pubkey&, Extra&...> GeneratePair>
 bool init_key(
         const fs::path& keypath,
         Privkey& privkey,
         Pubkey& pubkey,
         GetPubkey get_pubkey,
-        GeneratePair generate_pair) {
+        GeneratePair generate_pair,
+        Extra&... extra) {
     std::error_code ec;
     if (fs::exists(keypath, ec)) {
         std::string keystr;
         bool r = tools::slurp_file(keypath, keystr);
-        memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
-        memwipe(&keystr[0], keystr.size());
-        CHECK_AND_ASSERT_MES(
-                r, false, "failed to load service node key from " + keypath.u8string());
-        CHECK_AND_ASSERT_MES(
-                keystr.size() == sizeof(privkey),
-                false,
-                "service node key file " + keypath.u8string() + " has an invalid size");
+        CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from {}", keypath);
 
-        r = get_pubkey(privkey, pubkey);
+        OXEN_DEFER {
+            memwipe(keystr.data(), keystr.size());
+        };
+
+        if (keystr.size() == sizeof(privkey))
+            // raw bytes:
+            memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
+        else {
+            // Try to load as hex with a 0x prefix and optional \n suffix
+            std::string_view keyv{keystr};
+            if (keyv.starts_with("0x"))
+                keyv.remove_prefix(2);
+            if (keyv.ends_with('\n'))
+                keyv.remove_suffix(1);
+            if (keyv.size() == 2 * sizeof(privkey) && oxenc::is_hex(keyv))
+                oxenc::from_hex(keyv.begin(), keyv.end(), privkey.data());
+            else {
+                log::error(logcat, "service node key file {} is invalid", keypath);
+                return false;
+            }
+        }
+
+        r = get_pubkey(privkey, pubkey, extra...);
         CHECK_AND_ASSERT_MES(r, false, "failed to generate pubkey from secret key");
     } else {
         try {
-            generate_pair(privkey, pubkey);
+            generate_pair(privkey, pubkey, extra...);
         } catch (const std::exception& e) {
             log::error(logcat, "failed to generate keypair {}", e.what());
             return false;
         }
 
-        bool r = tools::dump_file(keypath, tools::view_guts(privkey));
-        CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to " + keypath.u8string());
+        std::string privkey_hex;
+        OXEN_DEFER {
+            memwipe(privkey_hex.data(), privkey_hex.size());
+        };
+        privkey_hex.reserve(2 * sizeof(privkey) + 3);
+        privkey_hex += "0x";
+        auto guts = tools::view_guts(privkey);
+        oxenc::to_hex(guts.begin(), guts.end(), std::back_inserter(privkey_hex));
+        privkey_hex += '\n';
+        bool r = tools::dump_file(keypath, privkey_hex);
+        CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to {}", keypath);
 
         fs::permissions(keypath, fs::perms::owner_read, ec);
     }
@@ -894,7 +977,7 @@ bool core::init_service_keys() {
                 m_config_folder / "key_ed25519",
                 keys.key_ed25519,
                 keys.pub_ed25519,
-                [](crypto::ed25519_secret_key& sk, crypto::ed25519_public_key& pk) {
+                [](const crypto::ed25519_secret_key& sk, crypto::ed25519_public_key& pk) {
                     crypto_sign_ed25519_sk_to_pk(pk.data(), sk.data());
                     return true;
                 },
@@ -908,6 +991,33 @@ bool core::init_service_keys() {
     int rc = crypto_sign_ed25519_pk_to_curve25519(keys.pub_x25519.data(), keys.pub_ed25519.data());
     CHECK_AND_ASSERT_MES(rc == 0, false, "failed to convert ed25519 pubkey to x25519");
     crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data(), keys.key_ed25519.data());
+
+    // BLS pubkey, used by service nodes when interacting with the Ethereum smart contract
+    if (m_service_node &&
+        !init_key(
+                m_config_folder / "key_bls",
+                keys.key_bls,
+                keys.pub_bls,
+                [this](const auto& sk, auto& pk, auto& bls_signer) {
+                    // Load from existing
+
+                    try {
+                        bls_signer = eth::BLSSigner{m_nettype, &sk};
+                    } catch (const std::exception& e) {
+                        log::critical(logcat, "Invalid BLS key: {}", e.what());
+                        return false;
+                    }
+                    pk = bls_signer->getCryptoPubkey();
+                    return true;
+                },
+                [this](eth::bls_secret_key& sk, eth::bls_public_key& pk, auto& bls_signer) {
+                    // Generate new one
+                    bls_signer = eth::BLSSigner{m_nettype};
+                    sk = bls_signer->getCryptoSeckey();
+                    pk = bls_signer->getCryptoPubkey();
+                },
+                m_bls_signer))
+        return false;
 
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
     // for the primary SN keypair.  (This key predates the Ed25519 keys and so is needed for
@@ -932,9 +1042,10 @@ bool core::init_service_keys() {
             sc_reduce32(pk_sh_data);
             std::memcpy(keys.key.data(), pk_sh_data, 32);
             if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
-                throw std::runtime_error{"Failed to derive primary key from ed25519 key"};
+                throw oxen::traced<std::runtime_error>{
+                        "Failed to derive primary key from ed25519 key"};
             if (std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32))
-                throw std::runtime_error{
+                throw oxen::traced<std::runtime_error>{
                         "Internal error: unexpected primary pubkey and ed25519 pubkey mismatch"};
         } else if (!init_key(
                            m_config_folder / "key",
@@ -942,7 +1053,7 @@ bool core::init_service_keys() {
                            keys.pub,
                            crypto::secret_key_to_public_key,
                            [](crypto::secret_key& key, crypto::public_key& pubkey) {
-                               throw std::runtime_error{
+                               throw oxen::traced<std::runtime_error>{
                                        "Internal error: old-style public keys are no longer "
                                        "generated"};
                            }))
@@ -952,37 +1063,20 @@ bool core::init_service_keys() {
         keys.pub.zero();
     }
 
+    auto style = fg(fmt::terminal_color::yellow) | fmt::emphasis::bold;
     if (m_service_node) {
-        log::info(logcat, fg(fmt::terminal_color::yellow), "Service node public keys:");
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "- primary: {}",
-                tools::type_to_hex(keys.pub));
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "- ed25519: {}",
-                tools::type_to_hex(keys.pub_ed25519));
+        log::info(globallogcat, fg(fmt::terminal_color::cyan) | fmt::emphasis::bold, "Service node public keys:");
+        log::info(globallogcat, style, "- primary: {:x}", keys.pub);
+        log::info(globallogcat, style, "- ed25519: {:x}", keys.pub_ed25519);
         // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "- lokinet: {}.snode",
-                oxenc::to_base32z(tools::view_guts(keys.pub_ed25519)));
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "-  x25519: {}",
-                tools::type_to_hex(keys.pub_x25519));
+        log::info(globallogcat, style, "- lokinet: {:a}.snode", keys.pub_ed25519);
+        log::info(globallogcat, style, "- x25519: {:x}", keys.pub_x25519);
+        log::info(globallogcat, style, "- bls: {:x}", keys.pub_bls);
+
     } else {
         // Only print the x25519 version because it's the only thing useful for a non-SN (for
         // encrypted OMQ RPC connections).
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::yellow),
-                "x25519 public key: {}",
-                tools::type_to_hex(keys.pub_x25519));
+        log::info(globallogcat, style, "x25519 public key: {:x}", keys.pub_x25519);
     }
 
     return true;
@@ -1020,7 +1114,7 @@ oxenmq::AuthLevel core::omq_allow(
             log::info(log::Cat("omq"), "Incoming {}-authenticated connection", auth);
         }
 
-        log::info(
+        log::debug(
                 log::Cat("omq"),
                 "Incoming [{}] curve connection from {}/{}",
                 auth,
@@ -1034,8 +1128,7 @@ oxenmq::AuthLevel core::omq_allow(
 
 void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     using namespace oxenmq;
-    log::info(omqlogcat, "Starting oxenmq");
-    m_omq = std::make_unique<OxenMQ>(
+    m_omq = std::make_shared<OxenMQ>(
             tools::copy_guts(m_service_keys.pub_x25519),
             tools::copy_guts(m_service_keys.key_x25519),
             m_service_node,
@@ -1057,12 +1150,13 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
             });
 
     if (m_service_node) {
+
         // Service nodes always listen for quorumnet data on the p2p IP, quorumnet port
         std::string listen_ip = vm["p2p-bind-ip"].as<std::string>();
         if (listen_ip.empty())
             listen_ip = "0.0.0.0";
         std::string qnet_listen = "tcp://" + listen_ip + ":" + std::to_string(m_quorumnet_port);
-        log::info(logcat, "- listening on {} (quorumnet)", qnet_listen);
+        log::info(globallogcat, "OxenMQ/quorumnet listening on {} (quorumnet)", qnet_listen);
         m_omq->listen_curve(
                 qnet_listen,
                 [this, public_ = command_line::get_arg(vm, arg_omq_quorumnet_public)](
@@ -1074,6 +1168,60 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     }
 
     quorumnet_init(*this, m_quorumnet_state);
+}
+
+std::vector<eth::bls_public_key> core::get_removable_nodes() {
+    // FIXME: this feels out of place here; move to blockchain.h/cpp!
+    std::vector<eth::bls_public_key> bls_pubkeys_in_snl;
+    uint64_t l2_height;
+
+    {
+        std::lock_guard lock{m_blockchain_storage};
+
+        auto sns = m_service_node_list.get_service_node_list_state();
+        auto oxen_height = m_blockchain_storage.get_current_blockchain_height() - 1;
+
+        bls_pubkeys_in_snl.reserve(sns.size());
+        for (const auto& sni : sns)
+            bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
+
+        std::vector<cryptonote::block> blocks;
+        if (!get_blocks(oxen_height, 1, blocks)) {
+            std::string msg =
+                    "Failed to get the latest block at {} to determine the removable Service Nodes"_format(
+                            oxen_height);
+            log::error(logcat, "{}", msg);
+            throw oxen::traced<std::runtime_error>{std::move(msg)};
+        }
+        l2_height = blocks[0].l2_height;
+    }
+
+    auto bls_pubkeys_in_smart_contract =
+            m_blockchain_storage.l2_tracker().get_all_bls_public_keys(l2_height);
+
+    std::vector<eth::bls_public_key> removable_nodes;
+
+    // Find BLS keys that are in the smart contract but not in the service node list
+    std::sort(bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end());
+    std::sort(bls_pubkeys_in_smart_contract.begin(), bls_pubkeys_in_smart_contract.end());
+    std::set_difference(
+            bls_pubkeys_in_smart_contract.begin(),
+            bls_pubkeys_in_smart_contract.end(),
+            bls_pubkeys_in_snl.begin(),
+            bls_pubkeys_in_snl.end(),
+            std::back_inserter(removable_nodes));
+    return removable_nodes;
+}
+
+bool core::is_node_removable(const eth::bls_public_key& node_bls_pubkey) {
+    auto removable_nodes = get_removable_nodes();
+    return std::find(removable_nodes.begin(), removable_nodes.end(), node_bls_pubkey) !=
+           removable_nodes.end();
+}
+
+bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
+    return is_node_removable(node_bls_pubkey) &&
+           !m_service_node_list.is_recently_expired(node_bls_pubkey);
 }
 
 void core::start_oxenmq() {
@@ -1352,7 +1500,11 @@ bool core::handle_parsed_txs(
             log::debug(logcat, "tx added: {}", info.tx_hash);
         } else {
             ok = false;
-            if (info.tvc.m_verifivation_failed)
+            if (info.tvc.m_duplicate_nonstandard)
+                log::debug(
+                        log::Cat("verify"),
+                        "Transaction is a duplicate non-standard tx (e.g. state change)");
+            else if (info.tvc.m_verifivation_failed)
                 log::error(log::Cat("verify"), "Transaction verification failed: {}", info.tx_hash);
             else if (info.tvc.m_verifivation_impossible)
                 log::error(
@@ -1688,7 +1840,6 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_service_node_time() {
-
     if (!is_active_sn()) {
         return true;
     }
@@ -1892,8 +2043,7 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> core::get_coinbase_tx_sum(
                         log::info(
                                 logcat,
                                 "Finishing cache build for get_coinbase_tx_sum in {} s",
-                                std::chrono::duration<double>{
-                                        std::chrono::steady_clock::now() - cache_build_started}
+                                dseconds{std::chrono::steady_clock::now() - cache_build_started}
                                         .count());
                     }
                     cache_to = 0;
@@ -1960,63 +2110,74 @@ bool core::submit_uptime_proof() {
     if (!m_service_node)
         return true;
 
-    cryptonote_connection_context fake_context{};
-    bool relayed;
-    auto height = get_current_blockchain_height();
+    assert(m_bls_signer && "Service Nodes have a BLS signer defined");
+    try {
+        cryptonote_connection_context fake_context{};
+        bool relayed;
+        auto height = get_current_blockchain_height();
+        auto hf_version = get_network_version(m_nettype, height);
 
-    auto proof = m_service_node_list.generate_uptime_proof(
-            m_sn_public_ip,
-            storage_https_port(),
-            storage_omq_port(),
-            ss_version,
-            m_quorumnet_port,
-            lokinet_version);
-    NOTIFY_BTENCODED_UPTIME_PROOF::request req = proof.generate_request();
-    relayed = get_protocol()->relay_btencoded_uptime_proof(req, fake_context);
+        auto proof = m_service_node_list.generate_uptime_proof(
+                hf_version,
+                m_sn_public_ip,
+                storage_https_port(),
+                storage_omq_port(),
+                ss_version,
+                m_quorumnet_port,
+                lokinet_version,
+                *m_bls_signer);
+        auto req = proof.generate_request(hf_version);
+        relayed = get_protocol()->relay_uptime_proof(req, fake_context);
 
-    // TODO: remove after HF19
-    if (relayed &&
-        tools::view_guts(m_service_keys.pub) != tools::view_guts(m_service_keys.pub_ed25519)) {
-        // Temp workaround: nodes with both pub and ed25519 are failing bt-encoded proofs, so send
-        // an old-style proof out as well as a workaround.
-        NOTIFY_UPTIME_PROOF::request req = m_service_node_list.generate_uptime_proof(
-                m_sn_public_ip, storage_https_port(), storage_omq_port(), m_quorumnet_port);
-        get_protocol()->relay_uptime_proof(req, fake_context);
+        if (relayed)
+            log::info(
+                    globallogcat,
+                    fg(fmt::terminal_color::cyan),
+                    "Submitted uptime-proof for Service Node (yours): {}",
+                    m_service_keys.pub);
+    } catch (const std::exception& e) {
+        log::error(logcat, "Failed to generate/submit uptime proof: {}", e.what());
+        return false;
     }
-
-    if (relayed)
-        log::info(
-                logcat, "Submitted uptime-proof for Service Node (yours): {}", m_service_keys.pub);
-
     return true;
 }
 //-----------------------------------------------------------------------------------------------
 bool core::handle_uptime_proof(
-        const NOTIFY_UPTIME_PROOF::request& proof, bool& my_uptime_proof_confirmation) {
-    crypto::x25519_public_key pkey = {};
-    bool result =
-            m_service_node_list.handle_uptime_proof(proof, my_uptime_proof_confirmation, pkey);
-    if (result && m_service_node_list.is_service_node(proof.pubkey, true /*require_active*/) &&
-        pkey) {
-        oxenmq::pubkey_set added;
-        added.insert(tools::copy_guts(pkey));
-        m_omq->update_active_sns(added, {} /*removed*/);
-    }
-    return result;
-}
-//-----------------------------------------------------------------------------------------------
-bool core::handle_btencoded_uptime_proof(
         const NOTIFY_BTENCODED_UPTIME_PROOF::request& req, bool& my_uptime_proof_confirmation) {
-    crypto::x25519_public_key pkey = {};
-    auto proof = std::make_unique<uptime_proof::Proof>(req.proof);
-    proof->sig = tools::make_from_guts<crypto::signature>(req.sig);
+    std::unique_ptr<uptime_proof::Proof> proof;
+    try {
+        proof = std::make_unique<uptime_proof::Proof>(
+                get_network_version(m_nettype, get_current_blockchain_height()), req.proof);
+
+        // devnet/stagenet don't have storage server or lokinet, so these should be 0; everywhere
+        // else they should be non-zero.
+        if (!get_config(m_nettype).HAVE_STORAGE_AND_LOKINET) {
+            if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
+                throw oxen::traced<std::runtime_error>{
+                        "Invalid storage port(s) in proof: devnet storage ports must be 0"};
+        } else {
+            if (proof->storage_omq_port == 0 || proof->storage_https_port == 0)
+                throw oxen::traced<std::runtime_error>{
+                        "Invalid storage port(s) in proof: storage ports cannot be 0"};
+        }
+
+    } catch (const std::exception& e) {
+        log::warning(logcat, "Service node proof deserialization failed: {}", e.what());
+        return false;
+    }
+
+    if (req.sig)
+        proof->sig = tools::make_from_guts<crypto::signature>(*req.sig);
+    else
+        proof->sig = crypto::null<crypto::signature>;
     proof->sig_ed25519 = tools::make_from_guts<crypto::ed25519_signature>(req.ed_sig);
     auto pubkey = proof->pubkey;
-    bool result = m_service_node_list.handle_btencoded_uptime_proof(
-            std::move(proof), my_uptime_proof_confirmation, pkey);
-    if (result && m_service_node_list.is_service_node(pubkey, true /*require_active*/) && pkey) {
+    crypto::x25519_public_key x_pkey{};
+    bool result = m_service_node_list.handle_uptime_proof(
+            std::move(proof), my_uptime_proof_confirmation, x_pkey);
+    if (result && m_service_node_list.is_service_node(pubkey, true /*require_active*/) && x_pkey) {
         oxenmq::pubkey_set added;
-        added.insert(tools::copy_guts(pkey));
+        added.insert(tools::copy_guts(x_pkey));
         m_omq->update_active_sns(added, {} /*removed*/);
     }
     return result;
@@ -2152,8 +2313,10 @@ block_complete_entry get_block_complete_entry(block& b, tx_memory_pool& pool) {
     bce.block = cryptonote::block_to_blob(b);
     for (const auto& tx_hash : b.tx_hashes) {
         std::string txblob;
-        CHECK_AND_ASSERT_THROW_MES(
-                pool.get_transaction(tx_hash, txblob), "Transaction not found in pool");
+        if (!pool.get_transaction(tx_hash, txblob) || txblob.size() == 0) {
+            oxen::log::error(logcat, "Transaction {} not found in pool", tx_hash);
+            throw oxen::traced<std::runtime_error>("Transaction not found in pool");
+        }
         bce.txs.push_back(txblob);
     }
     return bce;
@@ -2206,10 +2369,12 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
         CHECK_AND_ASSERT_MES(
                 txs.size() == b.tx_hashes.size() && !missed_txs.size(),
                 false,
-                "can't find some transactions in found block:"
-                        << get_block_hash(b) << " txs.size()=" << txs.size()
-                        << ", b.tx_hashes.size()=" << b.tx_hashes.size() << ", missed_txs.size()"
-                        << missed_txs.size());
+                "can't find some transactions in found block:{} txs.size()={}, "
+                "b.tx_hashes.size()={}, missed_txs.size()={}",
+                get_block_hash(b),
+                txs.size(),
+                b.tx_hashes.size(),
+                missed_txs.size());
 
         cryptonote_connection_context exclude_context{};
         NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
@@ -2299,7 +2464,7 @@ bool core::handle_incoming_block(
         m_miner.on_block_chain_update();
     return true;
 
-    CATCH_ENTRY_L0("core::handle_incoming_block()", false);
+    CATCH_ENTRY("core::handle_incoming_block()", false);
 }
 //-----------------------------------------------------------------------------------------------
 // Used by the RPC server to check the size of an incoming
@@ -2399,9 +2564,9 @@ void core::do_uptime_proof_call() {
             auto pubkey = m_service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
             if (pubkey && pubkey != m_service_keys.pub &&
                 m_service_node_list.is_service_node(pubkey, false /*don't require active*/)) {
-                log::info(
-                        logcat,
-                        fg(fmt::terminal_color::red),
+                log::error(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                         "Failed to submit uptime proof: another service node on the network is "
                         "using the same ed/x25519 keys as this service node. This typically means "
                         "both have the same 'key_ed25519' private key file.");
@@ -2420,12 +2585,12 @@ void core::do_uptime_proof_call() {
                             if (pk != m_service_keys.pub &&
                                 proof.proof->public_ip == m_sn_public_ip &&
                                 (proof.proof->qnet_port == m_quorumnet_port ||
-                                 (m_nettype != network_type::DEVNET &&
+                                 (netconf.HAVE_STORAGE_AND_LOKINET &&
                                   (proof.proof->storage_https_port == storage_https_port() ||
                                    proof.proof->storage_omq_port == storage_omq_port()))))
-                                log::info(
-                                        logcat,
-                                        fg(fmt::terminal_color::red),
+                                log::error(
+                                        globallogcat,
+                                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                                         "Another service node ({}) is broadcasting the same public "
                                         "IP and ports as this service node ({}:{}[qnet], "
                                         ":{}[SS-HTTP], :{}[SS-OMQ]). This will lead to "
@@ -2441,14 +2606,14 @@ void core::do_uptime_proof_call() {
                         });
             }
 
-            if (m_nettype != network_type::DEVNET) {
+            if (netconf.HAVE_STORAGE_AND_LOKINET) {
                 if (!check_external_ping(
                             m_last_storage_server_ping,
                             get_net_config().UPTIME_PROOF_FREQUENCY,
                             "the storage server")) {
-                    log::info(
-                            logcat,
-                            fg(fmt::terminal_color::red),
+                    log::error(
+                            globallogcat,
+                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                             "Failed to submit uptime proof: have not heard from the storage server "
                             "recently. Make sure that it is running! It is required to run "
                             "alongside the Loki daemon");
@@ -2458,9 +2623,9 @@ void core::do_uptime_proof_call() {
                             m_last_lokinet_ping,
                             get_net_config().UPTIME_PROOF_FREQUENCY,
                             "Lokinet")) {
-                    log::info(
-                            logcat,
-                            fg(fmt::terminal_color::red),
+                    log::error(
+                            globallogcat,
+                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                             "Failed to submit uptime proof: have not heard from lokinet recently. "
                             "Make sure that it is running! It is required to run alongside the "
                             "Loki daemon");
@@ -2489,7 +2654,7 @@ bool core::on_idle() {
                     "The daemon will start synchronizing with the network. This may take a long "
                     "time to complete.";
         log::info(
-                logcat,
+                globallogcat,
                 fg(fmt::terminal_color::yellow),
                 R"(
 **********************************************************************
@@ -2509,7 +2674,6 @@ Use "help <command>" to see a command's documentation.
     m_txpool_auto_relayer.do_call([this] { return relay_txpool_transactions(); });
     m_service_node_vote_relayer.do_call([this] { return relay_service_node_votes(); });
     m_check_disk_space_interval.do_call([this] { return check_disk_space(); });
-    m_block_rate_interval.do_call([this] { return check_block_rate(); });
     m_sn_proof_cleanup_interval.do_call([&snl = m_service_node_list] {
         snl.cleanup_proofs();
         return true;
@@ -2572,52 +2736,6 @@ static double probability(unsigned int blocks, unsigned int expected) {
     return p;
 }
 //-----------------------------------------------------------------------------------------------
-bool core::check_block_rate() {
-    if (m_offline || m_nettype == network_type::FAKECHAIN ||
-        m_target_blockchain_height > get_current_blockchain_height() ||
-        m_target_blockchain_height == 0) {
-        log::debug(logcat, "Not checking block rate, offline or syncing");
-        return true;
-    }
-
-    static constexpr double threshold =
-            1. / ((24h * 10) / TARGET_BLOCK_TIME);  // one false positive every 10 days
-    static constexpr unsigned int max_blocks_checked = 150;
-
-    const time_t now = time(NULL);
-    const std::vector<time_t> timestamps =
-            m_blockchain_storage.get_last_block_timestamps(max_blocks_checked);
-
-    static const unsigned int seconds[] = {5400, 3600, 1800, 1200, 600};
-    for (size_t n = 0; n < sizeof(seconds) / sizeof(seconds[0]); ++n) {
-        unsigned int b = 0;
-        const time_t time_boundary = now - static_cast<time_t>(seconds[n]);
-        for (time_t ts : timestamps)
-            b += ts >= time_boundary;
-        const double p = probability(b, seconds[n] / tools::to_seconds(TARGET_BLOCK_TIME));
-        log::debug(
-                logcat,
-                "blocks in the last {} minutes: {} (probability {})",
-                seconds[n] / 60,
-                b,
-                p);
-        if (p < threshold) {
-            log::warning(
-                    logcat,
-                    "There were {}{} blocks in the last {} minutes, \
-            there might be large hash rate changes, or we might be partitioned, \
-            cut off from the Loki network or under attack, or your computer's time is off. \
-            Or it could be just sheer bad luck.",
-                    b,
-                    (b == max_blocks_checked ? " or more" : ""),
-                    seconds[n] / 60);
-            break;  // no need to look further
-        }
-    }
-
-    return true;
-}
-//-----------------------------------------------------------------------------------------------
 void core::flush_bad_txs_cache() {
     bad_semantics_txes_lock.lock();
     for (int idx = 0; idx < 2; ++idx)
@@ -2667,6 +2785,45 @@ bool core::is_service_node(const crypto::public_key& pubkey, bool require_active
 const std::vector<service_nodes::key_image_blacklist_entry>&
 core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
+}
+//-----------------------------------------------------------------------------------------------
+eth::BLSRewardsResponse core::bls_rewards_request(const eth::address& address) {
+    return m_bls_aggregator->rewards_request(address);
+}
+//-----------------------------------------------------------------------------------------------
+eth::AggregateExitResponse core::aggregate_exit_request(const eth::bls_public_key& bls_pubkey) {
+    const auto resp = m_bls_aggregator->aggregateExit(bls_pubkey);
+    return resp;
+}
+//-----------------------------------------------------------------------------------------------
+eth::AggregateExitResponse core::aggregate_liquidation_request(
+        const eth::bls_public_key& bls_pubkey) {
+    const auto resp = m_bls_aggregator->aggregateLiquidation(bls_pubkey);
+    return resp;
+}
+//-----------------------------------------------------------------------------------------------
+eth::BLSRegistrationResponse core::bls_registration(
+        const eth::address& address, const uint64_t fee) const {
+    const auto& keys = get_service_keys();
+    auto resp = m_bls_aggregator->registration(address, keys.pub);
+
+    service_nodes::registration_details reg{};
+    reg.service_node_pubkey = keys.pub;
+    reg.bls_pubkey = m_bls_signer->getCryptoPubkey();
+
+    // If we're constructing a BLS registration then dual keys should have been unified in our own
+    // keys:
+    assert(tools::view_guts(keys.pub) == tools::view_guts(keys.pub_ed25519));
+
+    auto reg_msg = get_registration_message_for_signing(reg);
+    crypto_sign_ed25519_detached(
+            resp.ed_signature.data(),
+            nullptr,
+            reg_msg.data(),
+            reg_msg.size(),
+            keys.key_ed25519.data());
+
+    return resp;
 }
 //-----------------------------------------------------------------------------------------------
 std::vector<service_nodes::service_node_pubkey_info> core::get_service_node_list_state(

@@ -30,25 +30,25 @@
 #define __STDC_FORMAT_MACROS  // NOTE(oxen): Explicitly define the SCNu64 macro on Mingw
 #endif
 
+#include <common/command_line.h>
+#include <common/signal_handler.h>
+#include <common/unordered_containers_boost_serialization.h>
+#include <common/exception.h>
+
+#include "blockchain_db/blockchain_db.h"
+#include "blockchain_objects.h"
+#include "cryptonote_basic/cryptonote_boost_serialization.h"
+#include "cryptonote_core/cryptonote_core.h"
+#include "serialization/boost_std_variant.h"
+#include "version.h"
+
 #include <boost/archive/portable_binary_iarchive.hpp>
 #include <boost/archive/portable_binary_oarchive.hpp>
 #include <cinttypes>
 #include <fstream>
+#include <fmt/std.h>
 #include <unordered_map>
 #include <unordered_set>
-
-#include "blockchain_db/blockchain_db.h"
-#include "blockchain_objects.h"
-#include "common/command_line.h"
-#include "common/fs-format.h"
-#include "common/signal_handler.h"
-#include "common/unordered_containers_boost_serialization.h"
-#include "common/varint.h"
-#include "cryptonote_basic/cryptonote_boost_serialization.h"
-#include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_core/uptime_proof.h"
-#include "serialization/boost_std_variant.h"
-#include "version.h"
 
 namespace po = boost::program_options;
 using namespace cryptonote;
@@ -70,8 +70,8 @@ struct ancestor {
 
     template <typename t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a& amount;
-        a& offset;
+        a & amount;
+        a & offset;
     }
 };
 BOOST_CLASS_VERSION(ancestor, 0)
@@ -103,7 +103,7 @@ struct tx_data_t {
                             cryptonote::relative_output_offsets_to_absolute(txin->key_offsets)));
                 else {
                     log::warning(logcat, "Bad vin type in txid {}", get_transaction_hash(tx));
-                    throw std::runtime_error("Bad vin type");
+                    throw oxen::traced<std::runtime_error>("Bad vin type");
                 }
             }
         }
@@ -113,16 +113,16 @@ struct tx_data_t {
                 vout.push_back(txout->key);
             } else {
                 log::warning(logcat, "Bad vout type in txid {}", get_transaction_hash(tx));
-                throw std::runtime_error("Bad vout type");
+                throw oxen::traced<std::runtime_error>("Bad vout type");
             }
         }
     }
 
     template <typename t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a& coinbase;
-        a& vin;
-        a& vout;
+        a & coinbase;
+        a & vin;
+        a & vout;
     }
 };
 
@@ -137,25 +137,25 @@ struct ancestry_state_t {
 
     template <typename t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a& height;
-        a& ancestry;
-        a& output_cache;
+        a & height;
+        a & ancestry;
+        a & output_cache;
         if (ver < 1) {
             std::unordered_map<crypto::hash, cryptonote::transaction> old_tx_cache;
-            a& old_tx_cache;
+            a & old_tx_cache;
             for (const auto& [hash, tx] : old_tx_cache)
                 tx_cache.insert(std::make_pair(hash, ::tx_data_t(tx)));
         } else {
-            a& tx_cache;
+            a & tx_cache;
         }
         if (ver < 2) {
             std::unordered_map<uint64_t, cryptonote::block> old_block_cache;
-            a& old_block_cache;
+            a & old_block_cache;
             block_cache.reserve(old_block_cache.size());
             for (auto& [i, block] : old_block_cache)
                 block_cache.push_back(std::move(block));
         } else {
-            a& block_cache;
+            a & block_cache;
         }
     }
 };
@@ -210,21 +210,21 @@ static std::unordered_set<ancestor> get_ancestry(
             ancestry.find(txid);
     if (i == ancestry.end()) {
         // log::error(logcat, "txid ancestry not found: {}", txid);
-        // throw std::runtime_error("txid ancestry not found");
+        // throw oxen::traced<std::runtime_error>("txid ancestry not found");
         return std::unordered_set<ancestor>();
     }
     return i->second;
 }
 
 static bool get_block_from_height(
-        ancestry_state_t& state, BlockchainDB* db, uint64_t height, cryptonote::block& b) {
+        ancestry_state_t& state, BlockchainDB& db, uint64_t height, cryptonote::block& b) {
     ++total_blocks;
     if (state.block_cache.size() > height && !state.block_cache[height].miner_tx.vin.empty()) {
         ++cached_blocks;
         b = state.block_cache[height];
         return true;
     }
-    std::string bd = db->get_block_blob_from_height(height);
+    std::string bd = db.get_block_blob_from_height(height);
     if (!cryptonote::parse_and_validate_block_from_blob(bd, b)) {
         log::warning(logcat, "Bad block from db");
         return false;
@@ -237,7 +237,7 @@ static bool get_block_from_height(
 }
 
 static bool get_transaction(
-        ancestry_state_t& state, BlockchainDB* db, const crypto::hash& txid, ::tx_data_t& tx_data) {
+        ancestry_state_t& state, BlockchainDB& db, const crypto::hash& txid, ::tx_data_t& tx_data) {
     std::unordered_map<crypto::hash, ::tx_data_t>::const_iterator i = state.tx_cache.find(txid);
     ++total_txes;
     if (i != state.tx_cache.end()) {
@@ -247,7 +247,7 @@ static bool get_transaction(
     }
 
     std::string bd;
-    if (!db->get_pruned_tx_blob(txid, bd)) {
+    if (!db.get_pruned_tx_blob(txid, bd)) {
         log::warning(logcat, "Failed to get txid {} from db", txid);
         return false;
     }
@@ -264,7 +264,7 @@ static bool get_transaction(
 
 static bool get_output_txid(
         ancestry_state_t& state,
-        BlockchainDB* db,
+        BlockchainDB& db,
         uint64_t amount,
         uint64_t offset,
         crypto::hash& txid) {
@@ -277,7 +277,7 @@ static bool get_output_txid(
         return true;
     }
 
-    const output_data_t od = db->get_output_key(amount, offset, false);
+    const output_data_t od = db.get_output_key(amount, offset, false);
     cryptonote::block b;
     if (!get_block_from_height(state, db, od.height, b))
         return false;
@@ -336,22 +336,17 @@ int main(int argc, char* argv[]) {
             "output", "Get ancestry for this output (amount/offset format)", ""};
     const command_line::arg_descriptor<uint64_t> arg_height = {
             "height", "Get ancestry for all txes at this height", 0};
-    const command_line::arg_descriptor<bool> arg_refresh = {
-            "refresh", "Refresh the whole chain first", false};
-    const command_line::arg_descriptor<bool> arg_cache_outputs = {
-            "cache-outputs", "Cache outputs (memory hungry)", false};
-    const command_line::arg_descriptor<bool> arg_cache_txes = {
-            "cache-txes", "Cache txes (memory hungry)", false};
-    const command_line::arg_descriptor<bool> arg_cache_blocks = {
-            "cache-blocks", "Cache blocks (memory hungry)", false};
-    const command_line::arg_descriptor<bool> arg_include_coinbase = {
-            "include-coinbase", "Including coinbase tx in per height average", false};
-    const command_line::arg_descriptor<bool> arg_show_cache_stats = {
-            "show-cache-stats", "Show cache statistics", false};
+    const command_line::arg_flag arg_refresh{"refresh", "Refresh the whole chain first"};
+    const command_line::arg_flag arg_cache_outputs{
+            "cache-outputs", "Cache outputs (memory hungry)"};
+    const command_line::arg_flag arg_cache_txes{"cache-txes", "Cache txes (memory hungry)"};
+    const command_line::arg_flag arg_cache_blocks{"cache-blocks", "Cache blocks (memory hungry)"};
+    const command_line::arg_flag arg_include_coinbase{
+            "include-coinbase", "Including coinbase tx in per height average"};
+    const command_line::arg_flag arg_show_cache_stats{"show-cache-stats", "Show cache statistics"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-    command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
+    command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_txid);
     command_line::add_arg(desc_cmd_sett, arg_output);
@@ -384,23 +379,11 @@ int main(int argc, char* argv[]) {
     }
     auto m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
     auto log_file_path = m_config_folder + "oxen-blockchain-ancestry.log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level).c_str())) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
-    oxen::logging::init(log_file_path, log_level);
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
     std::string opt_data_dir = command_line::get_arg(vm, cryptonote::arg_data_dir);
-    bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-    network_type net_type = opt_testnet ? network_type::TESTNET
-                          : opt_devnet  ? network_type::DEVNET
-                                        : network_type::MAINNET;
+    auto net_type = command_line::get_network(vm);
     std::string opt_txid_string = command_line::get_arg(vm, arg_txid);
     std::string opt_output_string = command_line::get_arg(vm, arg_output);
     uint64_t opt_height = command_line::get_arg(vm, arg_height);
@@ -418,7 +401,7 @@ int main(int argc, char* argv[]) {
     crypto::hash opt_txid{};
     uint64_t output_amount = 0, output_offset = 0;
     if (!opt_txid_string.empty()) {
-        if (!tools::hex_to_type(opt_txid_string, opt_txid)) {
+        if (!tools::try_load_from_hex_guts(opt_txid_string, opt_txid)) {
             std::cerr << "Invalid txid" << std::endl;
             return 1;
         }
@@ -435,23 +418,23 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
-    BlockchainDB* db = new_db();
-    if (db == NULL) {
+    auto bdb = new_db();
+    if (!bdb) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 
-    fs::path filename = fs::u8path(opt_data_dir) / db->get_db_name();
+    fs::path filename = tools::utf8_path(opt_data_dir) / bdb->get_db_name();
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {
-        db->open(filename, core_storage->nettype(), DBF_RDONLY);
+        bdb->open(filename, core_storage->nettype(), DBF_RDONLY);
     } catch (const std::exception& e) {
         log::warning(logcat, "Error opening database: {}", e.what());
         return 1;
     }
-    r = core_storage->init(db, nullptr /*ons_db*/, nullptr, net_type);
+    r = core_storage->init(std::move(bdb), net_type);
 
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
     log::warning(logcat, "Source blockchain storage initialized OK");
@@ -460,9 +443,9 @@ int main(int argc, char* argv[]) {
 
     ancestry_state_t state;
 
-    fs::path state_file_path = fs::u8path(opt_data_dir) / "ancestry-state.bin";
+    fs::path state_file_path = tools::utf8_path(opt_data_dir) / "ancestry-state.bin";
     log::warning(logcat, "Loading state data from {}", state_file_path);
-    fs::ifstream state_data_in;
+    std::ifstream state_data_in;
     state_data_in.open(state_file_path, std::ios_base::binary | std::ios_base::in);
     if (!state_data_in.fail()) {
         try {
@@ -481,13 +464,14 @@ int main(int argc, char* argv[]) {
     tools::signal_handler::install([](int type) { stop_requested = true; });
 
     // forward method
-    const uint64_t db_height = db->height();
+    auto& db = core_storage->get_db();
+    const uint64_t db_height = db.height();
     if (opt_refresh) {
         log::info(logcat, "Starting from height {}", state.height);
         state.block_cache.reserve(db_height);
         for (uint64_t h = state.height; h < db_height; ++h) {
             size_t block_ancestry_size = 0;
-            const std::string bd = db->get_block_blob_from_height(h);
+            const std::string bd = db.get_block_blob_from_height(h);
             ++total_blocks;
             cryptonote::block b;
             if (!cryptonote::parse_and_validate_block_from_blob(bd, b)) {
@@ -516,7 +500,7 @@ int main(int argc, char* argv[]) {
                     tx_data = i->second;
                 } else {
                     std::string bd;
-                    if (!db->get_pruned_tx_blob(txid, bd)) {
+                    if (!db.get_pruned_tx_blob(txid, bd)) {
                         log::warning(logcat, "Failed to get txid {} from db", txid);
                         return 1;
                     }
@@ -608,7 +592,7 @@ int main(int argc, char* argv[]) {
         }
         start_txids.push_back(txid);
     } else {
-        const std::string bd = db->get_block_blob_from_height(opt_height);
+        const std::string bd = db.get_block_blob_from_height(opt_height);
         cryptonote::block b;
         if (!cryptonote::parse_and_validate_block_from_blob(bd, b)) {
             log::warning(logcat, "Bad block from db");

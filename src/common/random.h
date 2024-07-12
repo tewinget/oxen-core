@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include <iterator>
 #include <random>
 
 namespace tools {
@@ -43,8 +44,8 @@ uint64_t uniform_distribution_portable(std::mt19937_64& rng, uint64_t n);
 
 /// Uniformly shuffles all the elements in [begin, end) in a deterministic method so that, given the
 /// same seed, this will always produce the same result on any platform/compiler/etc.
-template <typename RandomIt>
-void shuffle_portable(RandomIt begin, RandomIt end, std::mt19937_64& rng) {
+template <std::random_access_iterator It>
+void shuffle_portable(It begin, It end, std::mt19937_64& rng) {
     if (end <= begin + 1)
         return;
     const size_t size = std::distance(begin, end);
@@ -57,7 +58,7 @@ void shuffle_portable(RandomIt begin, RandomIt end, std::mt19937_64& rng) {
 
 /// Returns a random element between the elements in [begin, end) will use the random number
 /// generator provided as g
-template <typename Iter, typename RandomGenerator>
+template <std::input_iterator Iter, typename RandomGenerator>
 Iter select_randomly(Iter begin, Iter end, RandomGenerator& g) {
     auto dist = std::distance(begin, end);
     if (dist <= 1)
@@ -68,7 +69,7 @@ Iter select_randomly(Iter begin, Iter end, RandomGenerator& g) {
 
 /// Returns a random element same as above but defaults to the seeded random number generator
 /// defined in this file
-template <typename Iter>
+template <std::input_iterator Iter>
 Iter select_randomly(Iter begin, Iter end) {
     return select_randomly(begin, end, rng);
 }

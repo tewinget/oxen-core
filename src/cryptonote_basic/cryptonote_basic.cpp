@@ -1,8 +1,9 @@
 #include "cryptonote_basic.h"
 
-#include <oxenc/endian.h>
-
 #include "cryptonote_format_utils.h"
+
+#include <oxenc/endian.h>
+#include <common/exception.h>
 
 namespace cryptonote {
 
@@ -20,7 +21,7 @@ std::vector<crypto::public_key> transaction_prefix::get_public_keys() const {
     std::vector<cryptonote::tx_extra_field> fields;
 
     if (!parse_tx_extra(extra, fields)) {
-        throw std::invalid_argument("Failed to parse tx_extra of a transaction.");
+        throw oxen::traced<std::invalid_argument>("Failed to parse tx_extra of a transaction.");
     }
 
     std::vector<crypto::public_key> keys;
@@ -95,26 +96,12 @@ size_t transaction::get_signature_size(const txin_v& tx_in) {
     return 0;
 }
 
-block::block(const block& b) :
-        block_header(b),
-        miner_tx{b.miner_tx},
-        tx_hashes{b.tx_hashes},
-        signatures{b.signatures},
-        height{b.height},
-        service_node_winner_key{b.service_node_winner_key},
-        reward{b.reward} {
-    copy_hash(b);
+block::block(const block& b) {
+    *this = b;
 }
 
-block::block(block&& b) :
-        block_header(std::move(b)),
-        miner_tx{std::move(b.miner_tx)},
-        tx_hashes{std::move(b.tx_hashes)},
-        signatures{std::move(b.signatures)},
-        height{std::move(b.height)},
-        service_node_winner_key{std::move(b.service_node_winner_key)},
-        reward{std::move(b.reward)} {
-    copy_hash(b);
+block::block(block&& b) {
+    *this = std::move(b);
 }
 
 block& block::operator=(const block& b) {
@@ -125,6 +112,7 @@ block& block::operator=(const block& b) {
     height = b.height;
     service_node_winner_key = b.service_node_winner_key;
     reward = b.reward;
+    l2_height = b.l2_height;
     copy_hash(b);
     return *this;
 }
@@ -136,6 +124,7 @@ block& block::operator=(block&& b) {
     height = std::move(b.height);
     service_node_winner_key = std::move(b.service_node_winner_key);
     reward = std::move(b.reward);
+    l2_height = std::move(b.l2_height);
     copy_hash(b);
     return *this;
 }

@@ -121,7 +121,10 @@ void add_timestamp_and_difficulty(
 difficulty_calc_mode difficulty_mode(cryptonote::network_type nettype, uint64_t height) {
     auto result = difficulty_calc_mode::normal;
 
-    if (!is_hard_fork_at_least(nettype, hf::hf10_bulletproofs, height))
+    if (nettype == network_type::DEVNET || nettype == network_type::LOCALDEV ||
+        nettype == network_type::STAGENET)
+        result = difficulty_calc_mode::devnet;
+    else if (!is_hard_fork_at_least(nettype, hf::hf10_bulletproofs, height))
         result = difficulty_calc_mode::use_old_lwma;
     // HF12 switches to RandomX with a likely drastically reduced hashrate versus Turtle, so
     // override difficulty for the first difficulty window blocks:
@@ -198,12 +201,15 @@ difficulty_type next_difficulty_v2(
     if (next_difficulty == 0)
         next_difficulty = 1;
 
+    if (mode == difficulty_calc_mode::devnet)
+        return std::min(next_difficulty, DEVNET_DIFF_CAP);
+
     // Rough estimate based on comparable coins, pre-merge-mining hashrate, and hashrate changes is
     // that 30MH/s seems more or less right, so we cap it there for the first WINDOW blocks to
     // prevent too-long blocks right after the fork.
     if (mode == difficulty_calc_mode::hf12_override)
         return std::min(next_difficulty, 30'000'000 * uint64_t(target_seconds));
-    else if (mode == difficulty_calc_mode::hf16_override)
+    if (mode == difficulty_calc_mode::hf16_override)
         return std::min(next_difficulty, PULSE_FIXED_DIFFICULTY);
 
     return next_difficulty;

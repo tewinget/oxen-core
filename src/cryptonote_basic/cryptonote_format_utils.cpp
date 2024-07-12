@@ -38,9 +38,10 @@
 #include <limits>
 #include <variant>
 
-#include "common/hex.h"
-#include "common/i18n.h"
-#include "common/meta.h"
+#include <common/i18n.h>
+#include <common/meta.h>
+#include <common/exception.h>
+
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/verification_context.h"
@@ -56,12 +57,12 @@
 
 using namespace crypto;
 
-#define CHECK_AND_ASSERT_THROW_MES_L1(expr, message) \
-    {                                                \
-        if (!(expr)) {                               \
-            log::warning(logcat, message);           \
-            throw std::runtime_error(message);       \
-        }                                            \
+#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                \
+    {                                                                 \
+        if (!(expr)) {                                                \
+            log::warning(logcat, frmt, __VA_ARGS__);                  \
+            throw oxen::traced<std::runtime_error>(fmt::format(frmt, __VA_ARGS__)); \
+        }                                                             \
     }
 
 namespace cryptonote {
@@ -79,11 +80,9 @@ static void add_public_key(
         crypto::public_key& AB, const crypto::public_key& A, const crypto::public_key& B) {
     ge_p3 B2, A2;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&B2, &B) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&B2, &B) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&A2, &A) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&A2, &A) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_cached tmp2;
     ge_p3_to_cached(&tmp2, &B2);
     ge_p1p1 tmp3;
@@ -93,7 +92,6 @@ static void add_public_key(
 }
 
 uint64_t get_transaction_weight_clawback(const transaction& tx, size_t n_padded_outputs) {
-    const rct::rctSig& rv = tx.rct_signatures;
     const uint64_t bp_base = 368;
     const size_t n_outputs = tx.vout.size();
     if (n_padded_outputs <= 2)
@@ -105,13 +103,14 @@ uint64_t get_transaction_weight_clawback(const transaction& tx, size_t n_padded_
     const size_t bp_size = 32 * (9 + 2 * nlr);
     CHECK_AND_ASSERT_THROW_MES_L1(
             n_outputs <= TX_BULLETPROOF_MAX_OUTPUTS,
-            "maximum number of outputs is " + std::to_string(TX_BULLETPROOF_MAX_OUTPUTS) +
-                    " per transaction");
+            "maximum number of outputs is {} per transaction",
+            TX_BULLETPROOF_MAX_OUTPUTS);
     CHECK_AND_ASSERT_THROW_MES_L1(
             bp_base * n_padded_outputs >= bp_size,
-            "Invalid bulletproof clawback: bp_base " + std::to_string(bp_base) +
-                    ", n_padded_outputs " + std::to_string(n_padded_outputs) + ", bp_size " +
-                    std::to_string(bp_size));
+            "Invalid bulletproof clawback: bp_base {}, n_padded_outputs {}, bp_size {}",
+            bp_base,
+            n_padded_outputs,
+            bp_size);
     const uint64_t bp_clawback = (bp_base * n_padded_outputs - bp_size) * 4 / 5;
     return bp_clawback;
 }
@@ -285,7 +284,7 @@ bool parse_and_validate_tx_from_blob(
 bool is_v1_tx(const std::string_view tx_blob) {
     uint64_t version;
     if (tools::read_varint(tx_blob, version) <= 0)
-        throw std::runtime_error("Internal error getting transaction version");
+        throw oxen::traced<std::runtime_error>("Internal error getting transaction version");
     return version <= 1;
 }
 //---------------------------------------------------------------
@@ -306,7 +305,7 @@ bool generate_key_image_helper(
                 logcat,
                 "key image helper: failed to generate_key_derivation({}, <{}>)",
                 tx_public_key,
-                tools::type_to_hex(ack.m_view_secret_key));
+                tools::hex_guts(ack.m_view_secret_key));
         memcpy(&recv_derivation, rct::identity().bytes, sizeof(recv_derivation));
     }
 
@@ -320,7 +319,7 @@ bool generate_key_image_helper(
                     logcat,
                     "key image helper: failed to generate_key_derivation({}, {})",
                     additional_tx_public_keys[i],
-                    tools::type_to_hex(ack.m_view_secret_key));
+                    tools::hex_guts(ack.m_view_secret_key));
         } else {
             additional_recv_derivations.push_back(additional_recv_derivation);
         }
@@ -508,7 +507,9 @@ uint64_t get_transaction_weight(const transaction& tx, size_t blob_size) {
     const size_t n_padded_outputs = rct::n_bulletproof_max_amounts(rv.p.bulletproofs);
     uint64_t bp_clawback = get_transaction_weight_clawback(tx, n_padded_outputs);
     CHECK_AND_ASSERT_THROW_MES_L1(
-            bp_clawback <= std::numeric_limits<uint64_t>::max() - blob_size, "Weight overflow");
+            bp_clawback <= std::numeric_limits<uint64_t>::max() - blob_size,
+            "Weight overflow {}",
+            bp_clawback);
     return blob_size + bp_clawback;
 }
 //---------------------------------------------------------------
@@ -560,7 +561,9 @@ uint64_t get_pruned_transaction_weight(const transaction& tx) {
     // clawback
     uint64_t bp_clawback = get_transaction_weight_clawback(tx, n_padded_outputs);
     CHECK_AND_ASSERT_THROW_MES_L1(
-            bp_clawback <= std::numeric_limits<uint64_t>::max() - weight, "Weight overflow");
+            bp_clawback <= std::numeric_limits<uint64_t>::max() - weight,
+            "Weight overflow {}",
+            bp_clawback);
     weight += bp_clawback;
 
     return weight;
@@ -596,7 +599,9 @@ bool get_tx_miner_fee(
     CHECK_AND_ASSERT_MES(
             amount_in >= amount_out,
             false,
-            "transaction spend (" << amount_in << ") more than it has (" << amount_out << ")");
+            "transaction spends more than it has ({} > {})",
+            amount_out,
+            amount_in);
     fee = amount_in - amount_out;
     return true;
 }
@@ -961,6 +966,50 @@ bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn
     return true;
 }
 //---------------------------------------------------------------
+bool add_new_service_node_to_tx_extra(
+        std::vector<uint8_t>& tx_extra,
+        const tx_extra_ethereum_new_service_node& new_service_node) {
+    tx_extra_field field = new_service_node;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(logcat, "failed to serialize tx extra for new service node transaction");
+        return false;
+    }
+    return true;
+}
+//---------------------------------------------------------------
+bool add_service_node_leave_request_to_tx_extra(
+        std::vector<uint8_t>& tx_extra,
+        const tx_extra_ethereum_service_node_leave_request& leave_request) {
+    tx_extra_field field = leave_request;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(
+                logcat, "failed to serialize tx extra for service node leave request transaction");
+        return false;
+    }
+    return true;
+}
+//---------------------------------------------------------------
+bool add_service_node_exit_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_exit& exit_data) {
+    tx_extra_field field = exit_data;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(logcat, "failed to serialize tx extra for service node exit transaction");
+        return false;
+    }
+    return true;
+}
+//---------------------------------------------------------------
+bool add_service_node_deregister_to_tx_extra(
+        std::vector<uint8_t>& tx_extra,
+        const tx_extra_ethereum_service_node_deregister& deregister) {
+    tx_extra_field field = deregister;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(logcat, "failed to serialize tx extra for service node deregister transaction");
+        return false;
+    }
+    return true;
+}
+//---------------------------------------------------------------
 bool get_inputs_money_amount(const transaction& tx, uint64_t& money) {
     money = 0;
     for (const auto& in : tx.vin) {
@@ -976,15 +1025,16 @@ uint64_t get_block_height(const block& b) {
         CHECK_AND_ASSERT_MES(
                 b.miner_tx.vin.size() == 1,
                 0,
-                "wrong miner tx in block: " << get_block_hash(b)
-                                            << ", b.miner_tx.vin.size() != 1 (size is: "
-                                            << b.miner_tx.vin.size() << ")");
+                "wrong miner tx in block: {}, b.miner_tx.vin.size() != 1 (size is: {})",
+                get_block_hash(b),
+                b.miner_tx.vin.size());
         CHECKED_GET_SPECIFIC_VARIANT(b.miner_tx.vin[0], txin_gen, coinbase_in, 0);
         if (b.major_version >= hf::hf19_reward_batching) {
             CHECK_AND_ASSERT_MES(
                     coinbase_in.height == b.height,
                     0,
-                    "wrong miner tx in block: " << get_block_hash(b));
+                    "wrong miner tx in block: {}",
+                    get_block_hash(b));
         }
         return coinbase_in.height;
     } else {
@@ -997,9 +1047,10 @@ bool check_inputs_types_supported(const transaction& tx) {
         CHECK_AND_ASSERT_MES(
                 std::holds_alternative<txin_to_key>(in),
                 false,
-                "wrong variant type: " << tools::type_name(tools::variant_type(in)) << ", expected "
-                                       << tools::type_name<txin_to_key>()
-                                       << ", in transaction id=" << get_transaction_hash(tx));
+                "wrong variant type: {}, expected {}, in transaction id={}",
+                tools::type_name(tools::variant_type(in)),
+                tools::type_name<txin_to_key>(),
+                get_transaction_hash(tx));
     }
     return true;
 }
@@ -1028,9 +1079,10 @@ bool check_outs_valid(const transaction& tx) {
         CHECK_AND_ASSERT_MES(
                 std::holds_alternative<txout_to_key>(out.target),
                 false,
-                "wrong variant type: " << tools::type_name(tools::variant_type(out.target))
-                                       << ", expected " << tools::type_name<txout_to_key>()
-                                       << ", in transaction id=" << get_transaction_hash(tx));
+                "wrong variant type: {}, expected {}, in transaction id={}",
+                tools::type_name(tools::variant_type(out.target)),
+                tools::type_name<txout_to_key>(),
+                get_transaction_hash(tx));
 
         if (tx.version == txversion::v1) {
             if (out.amount <= 0) {
@@ -1424,7 +1476,7 @@ crypto::hash get_pruned_transaction_hash(
         const transaction& t, const crypto::hash& pruned_data_hash) {
     // v1 transactions hash the entire blob
     if (t.version < txversion::v2_ringct)
-        throw std::runtime_error("Hash for pruned v1 tx cannot be calculated");
+        throw oxen::traced<std::runtime_error>("Hash for pruned v1 tx cannot be calculated");
 
     // v2 transactions hash different parts together, than hash the set of those hashes
     crypto::hash hashes[3];
@@ -1481,9 +1533,10 @@ bool calculate_transaction_hash(const transaction& t, crypto::hash& res, size_t*
         CHECK_AND_ASSERT_MES(
                 prefix_size <= unprunable_size && unprunable_size <= blob.size(),
                 false,
-                "Inconsistent transaction prefix (" << prefix_size << "), unprunable ("
-                                                    << unprunable_size << ") and blob ("
-                                                    << blob.size() << ") sizes in: " << __func__);
+                "Inconsistent transaction prefix ({}), unprunable ({}) and blob ({}) sizes",
+                prefix_size,
+                unprunable_size,
+                blob.size());
         cryptonote::get_blob_hash(
                 std::string_view{blob}.substr(prefix_size, unprunable_size - prefix_size),
                 hashes[1]);

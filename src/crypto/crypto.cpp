@@ -44,6 +44,7 @@
 #include <mutex>
 #include <stdexcept>
 
+#include "common/exception.h"
 #include "common/varint.h"
 #include "epee/warnings.h"
 extern "C" {
@@ -377,13 +378,13 @@ void generate_tx_proof(
     ge_p3 B_p3;
     ge_p3 D_p3;
     if (ge_frombytes_vartime(&R_p3, R.data()) != 0)
-        throw std::runtime_error("tx pubkey is invalid");
+        throw oxen::traced<std::runtime_error>("tx pubkey is invalid");
     if (ge_frombytes_vartime(&A_p3, A.data()) != 0)
-        throw std::runtime_error("recipient view pubkey is invalid");
+        throw oxen::traced<std::runtime_error>("recipient view pubkey is invalid");
     if (B && ge_frombytes_vartime(&B_p3, B->data()) != 0)
-        throw std::runtime_error("recipient spend pubkey is invalid");
+        throw oxen::traced<std::runtime_error>("recipient spend pubkey is invalid");
     if (ge_frombytes_vartime(&D_p3, D.data()) != 0)
-        throw std::runtime_error("key derivation is invalid");
+        throw oxen::traced<std::runtime_error>("key derivation is invalid");
 #if !defined(NDEBUG)
     {
         assert(sc_check(r.data()) == 0);
@@ -570,7 +571,7 @@ struct rs_comm {
         static_assert(sizeof(ab[0]) == 64);  // Ensure no padding
         keccak_update(&state, reinterpret_cast<const uint8_t*>(ab.data()), 64 * ab.size());
         ec_scalar result;
-        keccak_finish(&state, result.data());
+        keccak_finish(&state, result.data(), 32);
         sc_reduce32(result.data());
         return result;
     };

@@ -33,6 +33,7 @@
 
 #include "command_server.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "common/fs.h"
 #include "common/password.h"
 #include "common/scoped_message_writer.h"
@@ -43,6 +44,7 @@
 #include "daemon/command_line_args.h"
 #include "daemonizer/daemonizer.h"
 #include "epee/misc_log_ex.h"
+#include "fmt/color.h"
 #include "logging/oxen_logger.h"
 #include "p2p/net_node.h"
 #include "rpc/common/rpc_args.h"
@@ -64,9 +66,15 @@ constexpr auto RESET = "\033[0m";
 constexpr auto RED = "\033[31;1m";
 constexpr auto YELLOW = "\033[33;1m";
 constexpr auto CYAN = "\033[36;1m";
+
+const std::string coloured_oxen_release =
+        "{}Oxen '{}' (v{}){}"_format(CYAN, OXEN_RELEASE_NAME, OXEN_VERSION_FULL, RESET);
 }  // namespace
 
+#include <crypto/crypto.h>
+
 int main(int argc, char const* argv[]) {
+    oxen::set_terminate_handler();
     bool logs_initialized = false;
     try {
         // TODO parse the debug options like set log level right here at start
@@ -109,7 +117,7 @@ int main(int argc, char const* argv[]) {
 
             // Positional
             positional_options.add(
-                    daemon_args::arg_command.name, -1);  // -1 for unlimited arguments
+                    daemon_args::arg_command.name.c_str(), -1);  // -1 for unlimited arguments
         }
 
         // Do command line parsing
@@ -128,8 +136,7 @@ int main(int argc, char const* argv[]) {
             return 1;
 
         if (command_line::get_arg(vm, command_line::arg_help)) {
-            std::cout << CYAN << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")"
-                      << RESET << "\n\n";
+            std::cout << coloured_oxen_release << "\n\n";
             std::cout << "Usage: " + std::string{argv[0]} +
                                  " [options|settings] [daemon_command...]"
                       << std::endl
@@ -140,12 +147,13 @@ int main(int argc, char const* argv[]) {
 
         // Oxen Version
         if (command_line::get_arg(vm, command_line::arg_version)) {
-            std::cout << CYAN << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")"
-                      << RESET << "\n\n";
+            std::cout << coloured_oxen_release << "\n\n";
             return 0;
         }
 
         std::optional<fs::path> load_config;
+
+        auto net_type = command_line::get_network(vm);
 
         if (command_line::is_arg_defaulted(vm, daemon_args::arg_config_file)) {
             // We are using the default config file, which will be in the data directory, as
@@ -155,13 +163,13 @@ int main(int argc, char const* argv[]) {
             // the command-line which means *for the purpose of loading the config file* that we use
             // `~/.oxen`, but that after we load the config file it could be something else.  (In
             // such an edge case, we simply ignore a <final-data-dir>/oxen.conf).
-            auto data_dir =
-                    fs::absolute(fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)));
+            auto data_dir = fs::absolute(
+                    tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir)));
 
             // --regtest should append a /regtest to the data-dir, but this is done here rather than
             // in the defaults because this is a dev-only option that we don't really want the user
             // to need to worry about.
-            if (command_line::get_arg(vm, cryptonote::arg_regtest_on))
+            if (net_type == cryptonote::network_type::FAKECHAIN)
                 data_dir /= "regtest";
 
             // We also have to worry about migrating loki.conf -> oxen.conf *and* about a potential
@@ -180,12 +188,8 @@ int main(int argc, char const* argv[]) {
                 // If we *have* a --testnet or --devnet arg then we can use it, but it's possible
                 // that the config file itself will set and change that, which is why we retrieve
                 // those arguments again later, after parsing the config.
-                if (command_line::get_arg(vm, cryptonote::arg_testnet_on))
-                    old_data_dir /= "testnet";
-                else if (command_line::get_arg(vm, cryptonote::arg_devnet_on))
-                    old_data_dir /= "devnet";
-                else if (command_line::get_arg(vm, cryptonote::arg_regtest_on))
-                    old_data_dir /= "regtest";
+                if (auto subdir = network_config_subdir(net_type); !subdir.empty())
+                    old_data_dir /= subdir;
 
                 potential.emplace_back(old_data_dir / cryptonote::CONF_FILENAME, false);
                 potential.emplace_back(old_data_dir / cryptonote::old::CONF_FILENAME, true);
@@ -218,7 +222,7 @@ int main(int argc, char const* argv[]) {
             }
         } else {
             // config file explicitly given, no migration
-            load_config = fs::u8path(command_line::get_arg(vm, daemon_args::arg_config_file));
+            load_config = tools::utf8_path(command_line::get_arg(vm, daemon_args::arg_config_file));
             if (std::error_code ec; !fs::exists(*load_config, ec)) {
                 std::cerr << RED << "Can't find config file " << *load_config << RESET << "\n";
                 return 1;
@@ -227,9 +231,9 @@ int main(int argc, char const* argv[]) {
 
         if (load_config) {
             try {
-                fs::ifstream cfg{*load_config};
+                std::ifstream cfg{*load_config};
                 if (!cfg.is_open())
-                    throw std::runtime_error{"Unable to open file"};
+                    throw oxen::traced<std::runtime_error>{"Unable to open file"};
                 po::store(
                         po::parse_config_file<char>(
                                 cfg,
@@ -239,16 +243,8 @@ int main(int argc, char const* argv[]) {
                 std::cerr << RED << "Error parsing config file: " << e.what() << RESET << "\n";
                 return 1;
             }
-        }
 
-        const bool testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-        const bool devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-        const bool regtest = command_line::get_arg(vm, cryptonote::arg_regtest_on);
-        if (testnet + devnet + regtest > 1) {
-            std::cerr << RED
-                      << "Can't specify more than one of --testnet and --devnet and --regtest"
-                      << RESET << "\n";
-            return 1;
+            net_type = command_line::get_network(vm);
         }
 
         // data_dir
@@ -259,12 +255,12 @@ int main(int argc, char const* argv[]) {
 
         // Create data dir if it doesn't exist
         auto data_dir =
-                fs::absolute(fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)));
+                fs::absolute(tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir)));
 
         // --regtest should append a /regtest to the data-dir, but this is done here rather than in
         // the defaults because this is a dev-only option that we don't really want the user to need
         // to worry about.
-        if (command_line::get_arg(vm, cryptonote::arg_regtest_on))
+        if (net_type == cryptonote::network_type::FAKECHAIN)
             data_dir /= "regtest";
 
         // Will check if the default data directory is used and if it exists.
@@ -272,12 +268,8 @@ int main(int argc, char const* argv[]) {
         // exists.
         if (command_line::is_arg_defaulted(vm, cryptonote::arg_data_dir) && !fs::exists(data_dir)) {
             auto old_data_dir = tools::get_depreciated_default_data_dir();
-            if (testnet)
-                old_data_dir /= "testnet";
-            else if (devnet)
-                old_data_dir /= "devnet";
-            else if (regtest)
-                old_data_dir /= "regtest";
+            if (auto subdir = network_config_subdir(net_type); !subdir.empty())
+                old_data_dir /= subdir;
 
             if (fs::is_directory(old_data_dir)) {
                 std::error_code ec;
@@ -313,22 +305,14 @@ int main(int argc, char const* argv[]) {
         //   if log-file argument given:
         //     absolute path
         //     relative path: relative to data_dir
-        Log::Level log_level;
-        if (auto level = oxen::logging::parse_level(
-                    command_line::get_arg(vm, daemon_args::arg_log_level).c_str())) {
-            log_level = *level;
-        } else {
-            std::cerr << "Incorrect log level: "
-                      << command_line::get_arg(vm, daemon_args::arg_log_level).c_str() << std::endl;
-            throw std::runtime_error{"Incorrect log level"};
-        }
         auto log_file_path = data_dir / cryptonote::LOG_FILENAME;
         if (!command_line::is_arg_defaulted(vm, daemon_args::arg_log_file))
             log_file_path = command_line::get_arg(vm, daemon_args::arg_log_file);
         if (log_file_path.is_relative())
             log_file_path = fs::absolute(data_dir / log_file_path);
 
-        oxen::logging::init(log_file_path.string(), log_level);
+        oxen::logging::init(
+                log_file_path.string(), command_line::get_arg(vm, daemon_args::arg_log_level));
 
         logs_initialized = true;
 
@@ -337,7 +321,12 @@ int main(int argc, char const* argv[]) {
 
         // logging is now set up
         // FIXME: only print this when starting up as a daemon but not when running rpc commands
-        Log::info(logcat, "Oxen '{}' (v{})", OXEN_RELEASE_NAME, OXEN_VERSION_FULL);
+        Log::info(
+                globallogcat,
+                fg(fmt::terminal_color::cyan) | fmt::emphasis::bold,
+                "Oxen '{}' (v{})",
+                OXEN_RELEASE_NAME,
+                OXEN_VERSION_FULL);
 
         // If there are positional options, we're running a daemon command
         {
@@ -352,18 +341,13 @@ int main(int argc, char const* argv[]) {
                     auto rpc_port = command_line::get_arg(
                             vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
                     if (rpc_port == 0)
-                        rpc_port = command_line::get_arg(vm, cryptonote::arg_testnet_on)
-                                         ? cryptonote::config::testnet::RPC_DEFAULT_PORT
-                                 : command_line::get_arg(vm, cryptonote::arg_devnet_on)
-                                         ? cryptonote::config::devnet::RPC_DEFAULT_PORT
-                                         : cryptonote::config::RPC_DEFAULT_PORT;
-                    rpc_addr = rpc_config.bind_ip.value_or("127.0.0.1") + ":" +
-                               std::to_string(rpc_port);
+                        rpc_port = get_config(command_line::get_network(vm)).RPC_DEFAULT_PORT;
+                    rpc_addr = "{}:{}"_format(rpc_config.bind_ip.value_or("127.0.0.1"), rpc_port);
                 } else {
                     rpc_addr = command_line::get_arg(
                             vm, cryptonote::rpc::http_server::arg_rpc_admin)[0];
                     if (rpc_addr == "none")
-                        throw std::runtime_error{
+                        throw oxen::traced<std::runtime_error>{
                                 "Cannot invoke oxend command: --rpc-admin is disabled"};
                 }
 

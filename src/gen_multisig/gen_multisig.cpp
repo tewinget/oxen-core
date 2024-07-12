@@ -35,13 +35,13 @@
  * \brief Generates a set of multisig wallets
  */
 #include <fmt/core.h>
+#include <fmt/std.h>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 #include <iostream>
 
 #include "common/command_line.h"
-#include "common/fs-format.h"
 #include "common/i18n.h"
 #include "common/scoped_message_writer.h"
 #include "common/util.h"
@@ -73,12 +73,8 @@ const command_line::arg_descriptor<uint32_t> arg_participants = {
         0};
 const command_line::arg_descriptor<uint32_t> arg_threshold = {
         "threshold", genms::tr("How many signers are required to sign a valid transaction"), 0};
-const command_line::arg_descriptor<bool, false> arg_testnet = {
-        "testnet", genms::tr("Create testnet multisig wallets"), false};
-const command_line::arg_descriptor<bool, false> arg_devnet = {
-        "devnet", genms::tr("Create devnet multisig wallets"), false};
-const command_line::arg_descriptor<bool, false> arg_create_address_file = {
-        "create-address-file", genms::tr("Create an address file for new wallets"), false};
+const command_line::arg_flag arg_create_address_file = {
+        "create-address-file", genms::tr("Create an address file for new wallets")};
 
 const command_line::arg_descriptor<std::vector<std::string>> arg_command = {"command", ""};
 }  // namespace
@@ -90,7 +86,10 @@ static bool generate_multisig(
         network_type nettype,
         bool create_address_file) {
     tools::msg_writer(
-            genms::tr("Generating {:d} {:d}/{:d} multisig wallets"), total, threshold, total);
+            fmt::runtime(genms::tr("Generating {:d} {:d}/{:d} multisig wallets")),
+            total,
+            threshold,
+            total);
 
     const auto pwd_container =
             tools::password_container::prompt(true, "Enter password for new multisig wallets");
@@ -119,7 +118,7 @@ static bool generate_multisig(
             wallets[n]->decrypt_keys(pwd_container->password());
             if (!tools::wallet2::verify_multisig_info(
                         wallets[n]->get_multisig_info(), sk[n], pk[n])) {
-                tools::fail_msg_writer(genms::tr("Failed to verify multisig info"));
+                tools::fail_msg_writer() + genms::tr("Failed to verify multisig info");
                 return false;
             }
             wallets[n]->encrypt_keys(pwd_container->password());
@@ -149,7 +148,7 @@ static bool generate_multisig(
             std::vector<crypto::public_key> signers(total);
             for (size_t n = 0; n < total; ++n) {
                 if (!tools::wallet2::verify_extra_multisig_info(extra_info[n], pkeys, signers[n])) {
-                    tools::fail_msg_writer(genms::tr("Error verifying multisig extra info"));
+                    tools::fail_msg_writer() + genms::tr("Error verifying multisig extra info");
                     return false;
                 }
             }
@@ -173,6 +172,7 @@ static bool generate_multisig(
 }
 
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     po::options_description desc_params(wallet_args::tr("Wallet options"));
@@ -180,11 +180,10 @@ int main(int argc, char* argv[]) {
     command_line::add_arg(desc_params, arg_scheme);
     command_line::add_arg(desc_params, arg_threshold);
     command_line::add_arg(desc_params, arg_participants);
-    command_line::add_arg(desc_params, arg_testnet);
-    command_line::add_arg(desc_params, arg_devnet);
+    command_line::add_network_args(desc_params);
     command_line::add_arg(desc_params, arg_create_address_file);
 
-    auto [vm, should_terminate] = wallet_args::main(
+    auto [maybe_vm, should_terminate] = wallet_args::main(
             argc,
             argv,
             "oxen-gen-multisig [(--testnet|--devnet)] [--filename-base=<filename>] [--scheme=M/N] "
@@ -194,78 +193,66 @@ int main(int argc, char* argv[]) {
             desc_params,
             po::options_description{},
             boost::program_options::positional_options_description(),
-            [](const std::string& s) { tools::msg_writer(s); },
+            [](const std::string& s) { tools::msg_writer() + s; },
             "oxen-gen-multisig.log");
-    if (!vm)
+    if (!maybe_vm)
         return 1;
     if (should_terminate)
         return 0;
 
-    bool testnet, devnet;
+    auto& vm = *maybe_vm;
     uint32_t threshold = 0, total = 0;
 
-    testnet = command_line::get_arg(*vm, arg_testnet);
-    devnet = command_line::get_arg(*vm, arg_devnet);
-    if (testnet && devnet) {
-        tools::fail_msg_writer(
-                genms::tr("Error: Can't specify more than one of --testnet and --devnet"));
-        return 1;
-    }
-    if (command_line::has_arg(*vm, arg_scheme)) {
-        if (sscanf(command_line::get_arg(*vm, arg_scheme).c_str(), "%u/%u", &threshold, &total) !=
+    auto net_type = command_line::get_network(vm);
+
+    if (command_line::has_arg(vm, arg_scheme)) {
+        if (sscanf(command_line::get_arg(vm, arg_scheme).c_str(), "%u/%u", &threshold, &total) !=
             2) {
             tools::fail_msg_writer(
                     "{}{}",
                     genms::tr("Error: expected N/M, but got: "),
-                    command_line::get_arg(*vm, arg_scheme));
+                    command_line::get_arg(vm, arg_scheme));
             return 1;
         }
     }
-    if (!(*vm)["threshold"].defaulted()) {
+    if (!vm["threshold"].defaulted()) {
         if (threshold) {
-            tools::fail_msg_writer(
-                    genms::tr("Error: either --scheme or both of --threshold and --participants "
-                              "may be given"));
+            tools::fail_msg_writer() + genms::tr(
+                                               "Error: either --scheme or both of --threshold and "
+                                               "--participants may be given");
             return 1;
         }
-        threshold = command_line::get_arg(*vm, arg_threshold);
+        threshold = command_line::get_arg(vm, arg_threshold);
     }
-    if (!(*vm)["participants"].defaulted()) {
+    if (!vm["participants"].defaulted()) {
         if (total) {
-            tools::fail_msg_writer(
-                    genms::tr("Error: either --scheme or both of --threshold and --participants "
-                              "may be given"));
+            tools::fail_msg_writer() + genms::tr(
+                                               "Error: either --scheme or both of --threshold and "
+                                               "--participants may be given");
             return 1;
         }
-        total = command_line::get_arg(*vm, arg_participants);
+        total = command_line::get_arg(vm, arg_participants);
     }
     if (threshold <= 1 || threshold > total) {
         tools::fail_msg_writer(
-                genms::tr("Error: expected N > 1 and N <= M, but got N=={:d} and M=={:d}"),
+                fmt::runtime(genms::tr("Error: expected N > 1 and N <= M, but got N=={:d} and "
+                                       "M=={:d}")),
                 threshold,
                 total);
         return 1;
     }
     fs::path basename;
-    if (!(*vm)["filename-base"].defaulted() &&
-        !command_line::get_arg(*vm, arg_filename_base).empty()) {
-        basename = fs::u8path(command_line::get_arg(*vm, arg_filename_base));
+    if (!vm["filename-base"].defaulted() && !command_line::get_arg(vm, arg_filename_base).empty()) {
+        basename = tools::utf8_path(command_line::get_arg(vm, arg_filename_base));
     } else {
-        tools::fail_msg_writer(genms::tr("Error: --filename-base is required"));
+        tools::fail_msg_writer() + genms::tr("Error: --filename-base is required");
         return 1;
     }
 
-    bool create_address_file = command_line::get_arg(*vm, arg_create_address_file);
-    if (!generate_multisig(
-                threshold,
-                total,
-                basename,
-                testnet  ? network_type::TESTNET
-                : devnet ? network_type::DEVNET
-                         : network_type::MAINNET,
-                create_address_file))
+    bool create_address_file = command_line::get_arg(vm, arg_create_address_file);
+    if (!generate_multisig(threshold, total, basename, net_type, create_address_file))
         return 1;
 
     return 0;
-    CATCH_ENTRY_L0("main", 1);
+    CATCH_ENTRY("main", 1);
 }

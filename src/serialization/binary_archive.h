@@ -34,18 +34,20 @@
  * Portable, little-endian binary archive */
 #pragma once
 
+#include "base.h"
+
+#include <common/exception.h>
+#include <common/varint.h>
 #include <oxenc/endian.h>
 
 #include <cassert>
+#include <concepts>
 #include <istream>
 #include <iterator>
 #include <ostream>
 #include <string>
 #include <string_view>
 #include <type_traits>
-
-#include "base.h"
-#include "common/varint.h"
 
 namespace serialization {
 
@@ -74,13 +76,13 @@ class binary_unarchiver : public deserializer {
     }
 
     /// Serializes a signed integer (by reinterpreting it as unsigned on the wire)
-    template <class T, std::enable_if_t<std::is_integral_v<T> && std::is_signed_v<T>, int> = 0>
+    template <std::signed_integral T>
     void serialize_int(T& v) {
         serialize_int(reinterpret_cast<std::make_unsigned_t<T>&>(v));
     }
 
     /// Serializes an unsigned integer
-    template <class T, std::enable_if_t<std::is_integral_v<T> && std::is_unsigned_v<T>, int> = 0>
+    template <std::unsigned_integral T>
     void serialize_int(T& v) {
         stream_.read(reinterpret_cast<char*>(&v), sizeof(T));
         if constexpr (sizeof(T) > 1)
@@ -102,7 +104,7 @@ class binary_unarchiver : public deserializer {
     void serialize_uvarint(T& v) {
         using It = std::istreambuf_iterator<char>;
         if (tools::read_varint(It{stream_}, It{}, v) < 0)
-            throw std::runtime_error{"deserialization of varint failed"};
+            throw oxen::traced<std::runtime_error>{"deserialization of varint failed"};
     }
 
     // RAII class for `begin_array()`/`begin_object()`.  This particular implementation is a no-op.
@@ -168,12 +170,12 @@ class binary_archiver : public serializer {
 
     explicit binary_archiver(std::ostream& s) : stream_{s} { enable_stream_exceptions(); }
 
-    template <class T, std::enable_if_t<std::is_integral_v<T> && std::is_signed_v<T>, int> = 0>
+    template <std::signed_integral T>
     void serialize_int(T v) {
         serialize_int(static_cast<std::make_unsigned_t<T>>(v));
     }
 
-    template <class T, std::enable_if_t<std::is_integral_v<T> && std::is_unsigned_v<T>, int> = 0>
+    template <std::unsigned_integral T>
     void serialize_int(T v) {
         if constexpr (sizeof(T) > 1)
             oxenc::host_to_little_inplace(v);
@@ -185,12 +187,12 @@ class binary_archiver : public serializer {
         stream_.write(static_cast<const char*>(buf), len);
     }
 
-    template <class T, std::enable_if_t<std::is_integral_v<T> && std::is_signed_v<T>, int> = 0>
+    template <std::signed_integral T>
     void serialize_varint(T v) {
         serialize_varint(static_cast<std::make_unsigned_t<T>>(v));
     }
 
-    template <class T, std::enable_if_t<std::is_integral_v<T> && std::is_unsigned_v<T>, int> = 0>
+    template <std::unsigned_integral T>
     void serialize_varint(T v) {
         tools::write_varint(std::ostreambuf_iterator{stream_}, v);
     }

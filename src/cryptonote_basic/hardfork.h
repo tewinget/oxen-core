@@ -28,6 +28,11 @@
 
 #pragma once
 
+#include <cstdint>
+#include <ctime>
+#include <span>
+#include <vector>
+
 #include "cryptonote_basic/cryptonote_basic.h"
 
 namespace cryptonote {
@@ -44,8 +49,8 @@ struct hard_fork {
 // Stick your fake hard forks in here if you're into that sort of thing.
 extern std::vector<hard_fork> fakechain_hardforks;
 
-// Returns an iteratable range over hard fork values for the given network.
-std::pair<const hard_fork*, const hard_fork*> get_hard_forks(network_type type);
+// Returns an span over hard fork values for the given network.
+std::span<const hard_fork> get_hard_forks(network_type type);
 
 // Returns the height range for which the given block/network version is valid.  Returns a pair of
 // heights {A, B} where A/B is the first/last height at which the version is acceptable.  Returns

@@ -31,7 +31,8 @@
 
 # warnings are cleared only for GCC on Linux
 if (NOT (MINGW OR APPLE OR FREEBSD OR OPENBSD OR DRAGONFLY))
-  add_compile_options("${WARNINGS_AS_ERRORS_FLAG}") # applies only to targets that follow
+  message(STATUS "Setting warnings as errors")
+  #add_compile_options("${WARNINGS_AS_ERRORS_FLAG}") # applies only to targets that follow
 endif()
 
 set_property(GLOBAL PROPERTY oxen_executable_targets "")
@@ -55,11 +56,12 @@ add_subdirectory(cryptonote_basic)
 add_subdirectory(cryptonote_core)
 add_subdirectory(logging)
 add_subdirectory(lmdb)
+add_subdirectory(l2_tracker)
+add_subdirectory(bls)
 add_subdirectory(multisig)
 add_subdirectory(net)
 add_subdirectory(mnemonics)
 add_subdirectory(wallet)
-add_subdirectory(wallet3)
 add_subdirectory(cryptonote_protocol)
 add_subdirectory(blockchain_db)
 add_subdirectory(rpc)
@@ -73,9 +75,11 @@ add_subdirectory(sqlitedb)
 add_subdirectory(gen_multisig)
 add_subdirectory(blockchain_utilities)
 
+option(BUILD_EVERYTHING "Enable building of all optional components" OFF)
+
 # We'll always add, but with EXCLUDE_FROM_ALL if you didn't ask for them (but this lets you do a
 # `make cn_deserialize` or whatever from a build dir without needing to reconfigure).
-option(BUILD_DEBUG_UTILS "Build debug utils as part of the default build" OFF)
+option(BUILD_DEBUG_UTILS "Build debug utils as part of the default build" ${BUILD_EVERYTHING})
 if(BUILD_DEBUG_UTILS)
   message(STATUS "Building debug utilities")
   add_subdirectory(debug_utilities)

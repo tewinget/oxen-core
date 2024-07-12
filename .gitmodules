@@ -16,12 +16,6 @@
 [submodule "external/libuv"]
 	path = external/libuv
 	url = https://github.com/libuv/libuv.git
-[submodule "external/cpr"]
-	path = external/cpr
-	url = https://github.com/whoshuu/cpr.git
-[submodule "external/ghc-filesystem"]
-	path = external/ghc-filesystem
-	url = https://github.com/gulrak/filesystem.git
 [submodule "external/Catch2"]
 	path = external/Catch2
 	url = https://github.com/catchorg/Catch2
@@ -34,9 +28,6 @@
 [submodule "external/date"]
 	path = external/date
 	url = https://github.com/HowardHinnant/date.git
-[submodule "external/oxen-encoding"]
-	path = external/oxen-encoding
-	url = https://github.com/oxen-io/oxen-encoding.git
 [submodule "external/oxen-logging"]
 	path = external/oxen-logging
 	url = https://github.com/oxen-io/oxen-logging
@@ -47,3 +38,15 @@
 	path = external/pybind11
 	url = https://github.com/pybind/pybind11
 	branch = stable
+[submodule "external/ethyl"]
+	path = external/ethyl
+	url = https://github.com/oxen-io/ethyl.git
+[submodule "external/bls"]
+	path = external/bls
+	url = https://github.com/oxen-io/bls.git
+[submodule "external/oxen-encoding"]
+	path = external/oxen-encoding
+	url = https://github.com/oxen-io/oxen-encoding.git
+[submodule "external/cpptrace"]
+	path = external/cpptrace
+	url = https://github.com/jeremy-rifkin/cpptrace

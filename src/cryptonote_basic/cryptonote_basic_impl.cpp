@@ -41,6 +41,7 @@
 #include "epee/int-util.h"
 #include "epee/string_tools.h"
 #include "logging/oxen_logger.h"
+#include "networks.h"
 #include "serialization/binary_utils.h"
 #include "serialization/container.h"
 
@@ -79,12 +80,13 @@ bool block_has_pulse_components(block const& blk) {
     return result;
 }
 //-----------------------------------------------------------------------------------------------
-size_t get_min_block_weight(hf version) {
+size_t get_min_block_weight(hf /*version*/) {
     return BLOCK_GRANTED_FULL_REWARD_ZONE_V5;
 }
 //-----------------------------------------------------------------------------------------------
 // TODO(oxen): Move into oxen_economy, this will require access to oxen::exp2
-uint64_t block_reward_unpenalized_formula_v7(uint64_t already_generated_coins, uint64_t height) {
+uint64_t block_reward_unpenalized_formula_v7(
+        uint64_t already_generated_coins, uint64_t /*height*/) {
     uint64_t emission_supply_component =
             (already_generated_coins * oxen::EMISSION_SUPPLY_MULTIPLIER) /
             oxen::EMISSION_SUPPLY_DIVISOR;
@@ -118,9 +120,6 @@ bool get_base_block_reward(
         reward = 22'500'000 * oxen::COIN;
         return true;
     }
-
-    static_assert(
-            (TARGET_BLOCK_TIME % 1min) == 0s, "difficulty targets must be a multiple of a minute");
 
     uint64_t base_reward = version >= hf::hf17     ? oxen::BLOCK_REWARD_HF17
                          : version >= hf::hf15_ons ? oxen::BLOCK_REWARD_HF15
@@ -256,7 +255,7 @@ bool get_account_address_from_str(
             serialization::parse_binary(data, info.address);
         }
     } catch (const std::exception& e) {
-        log::info(logcat, "Account public address keys can't be parsed: "s + e.what());
+        log::info(logcat, "Account public address keys can't be parsed: {}", e.what());
         return false;
     }
 

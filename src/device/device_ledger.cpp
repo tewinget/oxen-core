@@ -30,6 +30,7 @@
 
 #include "device_ledger.hpp"
 
+#include <common/exception.h>
 #include <oxenc/endian.h>
 
 #include <chrono>
@@ -128,7 +129,6 @@ SecHMAC::SecHMAC(const uint8_t s[32], const uint8_t h[32]) {
 }
 
 void HMACmap::find_mac(const uint8_t sec[32], uint8_t hmac[32]) {
-    size_t sz = hmacs.size();
     log_hexbuffer("find_mac: lookup for ", sec, 32);
     for (auto& h : hmacs) {
         log_hexbuffer("find_mac:   - try ", h.sec, 32);
@@ -138,7 +138,7 @@ void HMACmap::find_mac(const uint8_t sec[32], uint8_t hmac[32]) {
             return;
         }
     }
-    throw std::runtime_error("Protocol error: try to send untrusted secret");
+    throw oxen::traced<std::runtime_error>("Protocol error: try to send untrusted secret");
 }
 
 void HMACmap::add_mac(const uint8_t sec[32], const uint8_t hmac[32]) {
@@ -528,9 +528,9 @@ bool device_ledger::reset() {
 
     CHECK_AND_ASSERT_THROW_MES(
             device_version >= MINIMUM_APP_VERSION,
-            "Unsupported device application version: "
-                    << tools::join(".", device_version) << " At least "
-                    << tools::join(".", MINIMUM_APP_VERSION) << " is required.");
+            "Unsupported device application version: {}. At least {} is required.",
+            fmt::join(device_version, "."),
+            fmt::join(MINIMUM_APP_VERSION, "."));
 
     return true;
 }
@@ -553,9 +553,11 @@ unsigned int device_ledger::exchange(bool wait_on_input) {
 
     CHECK_AND_ASSERT_THROW_MES(
             sw == SW_OK,
-            "Wrong Device Status: "
-                    << "0x" << std::hex << sw << " (" << status_string(sw) << "), "
-                    << "EXPECTED 0x" << std::hex << SW_OK << " (" << status_string(SW_OK) << "), ");
+            "Wrong Device Status: 0x{:x} ({}), EXPECTED 0x{:x} ({})",
+            sw,
+            status_string(sw),
+            SW_OK,
+            status_string(SW_OK));
 
     return sw;
 }
@@ -572,7 +574,7 @@ void device_ledger::reset_buffer() {
 /* ======================================================================= */
 
 bool device_ledger::set_name(std::string_view n) {
-    name = name;
+    name = n;
     return true;
 }
 
@@ -715,7 +717,7 @@ bool device_ledger::connect() {
     else if (auto* tcp = dynamic_cast<io::ledger_tcp*>(hw_device.get()))
         tcp->connect();
     else
-        throw std::logic_error{"Invalid ledger hardware configure"};
+        throw oxen::traced<std::logic_error>{"Invalid ledger hardware configure"};
     reset();
 
     check_network_type();
@@ -746,16 +748,6 @@ bool device_ledger::release() {
     return true;
 }
 
-static std::string nettype_string(cryptonote::network_type n) {
-    switch (n) {
-        case cryptonote::network_type::MAINNET: return "mainnet";
-        case cryptonote::network_type::TESTNET: return "testnet";
-        case cryptonote::network_type::DEVNET: return "devnet";
-        case cryptonote::network_type::FAKECHAIN: return "fakenet";
-        default: return "(unknown)";
-    }
-}
-
 void device_ledger::check_network_type() {
     auto locks = tools::unique_locks(device_locker, command_locker);
 
@@ -763,15 +755,15 @@ void device_ledger::check_network_type() {
 
     std::string coin{reinterpret_cast<const char*>(buffer_recv), 4};
     auto device_nettype = static_cast<cryptonote::network_type>(buffer_recv[4]);
-    log::debug(logcat, "Ledger wallet is set to {} {}", coin, nettype_string(device_nettype));
+    log::debug(
+            logcat, "Ledger wallet is set to {} {}", coin, network_type_to_string(device_nettype));
     if (coin != COIN_NETWORK)
-        throw std::runtime_error{
+        throw oxen::traced<std::runtime_error>{
                 "Invalid wallet app: expected " + std::string{COIN_NETWORK} + ", got " + coin};
     if (device_nettype != nettype)
-        throw std::runtime_error{
-                "Ledger wallet is set to the wrong network type: expected " +
-                nettype_string(nettype) + " but the device is set to " +
-                nettype_string(device_nettype)};
+        throw oxen::traced<std::runtime_error>{
+                "Ledger wallet is set to the wrong network type: expected {} but the device is set to {}"_format(
+                        network_type_to_string(nettype), network_type_to_string(device_nettype))};
 }
 
 void device_ledger::set_network_type(cryptonote::network_type set_nettype) {
@@ -840,7 +832,9 @@ bool device_ledger::get_secret_keys(crypto::secret_key& vkey, crypto::secret_key
 }
 
 bool device_ledger::generate_chacha_key(
-        const cryptonote::account_keys& keys, crypto::chacha_key& key, uint64_t kdf_rounds) {
+        [[maybe_unused]] const cryptonote::account_keys& keys,
+        crypto::chacha_key& key,
+        uint64_t kdf_rounds) {
     auto locks = tools::unique_locks(device_locker, command_locker);
 
 #ifdef DEBUG_HWDEVICE
@@ -1200,12 +1194,12 @@ bool device_ledger::sc_secret_add(
 crypto::secret_key device_ledger::generate_keys(
         crypto::public_key& pub,
         crypto::secret_key& sec,
-        const crypto::secret_key& recovery_key,
+        [[maybe_unused]] const crypto::secret_key& recovery_key,
         bool recover) {
     auto locks = tools::unique_locks(device_locker, command_locker);
     int offset;
     if (recover) {
-        throw std::runtime_error("device generate key does not support recover");
+        throw oxen::traced<std::runtime_error>("device generate key does not support recover");
     }
 
 #ifdef DEBUG_HWDEVICE
@@ -1562,7 +1556,7 @@ bool device_ledger::generate_unlock_signature(
 
 bool device_ledger::generate_ons_signature(
         std::string_view sig_data,
-        const cryptonote::account_keys& keys,
+        const cryptonote::account_keys&,
         const cryptonote::subaddress_index& index,
         crypto::signature& sig) {
     // Initialize (prompts the user):
@@ -1715,9 +1709,9 @@ void device_ledger::get_transaction_prefix_hash(
     try {
         tx_prefix = serialization::dump_binary(const_cast<cryptonote::transaction_prefix&>(tx));
     } catch (const std::exception& e) {
-        auto err = "unable to serialize transaction prefix: "_format(e.what());
-        log::error(logcat, err);
-        throw std::runtime_error{err};
+        auto err = "unable to serialize transaction prefix: {}"_format(e.what());
+        log::error(logcat, "{}", err);
+        throw oxen::traced<std::runtime_error>{e.what()};
     }
 
     unsigned char* send = buffer_send + set_command_header_noopt(INS_PREFIX_HASH, 1);
@@ -1783,7 +1777,7 @@ bool device_ledger::encrypt_payment_id(
 bool device_ledger::generate_output_ephemeral_keys(
         const size_t tx_version,
         bool& found_change,
-        const cryptonote::account_keys& sender_account_keys,
+        [[maybe_unused]] const cryptonote::account_keys& sender_account_keys,
         const crypto::public_key& txkey_pub,
         const crypto::secret_key& tx_key,
         const cryptonote::tx_destination_entry& dst_entr,
@@ -1875,7 +1869,7 @@ bool device_ledger::generate_output_ephemeral_keys(
             32);
 #endif
 
-    CHECK_AND_ASSERT_THROW_MES(tx_version > 1, "TX version not supported" << tx_version);
+    CHECK_AND_ASSERT_THROW_MES(tx_version > 1, "TX version {} not supported", tx_version);
 
     // make additional tx pubkey if necessary
     cryptonote::keypair additional_txkey;
@@ -2238,7 +2232,7 @@ bool device_ledger::clsag_hash(const rct::keyV& keydata, rct::key& hash) {
 }
 
 bool device_ledger::clsag_sign(
-        const rct::key& c,
+        [[maybe_unused]] const rct::key& c,
         const rct::key& a,
         const rct::key& p,
         const rct::key& z,

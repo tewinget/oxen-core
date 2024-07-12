@@ -44,6 +44,7 @@
 #include <vector>
 
 #include "common/command_line.h"
+#include "common/formattable.h"
 #include "common/fs.h"
 #include "common/periodic_task.h"
 #include "common/util.h"
@@ -109,6 +110,14 @@ struct p2p_connection_context_t : base_type  // t_payload_net_handler::connectio
     bool m_in_timedsync;
     std::set<epee::net_utils::network_address> sent_addresses;
 };
+
+enum class PeerType { anchor = 0, white, gray };
+inline constexpr std::string_view to_string(PeerType pt) {
+    return pt == PeerType::anchor ? "anchor"
+         : pt == PeerType::white  ? "white"
+         : pt == PeerType::gray   ? "gray"
+                                  : "unknown";
+}
 
 template <class t_payload_net_handler>
 class node_server
@@ -290,8 +299,6 @@ class node_server
             m_payload_handler, typename t_payload_net_handler::connection_context&)
     END_INVOKE_MAP2()
 
-    enum PeerType { anchor = 0, white, gray };
-
     //----------------- commands handlers ----------------------------------------------
     int handle_handshake(
             int command,
@@ -385,7 +392,7 @@ class node_server
             const epee::net_utils::network_address& na,
             bool just_take_peerlist = false,
             uint64_t last_seen_stamp = 0,
-            PeerType peer_type = white,
+            PeerType peer_type = PeerType::white,
             uint64_t first_seen_stamp = 0);
     size_t get_random_index_with_fixed_probability(size_t max_index);
     bool is_peer_used(const peerlist_entry& peer);
@@ -465,11 +472,11 @@ class node_server
     peerlist_storage m_peerlist_storage;
 
     tools::periodic_task m_peer_handshake_idle_maker_interval{
-            cryptonote::p2p::DEFAULT_HANDSHAKE_INTERVAL};
-    tools::periodic_task m_connections_maker_interval{1s};
-    tools::periodic_task m_peerlist_store_interval{30min};
-    tools::periodic_task m_gray_peerlist_housekeeping_interval{1min};
-    tools::periodic_task m_incoming_connections_interval{1h};
+            "p2p handshake cleanup", cryptonote::p2p::DEFAULT_HANDSHAKE_INTERVAL};
+    tools::periodic_task m_connections_maker_interval{"p2p connection maker", 1s};
+    tools::periodic_task m_peerlist_store_interval{"p2p peer storage", 30min};
+    tools::periodic_task m_gray_peerlist_housekeeping_interval{"p2p graylist", 1min};
+    tools::periodic_task m_incoming_connections_interval{"incoming connection warning", 1h};
 
     std::list<epee::net_utils::network_address> m_priority_peers;
     std::vector<epee::net_utils::network_address> m_exclusive_peers;
@@ -513,24 +520,24 @@ class node_server
 
 extern const command_line::arg_descriptor<std::string> arg_p2p_bind_ip;
 extern const command_line::arg_descriptor<std::string> arg_p2p_bind_ipv6_address;
-extern const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port;
-extern const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port_ipv6;
-extern const command_line::arg_descriptor<bool> arg_p2p_use_ipv6;
-extern const command_line::arg_descriptor<bool> arg_p2p_ignore_ipv4;
+extern const command_line::arg_descriptor<uint16_t> arg_p2p_bind_port;
+extern const command_line::arg_descriptor<uint16_t> arg_p2p_bind_port_ipv6;
+extern const command_line::arg_flag arg_p2p_use_ipv6;
+extern const command_line::arg_flag arg_p2p_ignore_ipv4;
 extern const command_line::arg_descriptor<uint32_t> arg_p2p_external_port;
-extern const command_line::arg_descriptor<bool> arg_p2p_allow_local_ip;
+extern const command_line::arg_flag arg_p2p_allow_local_ip;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_peer;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_priority_node;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_exclusive_node;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_seed_node;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_tx_proxy;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_anonymous_inbound;
-extern const command_line::arg_descriptor<bool> arg_p2p_hide_my_port;
-extern const command_line::arg_descriptor<bool> arg_no_sync;
+extern const command_line::arg_flag arg_p2p_hide_my_port;
+extern const command_line::arg_flag arg_no_sync;
 
-extern const command_line::arg_descriptor<bool> arg_no_igd;
+extern const command_line::arg_flag arg_no_igd;
 extern const command_line::arg_descriptor<std::string> arg_igd;
-extern const command_line::arg_descriptor<bool> arg_offline;
+extern const command_line::arg_flag arg_offline;
 extern const command_line::arg_descriptor<int64_t> arg_out_peers;
 extern const command_line::arg_descriptor<int64_t> arg_in_peers;
 extern const command_line::arg_descriptor<int> arg_tos_flag;
@@ -539,5 +546,8 @@ extern const command_line::arg_descriptor<int64_t> arg_limit_rate_up;
 extern const command_line::arg_descriptor<int64_t> arg_limit_rate_down;
 extern const command_line::arg_descriptor<int64_t> arg_limit_rate;
 }  // namespace nodetool
+
+template <>
+inline constexpr bool formattable::via_to_string<nodetool::PeerType> = true;
 
 POP_WARNINGS

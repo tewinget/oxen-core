@@ -30,10 +30,9 @@
 #include "blockchain_db.h"
 
 #include <chrono>
-
 #include "checkpoints/checkpoints.h"
-#include "common/hex.h"
 #include "common/string_util.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_core/service_node_rules.h"
@@ -50,11 +49,11 @@ const command_line::arg_descriptor<std::string> arg_db_sync_mode = {
         "Specify sync option, using format "
         "[safe|fast|fastest]:[sync|async]:[<nblocks_per_sync>[blocks]|<nbytes_per_sync>[bytes]].",
         "fast:async:250000000bytes"};
-const command_line::arg_descriptor<bool> arg_db_salvage = {
-        "db-salvage", "Try to salvage a blockchain database if it seems corrupted", false};
+const command_line::arg_flag arg_db_salvage = {
+        "db-salvage", "Try to salvage a blockchain database if it seems corrupted"};
 
-BlockchainDB* new_db() {
-    return new BlockchainLMDB();
+std::unique_ptr<BlockchainDB> new_db() {
+    return std::make_unique<BlockchainLMDB>();
 }
 
 void BlockchainDB::init_options(boost::program_options::options_description& desc) {
@@ -169,7 +168,7 @@ uint64_t BlockchainDB::add_block(
 
     // sanity
     if (blk.tx_hashes.size() != txs.size())
-        throw std::runtime_error("Inconsistent tx/hashes sizes");
+        throw oxen::traced<std::runtime_error>("Inconsistent tx/hashes sizes");
 
     auto started = std::chrono::steady_clock::now();
     crypto::hash blk_hash = get_block_hash(blk);
@@ -279,7 +278,7 @@ bool BlockchainDB::get_pruned_tx(const crypto::hash& h, cryptonote::transaction&
 transaction BlockchainDB::get_tx(const crypto::hash& h) const {
     transaction tx;
     if (!get_tx(h, tx))
-        throw TX_DNE("tx with hash " + tools::type_to_hex(h) + " not found in db");
+        throw TX_DNE("tx with hash {} not found in db"_format(h));
     return tx;
 }
 
@@ -292,7 +291,7 @@ uint64_t BlockchainDB::get_output_unlock_time(
 transaction BlockchainDB::get_pruned_tx(const crypto::hash& h) const {
     transaction tx;
     if (!get_pruned_tx(h, tx))
-        throw TX_DNE("pruned tx with hash " + tools::type_to_hex(h) + " not found in db");
+        throw TX_DNE("pruned tx with hash {} not found in db"_format(h));
     return tx;
 }
 
@@ -371,7 +370,7 @@ bool BlockchainDB::get_immutable_checkpoint(
 uint64_t BlockchainDB::get_tx_block_height(const crypto::hash& h) const {
     auto result = get_tx_block_heights({{h}}).front();
     if (result == std::numeric_limits<uint64_t>::max()) {
-        std::string err = "tx_data_t with hash " + tools::type_to_hex(h) + " not found in db";
+        std::string err = "tx_data_t with hash {} not found in db"_format(h);
         log::info(logcat, "{}", err);
         throw TX_DNE(std::move(err));
     }
@@ -385,7 +384,7 @@ bool BlockchainDB::get_alt_block_header(
         std::string* checkpoint) const {
     std::string blob;
     if (!get_alt_block(blkid, data, &blob, checkpoint)) {
-        throw BLOCK_DNE("Alt-block with hash " + tools::type_to_hex(blkid) + " not found in db");
+        throw BLOCK_DNE("Alt-block with hash {} not found in db"_format(blkid));
         return false;
     }
 

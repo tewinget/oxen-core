@@ -28,6 +28,7 @@
 #include "expect.h"
 
 #include <string>
+#include <common/exception.h>
 
 #include "common/fs.h"
 
@@ -57,7 +58,7 @@ namespace {
 
 void expect::throw_(std::error_code ec, const char* msg, const char* file, unsigned line) {
     if (msg || file)
-        throw std::system_error{ec, generate_error(msg, file, line)};
-    throw std::system_error{ec};
+        throw oxen::traced<std::system_error>{ec, generate_error(msg, file, line)};
+    throw oxen::traced<std::system_error>{ec, msg};
 }
 }  // namespace detail

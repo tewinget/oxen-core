@@ -57,9 +57,9 @@ static auto logcat = log::Cat("miner");
 
 namespace {
     const command_line::arg_descriptor<std::string> arg_start_mining = {
-            "start-mining", "Specify wallet address to mining for", "", true};
+            "start-mining", "Specify wallet address to mining for"};
     const command_line::arg_descriptor<uint32_t> arg_mining_threads = {
-            "mining-threads", "Specify mining threads count", 0, true};
+            "mining-threads", "Specify mining threads count"};
 }  // namespace
 
 miner::miner(i_miner_handler* phandler, const get_block_hash_t& gbh) :
@@ -137,7 +137,7 @@ void miner::init_options(boost::program_options::options_description& desc) {
 }
 //-----------------------------------------------------------------------------------------------------
 bool miner::init(const boost::program_options::variables_map& vm, network_type nettype) {
-    if (command_line::has_arg(vm, arg_start_mining)) {
+    if (!command_line::is_arg_defaulted(vm, arg_start_mining)) {
         address_parse_info info;
         if (!cryptonote::get_account_address_from_str(
                     info, nettype, command_line::get_arg(vm, arg_start_mining)) ||
@@ -151,7 +151,7 @@ bool miner::init(const boost::program_options::variables_map& vm, network_type n
         m_mine_address = info.address;
         m_threads_total = 1;
         m_do_mining = true;
-        if (command_line::has_arg(vm, arg_mining_threads)) {
+        if (!command_line::is_arg_defaulted(vm, arg_mining_threads)) {
             m_threads_total = command_line::get_arg(vm, arg_mining_threads);
         }
     }
@@ -195,9 +195,9 @@ bool miner::start(
         log::info(logcat, "Mining until height {}", m_stop_height);
 
     for (int i = 0; i < m_threads_total; i++)
-        m_threads.emplace_back([=] { return worker_thread(i, slow_mining); });
+        m_threads.emplace_back([this, i, slow_mining] { return worker_thread(i, slow_mining); });
 
-    log::info(logcat, "Mining has started with {} threads, good luck!", m_threads_total);
+    log::info(logcat, "Mining has started with {} threads, good luck!", m_threads_total.load());
 
     return true;
 }
@@ -256,16 +256,16 @@ void miner::on_synchronized() {
 //-----------------------------------------------------------------------------------------------------
 void miner::pause() {
     std::unique_lock lock{m_miners_count_mutex};
-    log::debug(logcat, "miner::pause: {} -> {}", m_pausers_count, (m_pausers_count + 1));
-    ++m_pausers_count;
+    auto was = m_pausers_count++;
+    log::debug(logcat, "miner::pause: {} -> {}", was, m_pausers_count.load());
     if (m_pausers_count == 1 && is_mining())
         log::debug(logcat, "MINING PAUSED");
 }
 //-----------------------------------------------------------------------------------------------------
 void miner::resume() {
     std::unique_lock lock{m_miners_count_mutex};
-    log::debug(logcat, "miner::resume: {} -> {}", m_pausers_count, (m_pausers_count - 1));
-    --m_pausers_count;
+    auto was = m_pausers_count--;
+    log::debug(logcat, "miner::resume: {} -> {}", was, m_pausers_count.load());
     if (m_pausers_count < 0) {
         m_pausers_count = 0;
         log::error(logcat, "Unexpected miner::resume() called");

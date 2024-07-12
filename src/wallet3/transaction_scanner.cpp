@@ -1,6 +1,7 @@
 #include "transaction_scanner.hpp"
 
 #include <common/string_util.h>
+#include "common/exception.h"
 
 #include <sqlitedb/database.hpp>
 #include <vector>
@@ -26,7 +27,7 @@ std::vector<Output> TransactionScanner::scan_received(
         return {};
     }
     if (tx.tx.vout.size() != tx.global_indices.size()) {
-        throw std::invalid_argument(
+        throw oxen::traced<std::invalid_argument>(
                 "Invalid wallet::BlockTX, created outputs count != global indices count.");
     }
 
@@ -94,7 +95,7 @@ std::vector<Output> TransactionScanner::scan_received(
 
             received_outputs.push_back(std::move(o));
         } else {
-            throw std::invalid_argument(
+            throw oxen::traced<std::invalid_argument>(
                     "Invalid output target variant, only txout_to_key is valid.");
         }
     }
@@ -110,7 +111,7 @@ std::vector<crypto::key_image> TransactionScanner::scan_spent(const cryptonote::
         if (auto* input = std::get_if<cryptonote::txin_to_key>(&input_variant)) {
             auto our_spend = db->prepared_get<int>(
                     "SELECT COUNT(*) FROM key_images WHERE key_image = ?",
-                    tools::type_to_hex(input->k_image));
+                    tools::hex_guts(input->k_image));
 
             if (our_spend > 0)
                 spends.push_back(input->k_image);

@@ -106,6 +106,16 @@ void command_server::init_commands(cryptonote::rpc::core_rpc_server* rpc_server)
             "Interactive prompt to prepare a service node registration command. The resulting "
             "registration command can be run in the command-line wallet to send the registration "
             "to the blockchain.");
+
+    // TODO: add registration website URL
+    m_command_lookup.set_handler(
+            "prepare_eth_registration",
+            [this](const auto& x) { return m_parser.prepare_eth_registration(x); },
+            "prepare_eth_registration <operator address> [multi-contributor contract address] [\"print_only\"]",
+            "Interactive prompt to prepare a service node registration for submission to eth.  By default"
+            " this information is submitted to INSERT_URL_HERE to make it easy to submit your registration."
+            "  If you would prefer to just print the information, put print_only as the final argument.");
+
     m_command_lookup.set_handler(
             "print_sn",
             [this](const auto& x) { return m_parser.print_sn(x); },
@@ -290,6 +300,11 @@ or "default" to return the limit to its default value.)");
             [this](const auto& x) { return m_parser.flush_cache(x); },
             "flush_cache [bad-txs] [bad-blocks]",
             "Flush the specified cache(s).");
+    m_command_lookup.set_handler(
+            "claim_rewards",
+            [this](const auto& x) { return m_parser.claim_rewards(x); },
+            "claim_rewards",
+            "Provides a link to the website that allows claiming of ERC-20 rewards");
     m_command_lookup.set_handler(
             "test_trigger_uptime_proof",
             [this](const auto&) {

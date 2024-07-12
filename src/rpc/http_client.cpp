@@ -49,19 +49,6 @@ void http_client::cancel() {
     session.SetTimeout(1ms);
 }
 
-http_client::WipedAuth::WipedAuth(std::string_view username, std::string_view password) :
-        Authentication("", "") {
-    auth_string_.clear();
-    auth_string_.reserve(username.size() + 1 + password.size());
-    auth_string_ += username;
-    auth_string_ += ':';
-    auth_string_ += password;
-}
-
-http_client::WipedAuth::~WipedAuth() {
-    memwipe(auth_string_.data(), auth_string_.size());
-}
-
 void http_client::set_auth(std::string_view username, std::string_view password) {
     std::lock_guard lock{params_mutex};
     if (username.empty() && password.empty()) {
@@ -70,7 +57,7 @@ void http_client::set_auth(std::string_view username, std::string_view password)
             apply_auth = true;
         }
     } else {
-        auth.emplace(username, password);
+        auth.emplace(std::string{username}, std::string{password}, cpr::AuthMode::BASIC);
         apply_auth = true;
     }
 }
@@ -183,7 +170,7 @@ cpr::Response http_client::post(const std::string& uri, cpr::Body body, cpr::Hea
         }
         std::optional<cpr::Authentication> new_auth;
         if (apply_auth) {
-            new_auth = auth ? *auth : cpr::Authentication{"", ""};
+            new_auth = auth ? *auth : cpr::Authentication{"", "", cpr::AuthMode::BASIC};
             apply_auth = false;
         }
         std::optional<cpr::Proxies> new_proxy;

@@ -71,10 +71,8 @@ namespace {
         auto dir = tools::get_default_data_dir();
         // remove .oxen, replace with .shared-ringdb
         dir.replace_filename(".shared-ringdb");
-        if (nettype == cryptonote::network_type::TESTNET)
-            dir /= "testnet";
-        else if (nettype == cryptonote::network_type::DEVNET)
-            dir /= "devnet";
+        if (auto subdir = network_config_subdir(nettype); !subdir.empty())
+            dir /= subdir;
         return dir;
     }
 
@@ -141,7 +139,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback {
             const cryptonote::subaddress_index& subaddr_index,
             uint64_t unlock_time,
             bool blink) override {
-        std::string tx_hash = tools::type_to_hex(txid);
+        std::string tx_hash = tools::hex_guts(txid);
 
         log::trace(
                 logcat,
@@ -167,7 +165,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback {
             uint64_t amount,
             const cryptonote::subaddress_index& subaddr_index) override {
 
-        std::string tx_hash = tools::type_to_hex(txid);
+        std::string tx_hash = tools::hex_guts(txid);
 
         log::trace(
                 logcat,
@@ -193,7 +191,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback {
             const cryptonote::transaction& spend_tx,
             const cryptonote::subaddress_index& subaddr_index) override {
         // TODO;
-        std::string tx_hash = tools::type_to_hex(txid);
+        std::string tx_hash = tools::hex_guts(txid);
         log::trace(
                 logcat,
                 "{}: money spent. height:  {}, tx: {}, amount: {}, idx: {}",
@@ -226,7 +224,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback {
     EXPORT
     void on_lw_money_received(uint64_t height, const crypto::hash& txid, uint64_t amount) override {
         if (m_listener) {
-            std::string tx_hash = tools::type_to_hex(txid);
+            std::string tx_hash = tools::hex_guts(txid);
             m_listener->moneyReceived(tx_hash, amount);
         }
     }
@@ -235,7 +233,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback {
     void on_lw_unconfirmed_money_received(
             uint64_t height, const crypto::hash& txid, uint64_t amount) override {
         if (m_listener) {
-            std::string tx_hash = tools::type_to_hex(txid);
+            std::string tx_hash = tools::hex_guts(txid);
             m_listener->unconfirmedMoneyReceived(tx_hash, amount);
         }
     }
@@ -243,7 +241,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback {
     EXPORT
     void on_lw_money_spent(uint64_t height, const crypto::hash& txid, uint64_t amount) override {
         if (m_listener) {
-            std::string tx_hash = tools::type_to_hex(txid);
+            std::string tx_hash = tools::hex_guts(txid);
             m_listener->moneySpent(tx_hash, amount);
         }
     }
@@ -324,7 +322,7 @@ uint64_t Wallet::amountFromDouble(double amount) {
 EXPORT
 std::string Wallet::genPaymentId() {
     crypto::hash8 payment_id = crypto::rand<crypto::hash8>();
-    return tools::type_to_hex(payment_id);
+    return tools::hex_guts(payment_id);
 }
 
 EXPORT
@@ -359,7 +357,7 @@ bool Wallet::keyValid(
     }
 
     crypto::secret_key key;
-    if (!tools::hex_to_type(secret_key_string, unwrap(unwrap(key)))) {
+    if (!tools::try_load_from_hex_guts(secret_key_string, unwrap(unwrap(key)))) {
         error = "Failed to parse key";
         return false;
     }
@@ -391,7 +389,7 @@ std::string Wallet::paymentIdFromAddress(const std::string& str, NetworkType net
         return "";
     if (!info.has_payment_id)
         return "";
-    return tools::type_to_hex(info.payment_id);
+    return tools::hex_guts(info.payment_id);
 }
 
 EXPORT
@@ -406,39 +404,39 @@ void Wallet::init(
         const std::string& log_path,
         bool console) {
     epee::string_tools::set_module_name_and_folder(argv0);
-    oxen::logging::init(log_path.empty() ? default_log_base_name : log_path, log::Level::info);
+    oxen::logging::init(log_path.empty() ? default_log_base_name : log_path, "*=info", console);
 }
 
 EXPORT
 void Wallet::debug(const std::string& category, const std::string& str) {
     if (category.empty())
-        log::debug(logcat, str);
+        log::debug(logcat, "{}", str);
     else
-        log::debug(log::Cat(category), str);
+        log::debug(log::Cat(category), "{}", str);
 }
 
 EXPORT
 void Wallet::info(const std::string& category, const std::string& str) {
     if (category.empty())
-        log::info(logcat, str);
+        log::info(logcat, "{}", str);
     else
-        log::info(log::Cat(category), str);
+        log::info(log::Cat(category), "{}", str);
 }
 
 EXPORT
 void Wallet::warning(const std::string& category, const std::string& str) {
     if (category.empty())
-        log::warning(logcat, str);
+        log::warning(logcat, "{}", str);
     else
-        log::warning(log::Cat(category), str);
+        log::warning(log::Cat(category), "{}", str);
 }
 
 EXPORT
 void Wallet::error(const std::string& category, const std::string& str) {
     if (category.empty())
-        log::error(logcat, str);
+        log::error(logcat, "{}", str);
     else
-        log::error(log::Cat(category), str);
+        log::error(log::Cat(category), "{}", str);
 }
 
 ///////////////////////// WalletImpl implementation ////////////////////////
@@ -508,7 +506,7 @@ EXPORT
 bool WalletImpl::create(
         std::string_view path_, const std::string& password, const std::string& language) {
 
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     m_recoveringFromSeed = false;
     m_recoveringFromDevice = false;
@@ -527,7 +525,7 @@ bool WalletImpl::create(
         std::string error =
                 "attempting to generate or restore wallet, but specified file(s) exist.  Exiting "
                 "to not risk overwriting.";
-        log::error(logcat, error);
+        log::error(logcat, "{}", error);
         setStatusCritical(error);
         return false;
     }
@@ -551,7 +549,7 @@ bool WalletImpl::create(
 EXPORT
 bool WalletImpl::createWatchOnly(
         std::string_view path_, const std::string& password, const std::string& language) const {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     auto w = wallet();
     clearStatus();
     std::unique_ptr<tools::wallet2> view_wallet(new tools::wallet2(w->nettype()));
@@ -574,7 +572,7 @@ bool WalletImpl::createWatchOnly(
         std::string error =
                 "attempting to generate view only wallet, but specified file(s) exist.  Exiting to "
                 "not risk overwriting.";
-        log::error(logcat, error);
+        log::error(logcat, "{}", error);
         setStatusError(error);
         return false;
     }
@@ -632,7 +630,7 @@ bool WalletImpl::recoverFromKeysWithPassword(
         const std::string& address_string,
         const std::string& viewkey_string,
         const std::string& spendkey_string) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     cryptonote::address_parse_info info;
     if (!get_account_address_from_str(info, m_wallet_ptr->nettype(), address_string)) {
         setStatusError("failed to parse address");
@@ -642,7 +640,7 @@ bool WalletImpl::recoverFromKeysWithPassword(
     // parse optional spend key
     crypto::secret_key spendkey;
     bool has_spendkey = !spendkey_string.empty();
-    if (has_spendkey && !tools::hex_to_type(spendkey_string, unwrap(unwrap(spendkey)))) {
+    if (has_spendkey && !tools::try_load_from_hex_guts(spendkey_string, unwrap(unwrap(spendkey)))) {
         setStatusError("failed to parse secret spend key");
         return false;
     }
@@ -659,7 +657,7 @@ bool WalletImpl::recoverFromKeysWithPassword(
         }
     }
     if (has_viewkey) {
-        if (!tools::hex_to_type(viewkey_string, unwrap(unwrap(viewkey)))) {
+        if (!tools::try_load_from_hex_guts(viewkey_string, unwrap(unwrap(viewkey)))) {
             setStatusError("failed to parse secret view key");
             return false;
         }
@@ -702,8 +700,8 @@ bool WalletImpl::recoverFromKeysWithPassword(
             setSeedLanguage(language);
             log::info(
                     logcat,
-                    "Generated deterministic wallet from spend key with seed language: " +
-                            language);
+                    "Generated deterministic wallet from spend key with seed language: {}",
+                    language);
         }
 
     } catch (const std::exception& e) {
@@ -716,14 +714,14 @@ bool WalletImpl::recoverFromKeysWithPassword(
 EXPORT
 bool WalletImpl::recoverFromDevice(
         std::string_view path_, const std::string& password, const std::string& device_name) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     auto w = wallet();
     m_recoveringFromSeed = false;
     m_recoveringFromDevice = true;
     try {
         w->restore_from_device(path, password, device_name);
-        log::info(logcat, "Generated new wallet from device: " + device_name);
+        log::info(logcat, "Generated new wallet from device: {}", device_name);
     } catch (const std::exception& e) {
         setStatusError(std::string("failed to generate new wallet: ") + e.what());
         return false;
@@ -738,7 +736,7 @@ Wallet::Device WalletImpl::getDeviceType() const {
 
 EXPORT
 bool WalletImpl::open(std::string_view path_, const std::string& password) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     auto w = wallet();
     m_recoveringFromSeed = false;
@@ -770,7 +768,7 @@ bool WalletImpl::recover(
         const std::string& password,
         const std::string& seed,
         const std::string& seed_offset /* = {}*/) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     if (seed.empty()) {
         log::error(logcat, "Electrum seed is empty");
@@ -906,38 +904,36 @@ std::string WalletImpl::address(uint32_t accountIndex, uint32_t addressIndex) co
 EXPORT
 std::string WalletImpl::integratedAddress(const std::string& payment_id) const {
     crypto::hash8 pid;
-    if (!tools::hex_to_type(payment_id, pid))
+    if (!tools::try_load_from_hex_guts(payment_id, pid))
         return "";
     return wallet()->get_integrated_address_as_str(pid);
 }
 
 EXPORT
 std::string WalletImpl::secretViewKey() const {
-    return tools::type_to_hex(wallet()->get_account().get_keys().m_view_secret_key);
+    return tools::hex_guts(wallet()->get_account().get_keys().m_view_secret_key);
 }
 
 EXPORT
 std::string WalletImpl::publicViewKey() const {
-    return tools::type_to_hex(
-            wallet()->get_account().get_keys().m_account_address.m_view_public_key);
+    return tools::hex_guts(wallet()->get_account().get_keys().m_account_address.m_view_public_key);
 }
 
 EXPORT
 std::string WalletImpl::secretSpendKey() const {
-    return tools::type_to_hex(wallet()->get_account().get_keys().m_spend_secret_key);
+    return tools::hex_guts(wallet()->get_account().get_keys().m_spend_secret_key);
 }
 
 EXPORT
 std::string WalletImpl::publicSpendKey() const {
-    return tools::type_to_hex(
-            wallet()->get_account().get_keys().m_account_address.m_spend_public_key);
+    return tools::hex_guts(wallet()->get_account().get_keys().m_account_address.m_spend_public_key);
 }
 
 EXPORT
 std::string WalletImpl::publicMultisigSignerKey() const {
     try {
         crypto::public_key signer = wallet()->get_multisig_signer_public_key();
-        return tools::type_to_hex(signer);
+        return tools::hex_guts(signer);
     } catch (const std::exception&) {
         return "";
     }
@@ -945,12 +941,12 @@ std::string WalletImpl::publicMultisigSignerKey() const {
 
 EXPORT
 std::string WalletImpl::path() const {
-    return wallet()->path().u8string();
+    return tools::convert_str<char>(wallet()->path().u8string());
 }
 
 EXPORT
 bool WalletImpl::store(std::string_view path_) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     try {
         if (path.empty()) {
@@ -969,12 +965,12 @@ bool WalletImpl::store(std::string_view path_) {
 
 EXPORT
 std::string WalletImpl::filename() const {
-    return wallet()->get_wallet_file().u8string();
+    return tools::convert_str<char>(wallet()->get_wallet_file().u8string());
 }
 
 EXPORT
 std::string WalletImpl::keysFilename() const {
-    return wallet()->get_keys_file().u8string();
+    return tools::convert_str<char>(wallet()->get_keys_file().u8string());
 }
 
 EXPORT
@@ -1234,7 +1230,7 @@ int WalletImpl::autoRefreshInterval() const {
 }
 
 UnsignedTransaction* WalletImpl::loadUnsignedTx(std::string_view unsigned_filename_) {
-    auto unsigned_filename = fs::u8path(unsigned_filename_);
+    auto unsigned_filename = tools::utf8_path(unsigned_filename_);
     clearStatus();
     UnsignedTransactionImpl* transaction = new UnsignedTransactionImpl(*this);
     if (!wallet()->load_unsigned_tx(unsigned_filename, transaction->m_unsigned_tx_set)) {
@@ -1263,7 +1259,7 @@ UnsignedTransaction* WalletImpl::loadUnsignedTx(std::string_view unsigned_filena
 
 EXPORT
 bool WalletImpl::submitTransaction(std::string_view filename_) {
-    auto fileName = fs::u8path(filename_);
+    auto fileName = tools::utf8_path(filename_);
     clearStatus();
     std::unique_ptr<PendingTransactionImpl> transaction(new PendingTransactionImpl(*this));
 
@@ -1283,7 +1279,7 @@ bool WalletImpl::submitTransaction(std::string_view filename_) {
 
 EXPORT
 bool WalletImpl::exportKeyImages(std::string_view filename_) {
-    auto filename = fs::u8path(filename_);
+    auto filename = tools::utf8_path(filename_);
     auto w = wallet();
     if (w->watch_only()) {
         setStatusError("Wallet is view only");
@@ -1292,7 +1288,7 @@ bool WalletImpl::exportKeyImages(std::string_view filename_) {
 
     try {
         if (!w->export_key_images_to_file(filename, false /* requested_ki_only */)) {
-            setStatusError("failed to save file " + filename.u8string());
+            setStatusError("failed to save file {}"_format(filename));
             return false;
         }
     } catch (const std::exception& e) {
@@ -1305,7 +1301,7 @@ bool WalletImpl::exportKeyImages(std::string_view filename_) {
 
 EXPORT
 bool WalletImpl::importKeyImages(std::string_view filename_) {
-    auto filename = fs::u8path(filename_);
+    auto filename = tools::utf8_path(filename_);
     if (!trustedDaemon()) {
         setStatusError("Key images can only be imported with a trusted daemon");
         return false;
@@ -1863,7 +1859,7 @@ std::string WalletImpl::getCacheAttribute(const std::string& key) const {
 EXPORT
 bool WalletImpl::setUserNote(const std::string& txid, const std::string& note) {
     crypto::hash htxid;
-    if (!tools::hex_to_type(txid, htxid))
+    if (!tools::try_load_from_hex_guts(txid, htxid))
         return false;
 
     wallet()->set_tx_note(htxid, note);
@@ -1873,7 +1869,7 @@ bool WalletImpl::setUserNote(const std::string& txid, const std::string& note) {
 EXPORT
 std::string WalletImpl::getUserNote(const std::string& txid) const {
     crypto::hash htxid;
-    if (!tools::hex_to_type(txid, htxid))
+    if (!tools::try_load_from_hex_guts(txid, htxid))
         return "";
 
     return wallet()->get_tx_note(htxid);
@@ -1882,7 +1878,7 @@ std::string WalletImpl::getUserNote(const std::string& txid) const {
 EXPORT
 std::string WalletImpl::getTxKey(const std::string& txid_str) const {
     crypto::hash txid;
-    if (!tools::hex_to_type(txid_str, txid)) {
+    if (!tools::try_load_from_hex_guts(txid_str, txid)) {
         setStatusError("Failed to parse txid");
         return "";
     }
@@ -1894,9 +1890,9 @@ std::string WalletImpl::getTxKey(const std::string& txid_str) const {
         if (wallet()->get_tx_key(txid, tx_key, additional_tx_keys)) {
             clearStatus();
             std::ostringstream oss;
-            oss << tools::type_to_hex(tx_key);
+            oss << tools::hex_guts(tx_key);
             for (size_t i = 0; i < additional_tx_keys.size(); ++i)
-                oss << tools::type_to_hex(additional_tx_keys[i]);
+                oss << tools::hex_guts(additional_tx_keys[i]);
             return oss.str();
         } else {
             setStatusError("no tx keys found for this txid");
@@ -1917,7 +1913,7 @@ bool WalletImpl::checkTxKey(
         bool& in_pool,
         uint64_t& confirmations) {
     crypto::hash txid;
-    if (!tools::hex_to_type(txid_str, txid)) {
+    if (!tools::try_load_from_hex_guts(txid_str, txid)) {
         setStatusError("Failed to parse txid");
         return false;
     }
@@ -1930,7 +1926,7 @@ bool WalletImpl::checkTxKey(
         if (first)
             first = false;
 
-        if (!tools::hex_to_type(tx_key_str.substr(0, 64), key)) {
+        if (!tools::try_load_from_hex_guts(tx_key_str.substr(0, 64), key)) {
             setStatusError("Failed to parse tx key");
             return false;
         }
@@ -1960,7 +1956,7 @@ std::string WalletImpl::getTxProof(
         const std::string& address_str,
         const std::string& message) const {
     crypto::hash txid;
-    if (!tools::hex_to_type(txid_str, txid)) {
+    if (!tools::try_load_from_hex_guts(txid_str, txid)) {
         setStatusError("Failed to parse txid");
         return "";
     }
@@ -1991,7 +1987,7 @@ bool WalletImpl::checkTxProof(
         bool& in_pool,
         uint64_t& confirmations) {
     crypto::hash txid;
-    if (!tools::hex_to_type(txid_str, txid)) {
+    if (!tools::try_load_from_hex_guts(txid_str, txid)) {
         setStatusError("Failed to parse txid");
         return false;
     }
@@ -2024,7 +2020,7 @@ EXPORT
 std::string WalletImpl::getSpendProof(
         const std::string& txid_str, const std::string& message) const {
     crypto::hash txid;
-    if (!tools::hex_to_type(txid_str, txid)) {
+    if (!tools::try_load_from_hex_guts(txid_str, txid)) {
         setStatusError("Failed to parse txid");
         return "";
     }
@@ -2046,7 +2042,7 @@ bool WalletImpl::checkSpendProof(
         bool& good) const {
     good = false;
     crypto::hash txid;
-    if (!tools::hex_to_type(txid_str, txid)) {
+    if (!tools::try_load_from_hex_guts(txid_str, txid)) {
         setStatusError("Failed to parse txid");
         return false;
     }
@@ -2152,7 +2148,7 @@ bool WalletImpl::verifyMessageWithPublicKey(
     clearStatus();
 
     crypto::public_key pkey;
-    if (!tools::hex_to_type(publicKey, pkey))
+    if (!tools::try_load_from_hex_guts(publicKey, pkey))
         return setStatusError("Given string is not a key");
 
     try {
@@ -2534,7 +2530,7 @@ bool WalletImpl::unblackballOutput(const std::string& amount, const std::string&
 EXPORT
 bool WalletImpl::getRing(const std::string& key_image, std::vector<uint64_t>& ring) const {
     crypto::key_image raw_key_image;
-    if (!tools::hex_to_type(key_image, raw_key_image)) {
+    if (!tools::try_load_from_hex_guts(key_image, raw_key_image)) {
         setStatusError("Failed to parse key image");
         return false;
     }
@@ -2551,7 +2547,7 @@ bool WalletImpl::getRings(
         const std::string& txid,
         std::vector<std::pair<std::string, std::vector<uint64_t>>>& rings) const {
     crypto::hash raw_txid;
-    if (!tools::hex_to_type(txid, raw_txid)) {
+    if (!tools::try_load_from_hex_guts(txid, raw_txid)) {
         setStatusError("Failed to parse txid");
         return false;
     }
@@ -2562,7 +2558,7 @@ bool WalletImpl::getRings(
         return false;
     }
     for (const auto& r : raw_rings) {
-        rings.push_back(std::make_pair(tools::type_to_hex(r.first), r.second));
+        rings.push_back(std::make_pair(tools::hex_guts(r.first), r.second));
     }
     return true;
 }
@@ -2571,7 +2567,7 @@ EXPORT
 bool WalletImpl::setRing(
         const std::string& key_image, const std::vector<uint64_t>& ring, bool relative) {
     crypto::key_image raw_key_image;
-    if (!tools::hex_to_type(key_image, raw_key_image)) {
+    if (!tools::try_load_from_hex_guts(key_image, raw_key_image)) {
         setStatusError("Failed to parse key image");
         return false;
     }
@@ -2622,9 +2618,9 @@ PendingTransaction* WalletImpl::stakePending(
     std::string error_msg;
 
     crypto::public_key sn_key;
-    if (!tools::hex_to_type(sn_key_str, sn_key)) {
+    if (!tools::try_load_from_hex_guts(sn_key_str, sn_key)) {
         error_msg = "Failed to parse service node pubkey";
-        log::error(logcat, error_msg);
+        log::error(logcat, "{}", error_msg);
         transaction->setError(error_msg);
         return transaction;
     }
@@ -2632,7 +2628,7 @@ PendingTransaction* WalletImpl::stakePending(
     tools::wallet2::stake_result stake_result = wallet()->create_stake_tx(sn_key, amount);
     if (stake_result.status != tools::wallet2::stake_result_status::success) {
         error_msg = "Failed to create a stake transaction: " + stake_result.msg;
-        log::error(logcat, error_msg);
+        log::error(logcat, "{}", error_msg);
         transaction->setError(error_msg);
         return transaction;
     }
@@ -2644,7 +2640,7 @@ PendingTransaction* WalletImpl::stakePending(
 EXPORT
 StakeUnlockResult* WalletImpl::canRequestStakeUnlock(const std::string& sn_key) {
     crypto::public_key snode_key;
-    if (!tools::hex_to_type(sn_key, snode_key)) {
+    if (!tools::try_load_from_hex_guts(sn_key, snode_key)) {
         tools::wallet2::request_stake_unlock_result res{};
         res.success = false;
         res.msg = "Failed to Parse Service Node Key";
@@ -2659,7 +2655,7 @@ StakeUnlockResult* WalletImpl::requestStakeUnlock(const std::string& sn_key) {
     tools::wallet2::request_stake_unlock_result res = {};
 
     crypto::public_key snode_key;
-    if (!tools::hex_to_type(sn_key, snode_key)) {
+    if (!tools::try_load_from_hex_guts(sn_key, snode_key)) {
         res.success = false;
         res.msg = "Failed to Parse Service Node Key";
         return new StakeUnlockResultImpl(*this, res);
@@ -2694,7 +2690,7 @@ void WalletImpl::deviceShowAddress(
         uint32_t accountIndex, uint32_t addressIndex, const std::string& paymentId) {
     std::optional<crypto::hash8> payment_id_param = std::nullopt;
     if (!paymentId.empty())
-        if (!tools::hex_to_type(paymentId, payment_id_param.emplace()))
+        if (!tools::try_load_from_hex_guts(paymentId, payment_id_param.emplace()))
             throw std::runtime_error("Invalid payment ID");
 
     wallet()->device_show_address(accountIndex, addressIndex, payment_id_param);

@@ -34,6 +34,7 @@ add_library(common
   command_line.cpp
   error.cpp
   expect.cpp
+  $<$<CONFIG:Debug>:exception.cpp>
   file.cpp
   i18n.cpp
   json_binary_proxy.cpp
@@ -62,11 +63,10 @@ endif()
 
 target_link_libraries(common
   PUBLIC
+    $<$<CONFIG:Debug>:cpptrace::cpptrace>
     cncrypto
     oxenmq::oxenmq
-    filesystem
     oxen::logging
-    fmt::fmt
     nlohmann_json::nlohmann_json
   PRIVATE
     sodium

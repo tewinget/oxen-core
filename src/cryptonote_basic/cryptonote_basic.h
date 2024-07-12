@@ -35,6 +35,7 @@
 #include <atomic>
 #include <vector>
 
+#include "common/exception.h"
 #include "common/format.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
@@ -194,7 +195,7 @@ class transaction_prefix {
     FIELD(vout)
     if (version >= txversion::v3_per_output_unlock_times &&
         vout.size() != output_unlock_times.size()) {
-        throw std::invalid_argument{"v3 tx without correct unlock times"};
+        throw oxen::traced<std::invalid_argument>{"v3 tx without correct unlock times"};
     }
     FIELD(extra)
     if (version >= txversion::v4_tx_types)
@@ -288,21 +289,21 @@ class transaction final : public transaction_prefix {
             signatures.resize(vin.size());
         bool signatures_expected = !signatures.empty();
         if (signatures_expected && vin.size() != signatures.size())
-            throw std::invalid_argument{"Incorrect number of signatures"};
+            throw oxen::traced<std::invalid_argument>{"Incorrect number of signatures"};
 
         const size_t vin_sigs = pruned ? 0 : vin.size();
         for (size_t i = 0; i < vin_sigs; ++i) {
             size_t signature_size = get_signature_size(vin[i]);
             if (!signatures_expected) {
                 if (signature_size > 0)
-                    throw std::invalid_argument{"Invalid unexpected signature"};
+                    throw oxen::traced<std::invalid_argument>{"Invalid unexpected signature"};
                 continue;
             }
 
             if (Archive::is_deserializer)
                 signatures[i].resize(signature_size);
             else if (signature_size != signatures[i].size())
-                throw std::invalid_argument{
+                throw oxen::traced<std::invalid_argument>{
                         "Invalid signature size (expected " + std::to_string(signature_size) +
                         ", have " + std::to_string(signatures[i].size()) + ")"};
 
@@ -420,6 +421,7 @@ struct block : public block_header {
     // hash cache
     mutable crypto::hash hash;
     std::vector<service_nodes::quorum_signature> signatures;
+    uint64_t l2_height = 0;
 };
 
 template <class Archive>
@@ -444,7 +446,7 @@ void serialize_value(Archive& ar, block& b) {
     field(ar, "miner_tx", b.miner_tx);
     field(ar, "tx_hashes", b.tx_hashes);
     if (b.tx_hashes.size() > MAX_TX_PER_BLOCK)
-        throw std::invalid_argument{"too many txs in block"};
+        throw oxen::traced<std::invalid_argument>{"too many txs in block"};
     if (b.major_version >= hf::hf16_pulse)
         field(ar, "signatures", b.signatures);
     if (b.major_version >= hf::hf19_reward_batching) {
@@ -452,6 +454,8 @@ void serialize_value(Archive& ar, block& b) {
         field(ar, "service_node_winner_key", b.service_node_winner_key);
         field(ar, "reward", b.reward);
     }
+    if (b.major_version >= feature::ETH_BLS)
+        field_varint(ar, "l2_height", b.l2_height);
 }
 
 /************************************************************************/
@@ -530,7 +534,9 @@ inline txversion transaction_prefix::get_max_version_for_hf(hf hf_version) {
 
 constexpr txtype transaction_prefix::get_max_type_for_hf(hf hf_version) {
     txtype result = txtype::standard;
-    if (hf_version >= hf::hf15_ons)
+    if (hf_version >= cryptonote::feature::ETH_BLS)
+        result = txtype::ethereum_service_node_deregister;
+    else if (hf_version >= hf::hf15_ons)
         result = txtype::oxen_name_system;
     else if (hf_version >= hf::hf14_blink)
         result = txtype::stake;

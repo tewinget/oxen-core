@@ -444,36 +444,10 @@ class simple_wallet : public tools::i_wallet2_callback {
                 m_blockchain_height_update_time(),
                 m_print_time() {}
 
-        void update(uint64_t height, bool force = false) {
-            auto current_time = std::chrono::system_clock::now();
-            const auto node_update_threshold = TARGET_BLOCK_TIME / 2;
-            if (node_update_threshold < current_time - m_blockchain_height_update_time ||
-                m_blockchain_height <= height) {
-                update_blockchain_height();
-                m_blockchain_height = (std::max)(m_blockchain_height, height);
-            }
-
-            if (std::chrono::milliseconds(20) < current_time - m_print_time || force) {
-                std::cout << QT_TRANSLATE_NOOP("cryptonote::simple_wallet", "Height ") << height
-                          << " / " << m_blockchain_height << '\r' << std::flush;
-                m_print_time = current_time;
-            }
-        }
+        void update(uint64_t height, bool force = false);
 
       private:
-        void update_blockchain_height() {
-            std::string err;
-            uint64_t blockchain_height = m_simple_wallet.get_daemon_blockchain_height(err);
-            if (err.empty()) {
-                m_blockchain_height = blockchain_height;
-                m_blockchain_height_update_time = std::chrono::system_clock::now();
-            } else {
-                log::error(
-                        log::Cat("wallet.simplewallet"),
-                        "Failed to get current blockchain height: {}",
-                        err);
-            }
-        }
+        void update_blockchain_height();
 
       private:
         cryptonote::simple_wallet& m_simple_wallet;
@@ -532,24 +506,20 @@ class simple_wallet : public tools::i_wallet2_callback {
     std::atomic<bool> m_in_command;
 
     tools::periodic_task m_inactivity_checker{
-            std::chrono::seconds(0), true /*start_immediately*/, {80 * 1000000, 100 * 1000000}};
+            "inactivity check", 80s, true /*start_immediately*/, 20s /*up-to random delay*/};
     tools::periodic_task m_refresh_checker{
-            std::chrono::seconds(0), true /*start_immediately*/, {90 * 1000000, 110 * 1000000}};
+            "refresh check", 90s, true /*start_immediately*/, 20s /*up-to random delay*/};
 
 #ifdef WALLET_ENABLE_MMS
     // MMS
     tools::periodic_task m_mms_checker{
-            std::chrono::seconds(0), true /*start_immediately*/, {90 * 1000000, 115 * 1000000}};
+            "mms checker", 90s, true /*start_immediately*/, 25s /*up-to random delay*/};
 
-    mms::message_store& get_message_store() const {
-        return m_wallet->get_message_store();
-    };
+    mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };
     mms::multisig_wallet_state get_multisig_wallet_state() const {
         return m_wallet->get_multisig_wallet_state();
     };
-    bool mms_active() const {
-        return get_message_store().get_active();
-    };
+    bool mms_active() const { return get_message_store().get_active(); };
     bool choose_mms_processing(
             const std::vector<mms::processing_data>& data_list, uint32_t& choice);
     void list_mms_messages(const std::vector<mms::message>& messages);

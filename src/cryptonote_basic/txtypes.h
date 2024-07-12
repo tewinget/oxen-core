@@ -24,6 +24,10 @@ enum class txtype : uint16_t {
     key_image_unlock,
     stake,
     oxen_name_system,
+    ethereum_new_service_node,
+    ethereum_service_node_leave_request,
+    ethereum_service_node_exit,
+    ethereum_service_node_deregister,
     _count
 };
 
@@ -44,6 +48,11 @@ inline constexpr std::string_view to_string(txtype type) {
         case txtype::key_image_unlock: return "key_image_unlock"sv;
         case txtype::stake: return "stake"sv;
         case txtype::oxen_name_system: return "oxen_name_system"sv;
+        case txtype::ethereum_new_service_node: return "ethereum_new_service_node"sv;
+        case txtype::ethereum_service_node_leave_request:
+            return "ethereum_service_node_leave_request"sv;
+        case txtype::ethereum_service_node_exit: return "ethereum_service_node_exit"sv;
+        case txtype::ethereum_service_node_deregister: return "ethereum_service_node_deregister"sv;
         default: assert(false); return "xx_unhandled_type"sv;
     }
 }

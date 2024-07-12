@@ -32,8 +32,9 @@
 // N-quorum establish connections to each other.  The patterns here were determined by the
 // utils/generate-quorum-matrix.py script.
 
+#include <common/exception.h>
+
 #include <array>
-#include <stdexcept>
 
 namespace quorumnet {
 
@@ -49,7 +50,7 @@ class quorum_conn_iterator {
     quorum_conn_iterator(const bool* flags_, int N_, bool outgoing_ = true) :
             flags{flags_}, i{0}, N{N_}, step{outgoing_ ? 1 : N} {
         if (flags == nullptr && N != 0)
-            throw std::domain_error("Invalid/unsupported quorum size (" + std::to_string(N) + ")");
+            throw oxen::traced<std::domain_error>("Invalid/unsupported quorum size (" + std::to_string(N) + ")");
         if (!flags[0] && N > 0)
             ++*this;
     }
@@ -93,7 +94,7 @@ constexpr void requested_quorum_size_is_not_defined() {
 /// Base implementation for quorum matrices; instantiating this is an error; all supported sizes are
 /// defined below.
 template <int N>
-constexpr static std::array<bool, N * N> quorum_conn_matrix =
+constexpr static std::array<bool, N* N> quorum_conn_matrix =
         requested_quorum_size_is_not_defined<N>();
 
 template <>

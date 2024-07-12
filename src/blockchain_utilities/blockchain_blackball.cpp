@@ -31,16 +31,17 @@
 #define __STDC_FORMAT_MACROS  // NOTE(oxen): Explicitly define the PRIu64 macro on Mingw
 #endif
 
+#include <fmt/std.h>
+
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
 #include "common/command_line.h"
 #include "common/file.h"
-#include "common/fs-format.h"
-#include "common/hex.h"
 #include "common/signal_handler.h"
 #include "common/string_util.h"
 #include "common/unordered_containers_boost_serialization.h"
 #include "common/varint.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/uptime_proof.h"
@@ -184,7 +185,7 @@ static int resize_env(const char* db_path) {
     uint64_t mapsize = mei.me_mapsize;
     if (size_used + needed > mei.me_mapsize) {
         try {
-            auto si = fs::space(fs::u8path(db_path));
+            auto si = fs::space(tools::utf8_path(db_path));
             if (si.available < needed) {
                 log::error(
                         logcat,
@@ -225,21 +226,19 @@ static void init(fs::path cache_filename) {
         flags |= MDB_NOSYNC | MDB_WRITEMAP | MDB_MAPASYNC;
 
     dbr = mdb_env_create(&env);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to create LDMB environment: {}", mdb_strerror(dbr));
     dbr = mdb_env_set_maxdbs(env, 7);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to set max env dbs: {}", mdb_strerror(dbr));
     auto actual_filename = get_cache_filename(cache_filename);
     dbr = mdb_env_open(env, actual_filename.string().c_str(), flags, 0664);
     CHECK_AND_ASSERT_THROW_MES(
             !dbr,
-            "Failed to open rings database file '" + actual_filename.string() +
-                    "': " + std::string(mdb_strerror(dbr)));
+            "Failed to open rings database file '{}': {}",
+            actual_filename,
+            mdb_strerror(dbr));
 
     dbr = mdb_txn_begin(env, NULL, 0, &txn);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
     OXEN_DEFER {
         if (tx_active)
             mdb_txn_abort(txn);
@@ -247,35 +246,34 @@ static void init(fs::path cache_filename) {
     tx_active = true;
 
     dbr = mdb_dbi_open(txn, "relative_rings", MDB_CREATE | MDB_INTEGERKEY, &dbi_relative_rings);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: {}", mdb_strerror(dbr));
     mdb_set_compare(txn, dbi_relative_rings, compare_hash32);
 
     dbr = mdb_dbi_open(txn, "outputs", MDB_CREATE | MDB_INTEGERKEY, &dbi_outputs);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: {}", mdb_strerror(dbr));
     mdb_set_compare(txn, dbi_outputs, compare_double64);
 
     dbr = mdb_dbi_open(txn, "processed_txidx", MDB_CREATE, &dbi_processed_txidx);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: {}", mdb_strerror(dbr));
 
     dbr = mdb_dbi_open(
             txn, "spent", MDB_CREATE | MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED, &dbi_spent);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: {}", mdb_strerror(dbr));
     mdb_set_dupsort(txn, dbi_spent, compare_uint64);
 
     dbr = mdb_dbi_open(txn, "per_amount", MDB_CREATE | MDB_INTEGERKEY, &dbi_per_amount);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: {}", mdb_strerror(dbr));
     mdb_set_compare(txn, dbi_per_amount, compare_uint64);
 
     dbr = mdb_dbi_open(txn, "ring_instances", MDB_CREATE, &dbi_ring_instances);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: {}", mdb_strerror(dbr));
 
     dbr = mdb_dbi_open(txn, "stats", MDB_CREATE, &dbi_stats);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: {}", mdb_strerror(dbr));
 
     dbr = mdb_txn_commit(txn);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr,
-            "Failed to commit txn creating/opening database: " + std::string(mdb_strerror(dbr)));
+            !dbr, "Failed to commit txn creating/opening database: {}", mdb_strerror(dbr));
     tx_active = false;
 }
 
@@ -294,7 +292,6 @@ static void close() {
 }
 
 static std::string compress_ring(const std::vector<uint64_t>& ring, std::string s = "") {
-    const size_t sz = s.size();
     s.reserve(s.size() + tools::VARINT_MAX_LENGTH<uint64_t> * ring.size());
     auto ins = std::back_inserter(s);
     for (uint64_t out : ring)
@@ -338,20 +335,19 @@ static bool for_all_transactions(
 
     dbr = mdb_env_create(&env);
     if (dbr)
-        throw std::runtime_error(
+        throw oxen::traced<std::runtime_error>(
                 "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_set_maxdbs(env, 2);
     if (dbr)
-        throw std::runtime_error("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_open(env, filename.string().c_str(), 0, 0664);
     if (dbr)
-        throw std::runtime_error(
-                "Failed to open rings database file '" + filename.u8string() +
-                "': " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open rings database file '{}': {}"_format(filename, mdb_strerror(dbr)));
 
     dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
     if (dbr)
-        throw std::runtime_error(
+        throw oxen::traced<std::runtime_error>(
                 "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
     OXEN_DEFER {
         if (tx_active)
@@ -363,14 +359,14 @@ static bool for_all_transactions(
     if (dbr)
         dbr = mdb_dbi_open(txn, "txs", MDB_INTEGERKEY, &dbi);
     if (dbr)
-        throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_cursor_open(txn, dbi, &cur);
     if (dbr)
-        throw std::runtime_error("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
     MDB_stat stat;
     dbr = mdb_stat(txn, dbi, &stat);
     if (dbr)
-        throw std::runtime_error("Failed to query m_block_info: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to query m_block_info: " + std::string(mdb_strerror(dbr)));
     n_txes = stat.ms_entries;
 
     bool fret = true;
@@ -384,11 +380,11 @@ static bool for_all_transactions(
         if (ret == MDB_NOTFOUND)
             break;
         if (ret)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to enumerate transactions: " + std::string(mdb_strerror(ret)));
 
         if (k.mv_size != sizeof(uint64_t))
-            throw std::runtime_error("Bad key size");
+            throw oxen::traced<std::runtime_error>("Bad key size");
         const uint64_t idx = *(uint64_t*)k.mv_data;
         if (idx < start_idx)
             continue;
@@ -412,7 +408,7 @@ static bool for_all_transactions(
     mdb_cursor_close(cur);
     dbr = mdb_txn_commit(txn);
     if (dbr)
-        throw std::runtime_error(
+        throw oxen::traced<std::runtime_error>(
                 "Failed to commit db transaction: " + std::string(mdb_strerror(dbr)));
     tx_active = false;
     mdb_dbi_close(env, dbi);
@@ -436,20 +432,19 @@ static bool for_all_transactions(
 
     dbr = mdb_env_create(&env);
     if (dbr)
-        throw std::runtime_error(
+        throw oxen::traced<std::runtime_error>(
                 "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_set_maxdbs(env, 3);
     if (dbr)
-        throw std::runtime_error("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_open(env, filename.string().c_str(), 0, 0664);
     if (dbr)
-        throw std::runtime_error(
-                "Failed to open rings database file '" + filename.u8string() +
-                "': " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open rings database file '{}': {}"_format(filename, mdb_strerror(dbr)));
 
     dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
     if (dbr)
-        throw std::runtime_error(
+        throw oxen::traced<std::runtime_error>(
                 "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
     OXEN_DEFER {
         if (tx_active)
@@ -459,26 +454,26 @@ static bool for_all_transactions(
 
     dbr = mdb_dbi_open(txn, "blocks", MDB_INTEGERKEY, &dbi_blocks);
     if (dbr)
-        throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_dbi_open(txn, "txs_pruned", MDB_INTEGERKEY, &dbi_txs);
     if (dbr)
-        throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
 
     dbr = mdb_cursor_open(txn, dbi_blocks, &cur_blocks);
     if (dbr)
-        throw std::runtime_error("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_cursor_open(txn, dbi_txs, &cur_txs);
     if (dbr)
-        throw std::runtime_error("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
 
     MDB_stat stat;
     dbr = mdb_stat(txn, dbi_blocks, &stat);
     if (dbr)
-        throw std::runtime_error("Failed to query txs stat: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to query txs stat: " + std::string(mdb_strerror(dbr)));
     uint64_t n_blocks = stat.ms_entries;
     dbr = mdb_stat(txn, dbi_txs, &stat);
     if (dbr)
-        throw std::runtime_error("Failed to query txs stat: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to query txs stat: " + std::string(mdb_strerror(dbr)));
     n_txes = stat.ms_entries;
 
     bool fret = true;
@@ -492,24 +487,22 @@ static bool for_all_transactions(
         if (ret == MDB_NOTFOUND)
             break;
         if (ret)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to enumerate blocks: " + std::string(mdb_strerror(ret)));
 
         if (k.mv_size != sizeof(uint64_t))
-            throw std::runtime_error("Bad key size");
+            throw oxen::traced<std::runtime_error>("Bad key size");
         uint64_t height = *(const uint64_t*)k.mv_data;
         std::string bd;
         bd.assign(reinterpret_cast<char*>(v.mv_data), v.mv_size);
         block b;
         if (!parse_and_validate_block_from_blob(bd, b))
-            throw std::runtime_error("Failed to parse block from blob retrieved from the db");
+            throw oxen::traced<std::runtime_error>("Failed to parse block from blob retrieved from the db");
 
         ret = mdb_cursor_get(cur_txs, &k, &v, op_txs);
         if (ret)
-            throw std::runtime_error(
-                    "Failed to fetch transaction " +
-                    tools::type_to_hex(get_transaction_hash(b.miner_tx)) + ": " +
-                    std::string(mdb_strerror(ret)));
+            throw oxen::traced<std::runtime_error>{"Failed to fetch transaction {}: {}"_format(
+                    get_transaction_hash(b.miner_tx), mdb_strerror(ret))};
         op_txs = MDB_NEXT;
 
         bool last_block = height == n_blocks - 1;
@@ -521,9 +514,8 @@ static bool for_all_transactions(
             const crypto::hash& txid = b.tx_hashes[i];
             ret = mdb_cursor_get(cur_txs, &k, &v, op_txs);
             if (ret)
-                throw std::runtime_error(
-                        "Failed to fetch transaction " + tools::type_to_hex(txid) + ": " +
-                        std::string(mdb_strerror(ret)));
+                throw oxen::traced<std::runtime_error>{
+                        "Failed to fetch transaction {}: {}"_format(txid, mdb_strerror(ret))};
             if (start_idx <= tx_idx++) {
                 cryptonote::transaction_prefix tx;
                 bd.assign(reinterpret_cast<char*>(v.mv_data), v.mv_size);
@@ -572,22 +564,21 @@ static uint64_t find_first_diverging_transaction(
     for (int i = 0; i < 2; ++i) {
         dbr = mdb_env_create(&env[i]);
         if (dbr)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
         dbr = mdb_env_set_maxdbs(env[i], 2);
         if (dbr)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
         const fs::path& actual_filename = i ? second_filename : first_filename;
         dbr = mdb_env_open(env[i], actual_filename.string().c_str(), 0, 0664);
         if (dbr)
-            throw std::runtime_error(
-                    "Failed to open rings database file '" + actual_filename.u8string() +
-                    "': " + std::string(mdb_strerror(dbr)));
+            throw oxen::traced<std::runtime_error>("Failed to open rings database file '{}': {}"_format(
+                    actual_filename, mdb_strerror(dbr)));
 
         dbr = mdb_txn_begin(env[i], NULL, MDB_RDONLY, &txn[i]);
         if (dbr)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
         tx_active[i] = true;
 
@@ -595,21 +586,21 @@ static uint64_t find_first_diverging_transaction(
         if (dbr)
             dbr = mdb_dbi_open(txn[i], "txs", MDB_INTEGERKEY, &dbi[i]);
         if (dbr)
-            throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+            throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
         dbr = mdb_cursor_open(txn[i], dbi[i], &cur[i]);
         if (dbr)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
         MDB_stat stat;
         dbr = mdb_stat(txn[i], dbi[i], &stat);
         if (dbr)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to query m_block_info: " + std::string(mdb_strerror(dbr)));
         n_txes[i] = stat.ms_entries;
     }
 
     if (n_txes[0] == 0 || n_txes[1] == 0)
-        throw std::runtime_error("No transaction in the database");
+        throw oxen::traced<std::runtime_error>("No transaction in the database");
     uint64_t lo = 0, hi = std::min(n_txes[0], n_txes[1]) - 1;
     while (lo <= hi) {
         uint64_t mid = (lo + hi) / 2;
@@ -618,11 +609,11 @@ static uint64_t find_first_diverging_transaction(
         k.mv_data = (void*)&mid;
         dbr = mdb_cursor_get(cur[0], &k, &v[0], MDB_SET);
         if (dbr)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to query transaction: " + std::string(mdb_strerror(dbr)));
         dbr = mdb_cursor_get(cur[1], &k, &v[1], MDB_SET);
         if (dbr)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to query transaction: " + std::string(mdb_strerror(dbr)));
         if (v[0].mv_size == v[1].mv_size && !memcmp(v[0].mv_data, v[1].mv_data, v[0].mv_size))
             lo = mid + 1;
@@ -634,7 +625,7 @@ static uint64_t find_first_diverging_transaction(
         mdb_cursor_close(cur[i]);
         dbr = mdb_txn_commit(txn[i]);
         if (dbr)
-            throw std::runtime_error(
+            throw oxen::traced<std::runtime_error>(
                     "Failed to query transaction: " + std::string(mdb_strerror(dbr)));
         tx_active[i] = false;
         mdb_dbi_close(env[i], dbi[i]);
@@ -662,8 +653,7 @@ static uint64_t get_num_spent_outputs() {
     bool tx_active = false;
 
     int dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
     OXEN_DEFER {
         if (tx_active)
             mdb_txn_abort(txn);
@@ -673,7 +663,7 @@ static uint64_t get_num_spent_outputs() {
     MDB_cursor* cur;
     dbr = mdb_cursor_open(txn, dbi_spent, &cur);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to open cursor for spent outputs: " + std::string(mdb_strerror(dbr)));
+            !dbr, "Failed to open cursor for spent outputs: {}", mdb_strerror(dbr));
     MDB_val k, v;
     mdb_size_t count = 0, tmp;
 
@@ -684,16 +674,15 @@ static uint64_t get_num_spent_outputs() {
         if (dbr == MDB_NOTFOUND)
             break;
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to get first/next spent output: " + std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to get first/next spent output: {}", mdb_strerror(dbr));
         dbr = mdb_cursor_count(cur, &tmp);
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to count entries: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to count entries: {}", mdb_strerror(dbr));
         count += tmp;
     }
 
     mdb_cursor_close(cur);
     dbr = mdb_txn_commit(txn);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to commit txn: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to commit txn: {}", mdb_strerror(dbr));
     tx_active = false;
 
     return count;
@@ -705,8 +694,7 @@ static bool add_spent_output(MDB_cursor* cur, const output_data& od) {
     int dbr = mdb_cursor_put(cur, &k, &v, MDB_NODUPDATA);
     if (dbr == MDB_KEYEXIST)
         return false;
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to add spent output: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to add spent output: {}", mdb_strerror(dbr));
     return true;
 }
 
@@ -715,8 +703,7 @@ static bool is_output_spent(MDB_cursor* cur, const output_data& od) {
     MDB_val v = {sizeof(od.offset), (void*)&od.offset};
     int dbr = mdb_cursor_get(cur, &k, &v, MDB_GET_BOTH);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr || dbr == MDB_NOTFOUND,
-            "Failed to get spent output: " + std::string(mdb_strerror(dbr)));
+            !dbr || dbr == MDB_NOTFOUND, "Failed to get spent output: {}", mdb_strerror(dbr));
     bool spent = dbr == 0;
     return spent;
 }
@@ -725,16 +712,14 @@ static std::vector<output_data> get_spent_outputs(MDB_txn* txn) {
     MDB_cursor* cur;
     int dbr = mdb_cursor_open(txn, dbi_spent, &cur);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to open cursor for spent outputs: " + std::string(mdb_strerror(dbr)));
+            !dbr, "Failed to open cursor for spent outputs: {}", mdb_strerror(dbr));
     MDB_val k, v;
     mdb_size_t count = 0;
     dbr = mdb_cursor_get(cur, &k, &v, MDB_FIRST);
     if (dbr != MDB_NOTFOUND) {
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to get first spent output: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to get first spent output: {}", mdb_strerror(dbr));
         dbr = mdb_cursor_count(cur, &count);
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to count entries: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to count entries: {}", mdb_strerror(dbr));
     }
     std::vector<output_data> outs;
     outs.reserve(count);
@@ -743,8 +728,7 @@ static std::vector<output_data> get_spent_outputs(MDB_txn* txn) {
         dbr = mdb_cursor_get(cur, &k, &v, MDB_NEXT);
         if (dbr == MDB_NOTFOUND)
             break;
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to get next spent output: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to get next spent output: {}", mdb_strerror(dbr));
     }
     mdb_cursor_close(cur);
     return outs;
@@ -755,18 +739,15 @@ static void get_per_amount_outputs(
     MDB_cursor* cur;
     int dbr = mdb_cursor_open(txn, dbi_per_amount, &cur);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr,
-            "Failed to open cursor for per amount outputs: " + std::string(mdb_strerror(dbr)));
+            !dbr, "Failed to open cursor for per amount outputs: {}", mdb_strerror(dbr));
     MDB_val k, v;
-    mdb_size_t count = 0;
     k.mv_size = sizeof(uint64_t);
     k.mv_data = (void*)&amount;
     dbr = mdb_cursor_get(cur, &k, &v, MDB_SET);
     if (dbr == MDB_NOTFOUND) {
         total = spent = 0;
     } else {
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to get per amount outputs: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to get per amount outputs: {}", mdb_strerror(dbr));
         total = ((const uint64_t*)v.mv_data)[0];
         spent = ((const uint64_t*)v.mv_data)[1];
     }
@@ -777,10 +758,8 @@ static void inc_per_amount_outputs(MDB_txn* txn, uint64_t amount, uint64_t total
     MDB_cursor* cur;
     int dbr = mdb_cursor_open(txn, dbi_per_amount, &cur);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr,
-            "Failed to open cursor for per amount outputs: " + std::string(mdb_strerror(dbr)));
+            !dbr, "Failed to open cursor for per amount outputs: {}", mdb_strerror(dbr));
     MDB_val k, v;
-    mdb_size_t count = 0;
     k.mv_size = sizeof(uint64_t);
     k.mv_data = (void*)&amount;
     dbr = mdb_cursor_get(cur, &k, &v, MDB_SET);
@@ -789,16 +768,14 @@ static void inc_per_amount_outputs(MDB_txn* txn, uint64_t amount, uint64_t total
         spent += ((const uint64_t*)v.mv_data)[1];
     } else {
         CHECK_AND_ASSERT_THROW_MES(
-                dbr == MDB_NOTFOUND,
-                "Failed to get per amount outputs: " + std::string(mdb_strerror(dbr)));
+                dbr == MDB_NOTFOUND, "Failed to get per amount outputs: {}", mdb_strerror(dbr));
     }
     uint64_t data[2] = {total, spent};
     v.mv_size = 2 * sizeof(uint64_t);
     v.mv_data = (void*)data;
     dbr = mdb_cursor_put(cur, &k, &v, 0);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr,
-            "Failed to write record for per amount outputs: " + std::string(mdb_strerror(dbr)));
+            !dbr, "Failed to write record for per amount outputs: {}", mdb_strerror(dbr));
     mdb_cursor_close(cur);
 }
 
@@ -807,8 +784,7 @@ static uint64_t get_processed_txidx(const std::string& name) {
     bool tx_active = false;
 
     int dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
     OXEN_DEFER {
         if (tx_active)
             mdb_txn_abort(txn);
@@ -821,13 +797,12 @@ static uint64_t get_processed_txidx(const std::string& name) {
     k.mv_size = name.size();
     dbr = mdb_get(txn, dbi_processed_txidx, &k, &v);
     if (dbr != MDB_NOTFOUND) {
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to get processed height: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to get processed height: {}", mdb_strerror(dbr));
         height = *(const uint64_t*)v.mv_data;
     }
 
     dbr = mdb_txn_commit(txn);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to commit txn: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to commit txn: {}", mdb_strerror(dbr));
     tx_active = false;
 
     return height;
@@ -840,8 +815,7 @@ static void set_processed_txidx(MDB_txn* txn, const std::string& name, uint64_t 
     v.mv_data = (void*)&height;
     v.mv_size = sizeof(height);
     int dbr = mdb_put(txn, dbi_processed_txidx, &k, &v, 0);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to set processed height: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to set processed height: {}", mdb_strerror(dbr));
 }
 
 static bool get_relative_ring(
@@ -852,8 +826,7 @@ static bool get_relative_ring(
     int dbr = mdb_get(txn, dbi_relative_rings, &k, &v);
     if (dbr == MDB_NOTFOUND)
         return false;
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to get relative ring: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to get relative ring: {}", mdb_strerror(dbr));
     ring = decompress_ring(std::string((const char*)v.mv_data, v.mv_size));
     return true;
 }
@@ -867,8 +840,7 @@ static void set_relative_ring(
     v.mv_data = (void*)sring.c_str();
     v.mv_size = sring.size();
     int dbr = mdb_put(txn, dbi_relative_rings, &k, &v, 0);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to set relative ring: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to set relative ring: {}", mdb_strerror(dbr));
 }
 
 static std::string keep_under_511(const std::string& s) {
@@ -888,8 +860,7 @@ static uint64_t get_ring_instances(
     int dbr = mdb_get(txn, dbi_ring_instances, &k, &v);
     if (dbr == MDB_NOTFOUND)
         return 0;
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to get ring instances: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to get ring instances: {}", mdb_strerror(dbr));
     return *(const uint64_t*)v.mv_data;
 }
 
@@ -921,8 +892,7 @@ static uint64_t inc_ring_instances(
 
     int dbr = mdb_get(txn, dbi_ring_instances, &k, &v);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr || dbr == MDB_NOTFOUND,
-            "Failed to get ring instances: " + std::string(mdb_strerror(dbr)));
+            !dbr || dbr == MDB_NOTFOUND, "Failed to get ring instances: {}", mdb_strerror(dbr));
 
     uint64_t count;
     if (dbr == MDB_NOTFOUND)
@@ -933,8 +903,7 @@ static uint64_t inc_ring_instances(
     v.mv_data = &count;
     v.mv_size = sizeof(count);
     dbr = mdb_put(txn, dbi_ring_instances, &k, &v, 0);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to set ring instances: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to set ring instances: {}", mdb_strerror(dbr));
 
     return count;
 }
@@ -945,7 +914,7 @@ static std::vector<crypto::key_image> get_key_images(MDB_txn* txn, const output_
     k.mv_size = sizeof(od);
     int dbr = mdb_get(txn, dbi_outputs, &k, &v);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr || dbr == MDB_NOTFOUND, "Failed to get output: " + std::string(mdb_strerror(dbr)));
+            !dbr || dbr == MDB_NOTFOUND, "Failed to get output: {}", mdb_strerror(dbr));
     if (dbr == MDB_NOTFOUND)
         return {};
     CHECK_AND_ASSERT_THROW_MES(v.mv_size % 32 == 0, "Unexpected record size");
@@ -973,7 +942,7 @@ static void add_key_image(MDB_txn* txn, const output_data& od, const crypto::key
     v.mv_data = (void*)data.data();
     v.mv_size = data.size();
     dbr = mdb_put(txn, dbi_outputs, &k, &v, 0);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to set outputs: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to set outputs: {}", mdb_strerror(dbr));
 }
 
 static bool get_stat(MDB_txn* txn, const char* key, uint64_t& data) {
@@ -1020,30 +989,24 @@ static void open_db(
         flags |= MDB_NOSYNC | MDB_WRITEMAP | MDB_MAPASYNC;
 
     int dbr = mdb_env_create(env);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to create LDMB environment: {}", mdb_strerror(dbr));
     dbr = mdb_env_set_maxdbs(*env, 1);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to set max env dbs: {}", mdb_strerror(dbr));
     log::info(logcat, "Opening oxen blockchain at {}", filename);
     dbr = mdb_env_open(*env, filename.string().c_str(), flags, 0664);
     CHECK_AND_ASSERT_THROW_MES(
-            !dbr,
-            "Failed to open rings database file '" + filename.u8string() +
-                    "': " + std::string(mdb_strerror(dbr)));
+            !dbr, "Failed to open rings database file '{}': {}", filename, mdb_strerror(dbr));
 
     dbr = mdb_txn_begin(*env, NULL, MDB_RDONLY, txn);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
 
     dbr = mdb_dbi_open(
             *txn, "output_amounts", MDB_CREATE | MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED, dbi);
-    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB dbi: {}", mdb_strerror(dbr));
     mdb_set_dupsort(*txn, *dbi, compare_uint64);
 
     dbr = mdb_cursor_open(*txn, *dbi, cur);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to create LMDB cursor: {}", mdb_strerror(dbr));
 }
 
 static void close_db(MDB_env* env, MDB_txn* txn, MDB_cursor* cur, MDB_dbi dbi) {
@@ -1062,19 +1025,19 @@ static void get_num_outputs(
         rct = 0;
     } else {
         if (dbr)
-            throw std::runtime_error("Record 0 not found: " + std::string(mdb_strerror(dbr)));
+            throw oxen::traced<std::runtime_error>("Record 0 not found: " + std::string(mdb_strerror(dbr)));
         mdb_size_t count = 0;
         dbr = mdb_cursor_count(cur, &count);
         if (dbr)
-            throw std::runtime_error("Failed to count records: " + std::string(mdb_strerror(dbr)));
+            throw oxen::traced<std::runtime_error>("Failed to count records: " + std::string(mdb_strerror(dbr)));
         rct = count;
     }
     MDB_stat s;
     dbr = mdb_stat(txn, dbi, &s);
     if (dbr)
-        throw std::runtime_error("Failed to count records: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to count records: " + std::string(mdb_strerror(dbr)));
     if (s.ms_entries < rct)
-        throw std::runtime_error("Inconsistent records: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Inconsistent records: " + std::string(mdb_strerror(dbr)));
     pre_rct = s.ms_entries - rct;
 }
 
@@ -1087,20 +1050,19 @@ static crypto::hash get_genesis_block_hash(const fs::path& filename) {
 
     dbr = mdb_env_create(&env);
     if (dbr)
-        throw std::runtime_error(
+        throw oxen::traced<std::runtime_error>(
                 "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_set_maxdbs(env, 1);
     if (dbr)
-        throw std::runtime_error("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_open(env, filename.string().c_str(), 0, 0664);
     if (dbr)
-        throw std::runtime_error(
-                "Failed to open rings database file '" + filename.u8string() +
-                "': " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open rings database file '{}': {}"_format(filename, mdb_strerror(dbr)));
 
     dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
     if (dbr)
-        throw std::runtime_error(
+        throw oxen::traced<std::runtime_error>(
                 "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
     OXEN_DEFER {
         if (tx_active)
@@ -1111,12 +1073,12 @@ static crypto::hash get_genesis_block_hash(const fs::path& filename) {
     dbr = mdb_dbi_open(txn, "block_info", MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED, &dbi);
     mdb_set_dupsort(txn, dbi, compare_uint64);
     if (dbr)
-        throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     uint64_t zero = 0;
     MDB_val k = {sizeof(uint64_t), (void*)&zero}, v;
     dbr = mdb_get(txn, dbi, &k, &v);
     if (dbr)
-        throw std::runtime_error(
+        throw oxen::traced<std::runtime_error>(
                 "Failed to retrieve genesis block: " + std::string(mdb_strerror(dbr)));
     crypto::hash genesis_block_hash = *(const crypto::hash*)(((const uint64_t*)v.mv_data) + 5);
     mdb_dbi_close(env, dbi);
@@ -1154,7 +1116,6 @@ static std::vector<std::pair<uint64_t, uint64_t>> load_outputs(const fs::path& f
             s[len - 1] = 0;
         if (!s[0])
             continue;
-        std::pair<uint64_t, uint64_t> output;
         uint64_t offset, num_offsets;
         if (sscanf(s, "@%" PRIu64, &amount) == 1) {
             continue;
@@ -1233,6 +1194,7 @@ static bool export_spent_outputs(MDB_cursor* cur, const fs::path& filename) {
 }
 
 int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -1246,15 +1208,14 @@ int main(int argc, char* argv[]) {
     const command_line::arg_descriptor<std::string> arg_blackball_db_dir = {
             "spent-output-db-dir",
             "Specify spent output database directory",
-            get_default_db_path().u8string(),
+            tools::convert_str<char>(get_default_db_path().u8string()),
     };
     const command_line::arg_descriptor<std::string> arg_log_level = {
             "log-level", "0-4 or categories", ""};
-    const command_line::arg_descriptor<bool> arg_rct_only = {
-            "rct-only", "Only work on ringCT outputs", false};
-    const command_line::arg_descriptor<bool> arg_check_subsets = {
-            "check-subsets", "Check ring subsets (very expensive)", false};
-    const command_line::arg_descriptor<bool> arg_verbose = {"verbose", "Verbose output)", false};
+    const command_line::arg_flag arg_rct_only{"rct-only", "Only work on ringCT outputs"};
+    const command_line::arg_flag arg_check_subsets{
+            "check-subsets", "Check ring subsets (very expensive)"};
+    const command_line::arg_flag arg_verbose = {"verbose", "Verbose output"};
     const command_line::arg_descriptor<std::vector<std::string>> arg_inputs = {
             "inputs", "Path to Oxen DB, and path to any fork DBs"};
     const command_line::arg_descriptor<std::string> arg_db_sync_mode = {
@@ -1265,10 +1226,10 @@ int main(int argc, char* argv[]) {
             "extra-spent-list", "Optional list of known spent outputs", ""};
     const command_line::arg_descriptor<std::string> arg_export = {
             "export", "Filename to export the backball list to"};
-    const command_line::arg_descriptor<bool> arg_force_chain_reaction_pass = {
+    const command_line::arg_flag arg_force_chain_reaction_pass = {
             "force-chain-reaction-pass",
             "Run the chain reaction pass even if no new blockchain data was processed"};
-    const command_line::arg_descriptor<bool> arg_historical_stat = {
+    const command_line::arg_flag arg_historical_stat = {
             "historical-stat",
             "Report historical stat of spent outputs for every 10000 blocks window"};
 
@@ -1289,7 +1250,7 @@ int main(int argc, char* argv[]) {
     desc_options.add(desc_cmd_only).add(desc_cmd_sett);
 
     po::positional_options_description positional_options;
-    positional_options.add(arg_inputs.name, -1);
+    positional_options.add(arg_inputs.name.c_str(), -1);
 
     po::variables_map vm;
     bool r = command_line::handle_error_helper(desc_options, [&]() {
@@ -1311,18 +1272,10 @@ int main(int argc, char* argv[]) {
 
     auto m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
     auto log_file_path = m_config_folder + "oxen-blockchain-mark-spent-outputs.log";
-    log::Level log_level;
-    if (auto level = oxen::logging::parse_level(command_line::get_arg(vm, arg_log_level).c_str())) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
-                  << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
-    }
-    oxen::logging::init(log_file_path, log_level);
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
     log::warning(logcat, "Starting...");
 
-    fs::path output_file_path = fs::u8path(command_line::get_arg(vm, arg_blackball_db_dir));
+    fs::path output_file_path = tools::utf8_path(command_line::get_arg(vm, arg_blackball_db_dir));
     bool opt_rct_only = command_line::get_arg(vm, arg_rct_only);
     bool opt_check_subsets = command_line::get_arg(vm, arg_check_subsets);
     bool opt_verbose = command_line::get_arg(vm, arg_verbose);
@@ -1342,7 +1295,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<fs::path> inputs;
     for (auto& in : command_line::get_arg(vm, arg_inputs))
-        inputs.push_back(fs::u8path(in));
+        inputs.push_back(tools::utf8_path(in));
     if (inputs.empty()) {
         log::warning(logcat, "No inputs given");
         return 1;
@@ -1359,19 +1312,16 @@ int main(int argc, char* argv[]) {
 
     log::warning(logcat, "Scanning for spent outputs...");
 
-    size_t done = 0;
-
     const uint64_t start_blackballed_outputs = get_num_spent_outputs();
 
     tools::ringdb ringdb(
-            output_file_path.string(), tools::type_to_hex(get_genesis_block_hash(inputs[0])));
+            output_file_path.string(), tools::hex_guts(get_genesis_block_hash(inputs[0])));
 
     bool stop_requested = false;
-    tools::signal_handler::install([&stop_requested](int type) { stop_requested = true; });
+    tools::signal_handler::install([&stop_requested](int) { stop_requested = true; });
 
     int dbr = resize_env(cache_dir.string().c_str());
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to resize LMDB database: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to resize LMDB database: {}", mdb_strerror(dbr));
 
     // open first db
     MDB_env* env0;
@@ -1393,11 +1343,10 @@ int main(int argc, char* argv[]) {
         MDB_txn* txn;
         int dbr = mdb_txn_begin(env, NULL, 0, &txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
         MDB_cursor* cur;
         dbr = mdb_cursor_open(txn, dbi_spent, &cur);
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to open LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB cursor: {}", mdb_strerror(dbr));
 
         const uint64_t STAT_WINDOW = 10000;
         uint64_t outs_total = 0;
@@ -1436,8 +1385,8 @@ int main(int argc, char* argv[]) {
                         ++outs_total;
                         CHECK_AND_ASSERT_THROW_MES(
                                 std::holds_alternative<txout_to_key>(out.target),
-                                "Out target type is not txout_to_key: height=" +
-                                        std::to_string(height));
+                                "Out target type is not txout_to_key: height={}",
+                                height);
                         uint64_t out_global_index = outs_per_amount[out.amount]++;
                         if (is_output_spent(cur, output_data(out.amount, out_global_index)))
                             ++outs_spent;
@@ -1463,9 +1412,7 @@ int main(int argc, char* argv[]) {
         mdb_cursor_close(cur);
         dbr = mdb_txn_commit(txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr,
-                "Failed to commit txn creating/opening database: " +
-                        std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to commit txn creating/opening database: {}", mdb_strerror(dbr));
         goto skip_secondary_passes;
     }
 
@@ -1474,11 +1421,10 @@ int main(int argc, char* argv[]) {
         MDB_txn* txn;
         int dbr = mdb_txn_begin(env, NULL, 0, &txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
         MDB_cursor* cur;
         dbr = mdb_cursor_open(txn, dbi_spent, &cur);
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to open LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB cursor: {}", mdb_strerror(dbr));
 
         std::vector<std::pair<uint64_t, uint64_t>> blackballs;
         for (const std::pair<uint64_t, uint64_t>& output : extra_spent_outputs) {
@@ -1495,13 +1441,11 @@ int main(int argc, char* argv[]) {
         mdb_cursor_close(cur);
         dbr = mdb_txn_commit(txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr,
-                "Failed to commit txn creating/opening database: " +
-                        std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to commit txn creating/opening database: {}", mdb_strerror(dbr));
     }
 
     for (size_t n = 0; n < inputs.size(); ++n) {
-        const std::string canonical = fs::canonical(inputs[n]).u8string();
+        const std::string canonical = tools::convert_str<char>(fs::canonical(inputs[n]).u8string());
         uint64_t start_idx = get_processed_txidx(canonical);
         if (n > 0 && start_idx == 0) {
             start_idx = find_first_diverging_transaction(inputs[0], inputs[n]);
@@ -1511,11 +1455,10 @@ int main(int argc, char* argv[]) {
         MDB_txn* txn;
         int dbr = mdb_txn_begin(env, NULL, 0, &txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
         MDB_cursor* cur;
         dbr = mdb_cursor_open(txn, dbi_spent, &cur);
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to open LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB cursor: {}", mdb_strerror(dbr));
         size_t records = 0;
         std::vector<std::pair<uint64_t, uint64_t>> blackballs;
         uint64_t n_txes;
@@ -1727,22 +1670,17 @@ int main(int argc, char* argv[]) {
                         dbr = mdb_txn_commit(txn);
                         CHECK_AND_ASSERT_THROW_MES(
                                 !dbr,
-                                "Failed to commit txn creating/opening database: " +
-                                        std::string(mdb_strerror(dbr)));
+                                "Failed to commit txn creating/opening database: {}",
+                                mdb_strerror(dbr));
                         int dbr = resize_env(cache_dir.string().c_str());
                         CHECK_AND_ASSERT_THROW_MES(
-                                !dbr,
-                                "Failed to resize LMDB database: " +
-                                        std::string(mdb_strerror(dbr)));
+                                !dbr, "Failed to resize LMDB database: {}", mdb_strerror(dbr));
                         dbr = mdb_txn_begin(env, NULL, 0, &txn);
                         CHECK_AND_ASSERT_THROW_MES(
-                                !dbr,
-                                "Failed to create LMDB transaction: " +
-                                        std::string(mdb_strerror(dbr)));
+                                !dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
                         dbr = mdb_cursor_open(txn, dbi_spent, &cur);
                         CHECK_AND_ASSERT_THROW_MES(
-                                !dbr,
-                                "Failed to open LMDB cursor: " + std::string(mdb_strerror(dbr)));
+                                !dbr, "Failed to open LMDB cursor: {}", mdb_strerror(dbr));
                         records = 0;
                     }
 
@@ -1755,9 +1693,7 @@ int main(int argc, char* argv[]) {
         mdb_cursor_close(cur);
         dbr = mdb_txn_commit(txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr,
-                "Failed to commit txn creating/opening database: " +
-                        std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to commit txn creating/opening database: {}", mdb_strerror(dbr));
         log::warning(logcat, "blockchain from {} processed till tx idx {}", inputs[n], start_idx);
         if (stop_requested)
             break;
@@ -1770,7 +1706,7 @@ int main(int argc, char* argv[]) {
         MDB_txn* txn;
         dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
         work_spent = get_spent_outputs(txn);
         mdb_txn_abort(txn);
     }
@@ -1779,17 +1715,15 @@ int main(int argc, char* argv[]) {
         log::warning(logcat, "Secondary pass on {} spent outputs", work_spent.size());
 
         int dbr = resize_env(cache_dir.string().c_str());
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to resize LMDB database: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to resize LMDB database: {}", mdb_strerror(dbr));
 
         MDB_txn* txn;
         dbr = mdb_txn_begin(env, NULL, 0, &txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
         MDB_cursor* cur;
         dbr = mdb_cursor_open(txn, dbi_spent, &cur);
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to open LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB cursor: {}", mdb_strerror(dbr));
 
         std::vector<std::pair<uint64_t, uint64_t>> blackballs;
         std::vector<output_data> scan_spent = std::move(work_spent);
@@ -1845,9 +1779,7 @@ int main(int argc, char* argv[]) {
         mdb_cursor_close(cur);
         dbr = mdb_txn_commit(txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr,
-                "Failed to commit txn creating/opening database: " +
-                        std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to commit txn creating/opening database: {}", mdb_strerror(dbr));
     }
 
 skip_secondary_passes:
@@ -1860,8 +1792,7 @@ skip_secondary_passes:
 
     MDB_txn* txn;
     dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
-    CHECK_AND_ASSERT_THROW_MES(
-            !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+    CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
     uint64_t pre_rct = 0, rct = 0;
     get_num_outputs(txn0, cur0, dbi0, pre_rct, rct);
     log::info(logcat, "Total pre-rct outputs: {}", pre_rct);
@@ -1898,11 +1829,10 @@ skip_secondary_passes:
         MDB_txn* txn;
         int dbr = mdb_txn_begin(env, NULL, 0, &txn);
         CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
+                !dbr, "Failed to create LMDB transaction: {}", mdb_strerror(dbr));
         MDB_cursor* cur;
         dbr = mdb_cursor_open(txn, dbi_spent, &cur);
-        CHECK_AND_ASSERT_THROW_MES(
-                !dbr, "Failed to open LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        CHECK_AND_ASSERT_THROW_MES(!dbr, "Failed to open LMDB cursor: {}", mdb_strerror(dbr));
         export_spent_outputs(cur, opt_export);
         mdb_cursor_close(cur);
         mdb_txn_abort(txn);

@@ -30,14 +30,16 @@
 
 #pragma once
 
-#include "common/hex.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "cryptonote_basic.h"
 #include "oxen_economy.h"
+#include "common/exception.h"
 #include "serialization/binary_archive.h"
 #include "serialization/binary_utils.h"
 #include "serialization/serialization.h"
 #include "serialization/variant.h"
+
 
 namespace cryptonote {
 
@@ -53,6 +55,10 @@ constexpr uint8_t TX_EXTRA_TAG_PADDING = 0x00, TX_EXTRA_TAG_PUBKEY = 0x01, TX_EX
                   TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS = 0x76, TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK = 0x77,
                   TX_EXTRA_TAG_SERVICE_NODE_STATE_CHANGE = 0x78, TX_EXTRA_TAG_BURN = 0x79,
                   TX_EXTRA_TAG_OXEN_NAME_SYSTEM = 0x7A,
+                  TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE = 0x7C,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_LEAVE_REQUEST = 0x7D,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER = 0x7E,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT = 0x7F,
 
                   TX_EXTRA_MYSTERIOUS_MINERGATE_TAG = 0xDE;
 
@@ -190,14 +196,14 @@ void serialize_value(Archive& ar, tx_extra_padding& pad) {
                                    // tag part of the padding
 
     if (remaining > TX_EXTRA_PADDING_MAX_COUNT - 1)  // - 1 as above.
-        throw std::invalid_argument{"tx_extra_padding size is larger than maximum allowed"};
+        throw oxen::traced<std::invalid_argument>{"tx_extra_padding size is larger than maximum allowed"};
 
     char buf[TX_EXTRA_PADDING_MAX_COUNT - 1] = {};
     ar.serialize_blob(buf, remaining);
 
     if (Archive::is_deserializer) {
         if (std::string_view{buf, remaining}.find_first_not_of('\0') != std::string::npos)
-            throw std::invalid_argument{"Invalid non-0 padding byte"};
+            throw oxen::traced<std::invalid_argument>{"Invalid non-0 padding byte"};
         pad.size = remaining + 1;
     }
 }
@@ -216,7 +222,7 @@ struct tx_extra_nonce {
     BEGIN_SERIALIZE()
     FIELD(nonce)
     if (TX_EXTRA_NONCE_MAX_COUNT < nonce.size())
-        throw std::invalid_argument{"invalid extra nonce: too long"};
+        throw oxen::traced<std::invalid_argument>{"invalid extra nonce: too long"};
     END_SERIALIZE()
 };
 
@@ -232,7 +238,8 @@ void inner_serializer(Archive& ar, tx_extra_merge_mining_tag& mm) {
 }
 
 // load
-template <class Archive, std::enable_if_t<Archive::is_deserializer, int> = 0>
+template <class Archive>
+    requires Archive::is_deserializer
 void serialize_value(Archive& ar, tx_extra_merge_mining_tag& mm) {
     // MM tag gets binary-serialized into a string, and then that string gets serialized (as a
     // string).  This is very strange.
@@ -244,7 +251,8 @@ void serialize_value(Archive& ar, tx_extra_merge_mining_tag& mm) {
 }
 
 // store
-template <class Archive, std::enable_if_t<Archive::is_serializer, int> = 0>
+template <class Archive>
+    requires Archive::is_serializer
 void serialize_value(Archive& ar, tx_extra_merge_mining_tag& mm) {
     // As above: first we binary-serialize into a string, then we serialize the string.
     serialization::binary_string_archiver inner_ar;
@@ -619,6 +627,74 @@ struct tx_extra_oxen_name_system {
     END_SERIALIZE()
 };
 
+struct tx_extra_ethereum_contributor {
+    eth::address address;
+    uint64_t amount;
+
+    tx_extra_ethereum_contributor() = default;
+    tx_extra_ethereum_contributor(const eth::address& addr, uint64_t amt) :
+            address(addr), amount(amt) {}
+
+    BEGIN_SERIALIZE()
+    FIELD(address)
+    FIELD(amount)
+    END_SERIALIZE()
+};
+
+struct tx_extra_ethereum_new_service_node {
+    uint8_t version = 0;
+    eth::bls_public_key bls_pubkey;
+    eth::address eth_address;
+    crypto::public_key service_node_pubkey;
+    crypto::ed25519_signature signature;
+    uint64_t fee;
+    std::vector<tx_extra_ethereum_contributor> contributors;
+
+    BEGIN_SERIALIZE()
+    FIELD(version)
+    FIELD(bls_pubkey)
+    FIELD(eth_address)
+    FIELD(service_node_pubkey)
+    FIELD(signature)
+    FIELD(fee)
+    FIELD(contributors)
+    END_SERIALIZE()
+};
+
+struct tx_extra_ethereum_service_node_leave_request {
+    uint8_t version = 0;
+    eth::bls_public_key bls_pubkey;
+
+    BEGIN_SERIALIZE()
+    FIELD(version)
+    FIELD(bls_pubkey)
+    END_SERIALIZE()
+};
+
+struct tx_extra_ethereum_service_node_exit {
+    uint8_t version = 0;
+    eth::address eth_address;
+    uint64_t amount;
+    eth::bls_public_key bls_pubkey;
+
+    BEGIN_SERIALIZE()
+    FIELD(version)
+    FIELD(eth_address)
+    FIELD(amount)
+    FIELD(bls_pubkey)
+    END_SERIALIZE()
+};
+
+struct tx_extra_ethereum_service_node_deregister {
+    uint8_t version = 0;
+    eth::bls_public_key bls_pubkey;
+
+    BEGIN_SERIALIZE()
+    FIELD(version)
+    FIELD(bls_pubkey)
+    END_SERIALIZE()
+};
+
 // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
 //   varint tag;
 //   varint size;
@@ -644,6 +720,10 @@ using tx_extra_field = std::variant<
         tx_extra_burn,
         tx_extra_merge_mining_tag,
         tx_extra_mysterious_minergate,
+        tx_extra_ethereum_new_service_node,
+        tx_extra_ethereum_service_node_leave_request,
+        tx_extra_ethereum_service_node_exit,
+        tx_extra_ethereum_service_node_deregister,
         tx_extra_padding>;
 }  // namespace cryptonote
 
@@ -681,3 +761,15 @@ BINARY_VARIANT_TAG(
 BINARY_VARIANT_TAG(cryptonote::tx_extra_burn, cryptonote::TX_EXTRA_TAG_BURN);
 BINARY_VARIANT_TAG(
         cryptonote::tx_extra_oxen_name_system, cryptonote::TX_EXTRA_TAG_OXEN_NAME_SYSTEM);
+BINARY_VARIANT_TAG(
+        cryptonote::tx_extra_ethereum_new_service_node,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);
+BINARY_VARIANT_TAG(
+        cryptonote::tx_extra_ethereum_service_node_leave_request,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_LEAVE_REQUEST);
+BINARY_VARIANT_TAG(
+        cryptonote::tx_extra_ethereum_service_node_exit,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT);
+BINARY_VARIANT_TAG(
+        cryptonote::tx_extra_ethereum_service_node_deregister,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER);

@@ -1,15 +1,14 @@
 #pragma once
 #include <fmt/format.h>
+#include <oxenc/common.h>
 
-#include <cassert>
 #include <charconv>
 #include <chrono>
+#include <concepts>
 #include <cstring>
 #include <iterator>
 #include <string_view>
 #include <vector>
-
-#include "epee/span.h"  // epee
 
 namespace tools {
 
@@ -28,16 +27,6 @@ inline bool string_iequal(std::string_view s1, std::string_view s2) {
 template <typename S1, typename... S>
 bool string_iequal_any(const S1& s1, const S&... s) {
     return (... || string_iequal(s1, s));
-}
-
-/// Returns true if the first argument begins with the second argument
-inline bool starts_with(std::string_view str, std::string_view prefix) {
-    return str.substr(0, prefix.size()) == prefix;
-}
-
-/// Returns true if the first argument ends with the second argument
-inline bool ends_with(std::string_view str, std::string_view suffix) {
-    return str.size() >= suffix.size() && str.substr(str.size() - suffix.size()) == suffix;
 }
 
 /// Splits a string on some delimiter string and returns a vector of string_view's pointing into the
@@ -134,40 +123,53 @@ bool parse_int(const std::string_view str, T& value, int base = 10) {
     return true;
 }
 
-/// Returns a string_view that views the data of the given object; this is not something you want to
-/// do unless the struct is specifically design to be used this way.  The value must be a standard
-/// layout type; it should really require is_trivial, too, but we have classes (like crypto keys)
-/// that aren't C++-trivial but are still designed to be accessed this way.
-template <typename T>
-std::string_view view_guts(const T& val) {
-    static_assert(
-            (std::is_standard_layout_v<T> && std::has_unique_object_representations_v<T>) ||
-                    epee::is_byte_spannable<T>,
-            "cannot safely access non-trivial class as string_view");
-    return {reinterpret_cast<const char*>(&val), sizeof(val)};
-}
-
-/// Convenience wrapper around the above that also copies the result into a new string
-template <typename T>
-std::string copy_guts(const T& val) {
-    return std::string{view_guts(val)};
-}
-
-/// Function to reverse the above view_guts
-template <typename T>
-T make_from_guts(std::string_view s) {
-    static_assert(
-            (std::is_standard_layout_v<T> && std::has_unique_object_representations_v<T>) ||
-                    epee::is_byte_spannable<T>,
-            "cannot safely reconstitute a non-trivial class from data");
-    if (s.size() != sizeof(T))
-        throw std::runtime_error("Cannot reconstitute type: wrong type content size");
-    T x;
-    std::memcpy(static_cast<void*>(&x), s.data(), sizeof(T));
-    return x;
-}
-
 std::string lowercase_ascii_string(std::string_view src);
+std::string uppercase_ascii_string(std::string_view src);
+
+// Converts between basic_string_view<T> for different 1-byte T values
+template <oxenc::basic_char To, oxenc::basic_char From>
+std::basic_string_view<To> convert_sv(std::basic_string_view<From> from) {
+    return {reinterpret_cast<const To*>(from.data()), from.size()};
+}
+// Same as above, but converting from a string rather than view.
+template <oxenc::basic_char To, oxenc::basic_char From>
+std::basic_string_view<To> convert_sv(const std::basic_string<From>& from) {
+    return {reinterpret_cast<const To*>(from.data()), from.size()};
+}
+
+// Same as above, but makes a copy into a basic_string
+template <oxenc::basic_char To, oxenc::basic_char From>
+std::basic_string<To> convert_str(std::basic_string_view<From> from) {
+    return {reinterpret_cast<const To*>(from.data()), from.size()};
+}
+// Same as above, but converting from a string rather than view.
+template <oxenc::basic_char To, oxenc::basic_char From>
+std::basic_string<To> convert_str(const std::basic_string<From>& from) {
+    return {reinterpret_cast<const To*>(from.data()), from.size()};
+}
+
+namespace detail {
+    template <size_t N>
+    struct usv_literal {
+        consteval usv_literal(const char (&s)[N]) {
+            for (size_t i = 0; i < N; i++)
+                str[i] = static_cast<unsigned char>(s[i]);
+        }
+        unsigned char str[N];  // we keep the null on the end, in case you pass .data() to a C func
+        using size = std::integral_constant<size_t, N - 1>;
+    };
+}  // namespace detail
+
+namespace literals {
+    // unsigned char string literals
+    inline std::basic_string<unsigned char> operator""_us(const char* str, size_t len) noexcept {
+        return {reinterpret_cast<const unsigned char*>(str), len};
+    }
+    template <detail::usv_literal UStr>
+    constexpr std::basic_string_view<unsigned char> operator""_usv() {
+        return {UStr.str, decltype(UStr)::size::value};
+    }
+}  // namespace literals
 
 /// Converts a duration into a human friendlier string, such as "3d7d47m12s" or "347µs"
 std::string friendly_duration(std::chrono::nanoseconds dur);
@@ -178,10 +180,16 @@ std::string short_duration(std::chrono::duration<double> dur);
 /// Given an array of string arguments, look for strings of the format <prefix><value> and return
 /// <value> Returns empty string view if not found.
 template <typename It>
+    requires std::convertible_to<std::iter_reference_t<It>, std::string_view>
 std::string_view find_prefixed_value(It begin, It end, std::string_view prefix) {
-    auto it = std::find_if(begin, end, [&](const auto& s) { return starts_with(s, prefix); });
+    auto it = std::find_if(begin, end, [&](const auto& s) { return s.starts_with(prefix); });
     if (it == end)
         return {};
     return std::string_view{*it}.substr(prefix.size());
 }
+
+/// Safely create a substring from `src`, slicing the string at [pos, pos + size). If pos is
+/// out-of-bounds, the a slice to the end of the string is returned of 0 size. This function hence
+/// guarantees that a valid string will always be returned irrespective of input.
+std::string_view string_safe_substr(std::string_view src, size_t pos, size_t size) noexcept;
 }  // namespace tools

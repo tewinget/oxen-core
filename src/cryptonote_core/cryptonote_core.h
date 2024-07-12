@@ -1,16 +1,3 @@
-// Copyright (c) 2014-2019, The Monero Project
-//
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without modification, are
-// permitted provided that the following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice, this list of
-//    conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list
-//    of conditions and the following disclaimer in the documentation and/or other
-//    materials provided with the distribution.
 //
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
@@ -40,7 +27,11 @@
 #include <mutex>
 
 #include "blockchain.h"
+#include "bls/bls_aggregator.h"
+#include "bls/bls_signer.h"
 #include "common/command_line.h"
+#include "common/exception.h"
+#include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_basic/hardfork.h"
@@ -63,13 +54,10 @@ struct test_options {
     size_t long_term_block_weight_window;
 };
 
-extern const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir;
-extern const command_line::arg_descriptor<bool, false> arg_testnet_on;
-extern const command_line::arg_descriptor<bool, false> arg_devnet_on;
-extern const command_line::arg_descriptor<bool, false> arg_regtest_on;
+extern const command_line::arg_descriptor<std::string> arg_data_dir;
 extern const command_line::arg_descriptor<difficulty_type> arg_fixed_difficulty;
-extern const command_line::arg_descriptor<bool> arg_dev_allow_local;
-extern const command_line::arg_descriptor<bool> arg_offline;
+extern const command_line::arg_flag arg_dev_allow_local;
+extern const command_line::arg_flag arg_offline;
 extern const command_line::arg_descriptor<size_t> arg_block_download_max_size;
 
 // Function pointers that are set to throwing stubs and get replaced by the actual functions in
@@ -151,23 +139,13 @@ class core : public i_miner_handler {
     bool on_idle();
 
     /**
-     * @brief handles an incoming uptime proof
-     *
-     * Parses an incoming uptime proof
-     *
-     * @return true if we haven't seen it before and thus need to relay.
-     */
-    bool handle_uptime_proof(
-            const NOTIFY_UPTIME_PROOF::request& proof, bool& my_uptime_proof_confirmation);
-
-    /**
      * @brief handles an incoming uptime proof that is encoded using B-encoding
      *
      * Parses an incoming uptime proof
      *
      * @return true if we haven't seen it before and thus need to relay.
      */
-    bool handle_btencoded_uptime_proof(
+    bool handle_uptime_proof(
             const NOTIFY_BTENCODED_UPTIME_PROOF::request& proof,
             bool& my_uptime_proof_confirmation);
 
@@ -753,6 +731,9 @@ class core : public i_miner_handler {
      */
     const Blockchain& get_blockchain_storage() const { return m_blockchain_storage; }
 
+    /// Returns a reference to the Ethereum L2 tracking object
+    eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
+
     /// @brief return a reference to the service node list
     const service_nodes::service_node_list& get_service_node_list() const {
         return m_service_node_list;
@@ -768,6 +749,14 @@ class core : public i_miner_handler {
     /// Returns a reference to the OxenMQ object.  Must not be called before init(), and should not
     /// be used for any omq communication until after start_oxenmq() has been called.
     oxenmq::OxenMQ& get_omq() { return *m_omq; }
+
+    /// Returns a reference to the BLSSigner, if this is a service node.  Throws if not a service
+    /// node.
+    eth::BLSSigner& get_bls_signer() {
+        if (!m_bls_signer)
+            throw oxen::traced<std::logic_error>{"Not a service node: no BLS Signer available"};
+        return *m_bls_signer;
+    }
 
     /**
      * @copydoc miner::on_synchronized
@@ -950,6 +939,12 @@ class core : public i_miner_handler {
     const std::vector<service_nodes::key_image_blacklist_entry>&
     get_service_node_blacklisted_key_images() const;
 
+    eth::BLSRewardsResponse bls_rewards_request(const eth::address& address);
+    eth::AggregateExitResponse aggregate_exit_request(const eth::bls_public_key& bls_pubkey);
+    eth::AggregateExitResponse aggregate_liquidation_request(const eth::bls_public_key& bls_pubkey);
+    eth::BLSRegistrationResponse bls_registration(
+            const eth::address& ethereum_address, const uint64_t fee = 0) const;
+
     /**
      * @brief get a snapshot of the service node list state at the time of the call.
      *
@@ -959,6 +954,16 @@ class core : public i_miner_handler {
      */
     std::vector<service_nodes::service_node_pubkey_info> get_service_node_list_state(
             const std::vector<crypto::public_key>& service_node_pubkeys = {}) const;
+    bool is_node_removable(const eth::bls_public_key& node_bls_pubkey);
+    bool is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey);
+
+    /**
+     * @brief get a snapshot of the service node list state and compares to the smart contract
+     * state, returns any in the smart contract that are not in the service node list
+     *
+     * @return all the service nodes bls keys that should be removed from the smart contract
+     */
+    std::vector<eth::bls_public_key> get_removable_nodes();
 
     /**
      * @brief get whether `pubkey` is known as a service node.
@@ -1246,6 +1251,11 @@ class core : public i_miner_handler {
     service_nodes::service_node_list m_service_node_list;
     service_nodes::quorum_cop m_quorum_cop;
 
+    std::unique_ptr<eth::L2Tracker> m_l2_tracker;
+
+    std::optional<eth::BLSSigner> m_bls_signer;
+    std::unique_ptr<eth::BLSAggregator> m_bls_aggregator;
+
     i_cryptonote_protocol* m_pprotocol;        //!< cryptonote protocol instance
     cryptonote_protocol_stub m_protocol_stub;  //!< cryptonote protocol stub instance
 
@@ -1262,22 +1272,24 @@ class core : public i_miner_handler {
     std::mutex m_sn_timestamp_mutex;
     service_nodes::participation_history<service_nodes::timesync_entry, 30> m_sn_times;
 
-    tools::periodic_task m_txpool_auto_relayer{
-            2min, false};  //!< interval for checking re-relaying txpool transactions
-    tools::periodic_task m_check_disk_space_interval{
-            10min};  //!< interval for checking for disk space
-    tools::periodic_task m_check_uptime_proof_interval{
-            30s};  //!< interval for checking our own uptime proof (will be set to
-                   //!< get_net_config().UPTIME_PROOF_CHECK_INTERVAL after init)
-    tools::periodic_task m_block_rate_interval{90s, false};  //!< interval for checking block rate
-    tools::periodic_task m_blockchain_pruning_interval{
-            5h};  //!< interval for incremental blockchain pruning
-    tools::periodic_task m_service_node_vote_relayer{2min, false};
-    tools::periodic_task m_sn_proof_cleanup_interval{1h, false};
-    tools::periodic_task m_systemd_notify_interval{10s};
+    /// interval for checking re-relaying txpool transactions
+    tools::periodic_task m_txpool_auto_relayer{"pool relay", 2min, false};
+    /// interval for checking for disk space
+    tools::periodic_task m_check_disk_space_interval{"disk space checker", 10min};
+    /// interval for checking our own uptime proof; starts low, but will be set to
+    /// get_net_config().UPTIME_PROOF_CHECK_INTERVAL after the first proof goes out.
+    tools::periodic_task m_check_uptime_proof_interval{"uptime proof", 30s};
+    /// interval for incremental blockchain pruning
+    tools::periodic_task m_blockchain_pruning_interval{"pruning interval", 5h};
+    /// interval for when we re-relay service node votes
+    tools::periodic_task m_service_node_vote_relayer{"vote relay", 2min, false};
+    /// interval for when we drop expired uptime proofs
+    tools::periodic_task m_sn_proof_cleanup_interval{"proof cleanup", 1h, false};
+    /// interval for systemd watchdog pings & updating the service Status line
+    tools::periodic_task m_systemd_notify_interval{"systemd notifier", 10s};
 
-    std::atomic<bool>
-            m_starter_message_showed;  //!< has the "daemon will sync now" message been shown?
+    /// has the "daemon will sync now" message been shown?
+    std::atomic<bool> m_starter_message_showed;
 
     uint64_t m_target_blockchain_height;  //!< blockchain height target
 
@@ -1299,7 +1311,7 @@ class core : public i_miner_handler {
     uint16_t m_quorumnet_port;
 
     /// OxenMQ main object.  Gets created during init().
-    std::unique_ptr<oxenmq::OxenMQ> m_omq;
+    std::shared_ptr<oxenmq::OxenMQ> m_omq;
 
     // Internal opaque data object managed by cryptonote_protocol/quorumnet.cpp.  void pointer to
     // avoid linking issues (protocol does not link against core).

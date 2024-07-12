@@ -37,34 +37,18 @@ if(NOT STATIC AND NOT BUILD_STATIC_DEPS)
   find_package(PkgConfig REQUIRED)
 endif()
 
-macro(system_or_submodule BIGNAME smallname pkgconf subdir)
-  option(FORCE_${BIGNAME}_SUBMODULE "force using ${smallname} submodule" OFF)
-  if(NOT STATIC AND NOT FORCE_${BIGNAME}_SUBMODULE)
-    pkg_check_modules(${BIGNAME} ${pkgconf} IMPORTED_TARGET)
-  endif()
-  if(${BIGNAME}_FOUND)
-    add_library(${smallname} INTERFACE)
-    if(NOT TARGET PkgConfig::${BIGNAME} AND CMAKE_VERSION VERSION_LESS "3.21")
-      # Work around cmake bug 22180 (PkgConfig::THING not set if no flags needed)
-    else()
-      target_link_libraries(${smallname} INTERFACE PkgConfig::${BIGNAME})
-    endif()
-    message(STATUS "Found system ${smallname} ${${BIGNAME}_VERSION}")
-  else()
-    message(STATUS "using ${smallname} submodule")
-    add_subdirectory(${subdir})
-  endif()
-  if(NOT TARGET ${smallname}::${smallname})
-    add_library(${smallname}::${smallname} ALIAS ${smallname})
-  endif()
-endmacro()
+include(system_or_submodule)
 
-system_or_submodule(OXENC oxenc liboxenc>=1.0.3 oxen-encoding)
+system_or_submodule(OXENC oxenc liboxenc>=1.1.0 oxen-encoding)
 system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.13 oxen-mq)
 
 add_subdirectory(db_drivers)
 add_subdirectory(randomx EXCLUDE_FROM_ALL)
 add_subdirectory(date EXCLUDE_FROM_ALL)
+
+set(BLS_ETH ON CACHE BOOL "" FORCE)
+set(MCL_STATIC_LIB ON CACHE BOOL "" FORCE)
+add_subdirectory(bls EXCLUDE_FROM_ALL)
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
@@ -72,8 +56,9 @@ add_subdirectory(nlohmann-json EXCLUDE_FROM_ALL)
 if(BUILD_STATIC_DEPS)
   set(OXEN_LOGGING_FORCE_SUBMODULES TRUE CACHE BOOL "" FORCE)
 endif()
-set(OXEN_LOGGING_SOURCE_ROOT "${PROJECT_SOURCE_DIR}/src;${PROJECT_SOURCE_DIR}" CACHE INTERNAL "")
 add_subdirectory(oxen-logging)
+oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}")
+oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}/src")
 
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
 # ourselves.
@@ -109,47 +94,6 @@ target_link_libraries(uWebSockets INTERFACE uSockets)
 target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK UWS_NO_ZLIB)
 
 
-# cpr configuration.  Ideally we'd just do this via add_subdirectory, but cpr's cmake requires
-# 3.15+, and we target lower than that (and this is fairly simple to build).
-
-if(NOT BUILD_STATIC_DEPS)
-  find_package(CURL REQUIRED COMPONENTS HTTP HTTPS SSL)
-
-  # CURL::libcurl wasn't added to FindCURL until cmake 3.12, so add it if necessary
-  if (CMAKE_VERSION VERSION_LESS 3.12 AND NOT TARGET CURL::libcurl)
-    add_library(libcurl UNKNOWN IMPORTED GLOBAL)
-    set_target_properties(libcurl PROPERTIES
-      IMPORTED_LOCATION ${CURL_LIBRARIES}
-      INTERFACE_INCLUDE_DIRECTORIES "${CURL_INCLUDE_DIRS}")
-    add_library(CURL_libcurl INTERFACE)
-    target_link_libraries(CURL_libcurl INTERFACE libcurl)
-    add_library(CURL::libcurl ALIAS CURL_libcurl)
-  endif()
-endif()
-
-file(GLOB cpr_sources ${conf_depends} cpr/cpr/*.cpp)
-
-add_library(cpr STATIC EXCLUDE_FROM_ALL ${cpr_sources})
-target_link_libraries(cpr PUBLIC CURL::libcurl)
-target_include_directories(cpr PUBLIC cpr/include)
-target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
-add_library(cpr::cpr ALIAS cpr)
-
-file(READ cpr/CMakeLists.txt cpr_cmake_head LIMIT 1000)
-if(cpr_cmake_head MATCHES "project\\(cpr VERSION ([0-9]+)\.([0-9]+)\.([0-9]+) LANGUAGES CXX\\)")
-    set(cpr_VERSION_MAJOR ${CMAKE_MATCH_1})
-    set(cpr_VERSION_MINOR ${CMAKE_MATCH_2})
-    set(cpr_VERSION_PATCH ${CMAKE_MATCH_3})
-    set(cpr_VERSION "${cpr_VERSION_MAJOR}.${cpr_VERSION_MINOR}.${cpr_VERSION_PATCH}")
-    set(cpr_VERSION_NUM "(${cpr_VERSION_MAJOR} * 0x10000 + ${cpr_VERSION_MINOR} * 0x100 + ${cpr_VERSION_PATCH})")
-
-    configure_file(cpr/cmake/cprver.h.in "${CMAKE_CURRENT_BINARY_DIR}/cpr_generated_includes/cpr/cprver.h")
-    target_include_directories(cpr PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/cpr_generated_includes")
-else()
-    message(FATAL_ERROR "Could not identify cpr submodule version!")
-endif()
-
-
 # Hack around SQLiteCpp's attempts to locate sqlite3 because we *don't* want to link against the
 # system one, but don't download and build the embedded one until build time.  Thankfully it
 # actually links against the SQLite::SQLite3 cmake target if it already exists, so all we have to do
@@ -175,3 +119,12 @@ if(BUILD_PYBIND)
   add_subdirectory(pybind11 EXCLUDE_FROM_ALL)
 endif()
 
+
+set(ethyl_ENABLE_CRYPTO_LIBRARY FALSE CACHE BOOL "" FORCE)
+add_subdirectory(ethyl)
+
+# NOTE: By default cpptrace is configured to make stack-traces using libdwarf.
+# On this codebase libdward segfaults trying to handle our stack-traces so we
+# switch to a more primitive method, addr2line which does work.
+set(CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE ON CACHE BOOL "")
+add_subdirectory(cpptrace EXCLUDE_FROM_ALL)

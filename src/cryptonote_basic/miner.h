@@ -128,8 +128,8 @@ class miner {
     i_miner_handler* m_phandler;
     get_block_hash_t m_gbh;
     account_public_address m_mine_address;
-    tools::periodic_task m_update_block_template_interval{5s};
-    tools::periodic_task m_update_hashrate_interval{2s};
+    tools::periodic_task m_update_block_template_interval{"mining block template updater", 5s};
+    tools::periodic_task m_update_hashrate_interval{"mining hash rate updater", 2s};
 
     mutable std::mutex m_hashrate_mutex;
     std::optional<std::chrono::steady_clock::time_point> m_last_hr_update;

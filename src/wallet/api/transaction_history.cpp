@@ -126,14 +126,14 @@ void TransactionHistoryImpl::refresh() {
          i != in_payments.end();
          ++i) {
         const tools::wallet2::payment_details& pd = i->second;
-        std::string payment_id = tools::type_to_hex(i->first);
+        std::string payment_id = tools::hex_guts(i->first);
         if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
             payment_id = payment_id.substr(0, 16);
         TransactionInfoImpl* ti = new TransactionInfoImpl();
         ti->m_paymentid = payment_id;
         ti->m_amount = pd.m_amount;
         ti->m_direction = TransactionInfo::Direction_In;
-        ti->m_hash = tools::type_to_hex(pd.m_tx_hash);
+        ti->m_hash = tools::hex_guts(pd.m_tx_hash);
         ti->m_blockheight = pd.m_block_height;
         ti->m_subaddrIndex = {pd.m_subaddr_index.minor};
         ti->m_subaddrAccount = pd.m_subaddr_index.major;
@@ -169,7 +169,7 @@ void TransactionHistoryImpl::refresh() {
         uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change;  // change may not be known
         uint64_t fee = pd.m_amount_in - pd.m_amount_out;
 
-        std::string payment_id = tools::type_to_hex(i->second.m_payment_id);
+        std::string payment_id = tools::hex_guts(i->second.m_payment_id);
         if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
             payment_id = payment_id.substr(0, 16);
 
@@ -178,7 +178,7 @@ void TransactionHistoryImpl::refresh() {
         ti->m_amount = pd.m_amount_in - change - fee;
         ti->m_fee = fee;
         ti->m_direction = TransactionInfo::Direction_Out;
-        ti->m_hash = tools::type_to_hex(hash);
+        ti->m_hash = tools::hex_guts(hash);
         ti->m_blockheight = pd.m_block_height;
         ti->m_subaddrIndex = pd.m_subaddr_indices;
         ti->m_subaddrAccount = pd.m_subaddr_account;
@@ -209,7 +209,7 @@ void TransactionHistoryImpl::refresh() {
         const crypto::hash& hash = i->first;
         uint64_t amount = pd.m_amount_in;
         uint64_t fee = amount - pd.m_amount_out;
-        std::string payment_id = tools::type_to_hex(i->second.m_payment_id);
+        std::string payment_id = tools::hex_guts(i->second.m_payment_id);
         if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
             payment_id = payment_id.substr(0, 16);
         bool is_failed = pd.m_state == tools::wallet2::unconfirmed_transfer_details::failed;
@@ -221,7 +221,7 @@ void TransactionHistoryImpl::refresh() {
         ti->m_direction = TransactionInfo::Direction_Out;
         ti->m_failed = is_failed;
         ti->m_pending = true;
-        ti->m_hash = tools::type_to_hex(hash);
+        ti->m_hash = tools::hex_guts(hash);
         ti->m_subaddrIndex = pd.m_subaddr_indices;
         ti->m_subaddrAccount = pd.m_subaddr_account;
         ti->m_label = pd.m_subaddr_indices.size() == 1
@@ -242,14 +242,14 @@ void TransactionHistoryImpl::refresh() {
          i != upayments.end();
          ++i) {
         const tools::wallet2::payment_details& pd = i->second.m_pd;
-        std::string payment_id = tools::type_to_hex(i->first);
+        std::string payment_id = tools::hex_guts(i->first);
         if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
             payment_id = payment_id.substr(0, 16);
         TransactionInfoImpl* ti = new TransactionInfoImpl();
         ti->m_paymentid = payment_id;
         ti->m_amount = pd.m_amount;
         ti->m_direction = TransactionInfo::Direction_In;
-        ti->m_hash = tools::type_to_hex(pd.m_tx_hash);
+        ti->m_hash = tools::hex_guts(pd.m_tx_hash);
         ti->m_blockheight = pd.m_block_height;
         ti->m_pending = true;
         ti->m_subaddrIndex = {pd.m_subaddr_index.minor};

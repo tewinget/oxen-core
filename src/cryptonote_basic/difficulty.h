@@ -68,11 +68,17 @@ void add_timestamp_and_difficulty(
         uint64_t timestamp,
         uint64_t cumulative_difficulty);
 
-constexpr difficulty_type PULSE_FIXED_DIFFICULTY = 1'000'000;
+inline constexpr difficulty_type PULSE_FIXED_DIFFICULTY = 1'000'000;
+
+// We cap the difficulty on devnet to this, so that it's easier to restart the network or kick it in
+// case of a pulse failure.
+inline constexpr difficulty_type DEVNET_DIFF_CAP = 2000;
+
 enum struct difficulty_calc_mode {
     use_old_lwma,
     hf12_override,
     hf16_override,
+    devnet,
     normal,
 };
 

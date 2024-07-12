@@ -1,3 +1,4 @@
+#include "common/guts.h"
 #include "mock_keyring.hpp"
 
 #include <catch2/catch.hpp>
@@ -8,7 +9,6 @@
 #include <crypto/crypto.h>
 #include <cryptonote_basic/cryptonote_basic.h>
 #include <cryptonote_basic/cryptonote_format_utils.h>
-#include <common/hex.h>
 
 TEST_CASE("Transaction Scanner", "[wallet]")
 {
@@ -49,7 +49,7 @@ TEST_CASE("Transaction Scanner", "[wallet]")
   SECTION("tx has one output which is ours")
   {
     rct::key mask1;
-    tools::hex_to_type("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
+    tools::load_from_hex_guts("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
     keys->add_key_index_pair_as_ours(tx_pubkey1, 0, 0, {0,0}, mask1);
     REQUIRE(scanner->scan_received(block_tx, 0, 0).size() == 1);
     REQUIRE(scanner->scan_received(block_tx, 0, 0)[0].subaddress_index == cryptonote::subaddress_index{0,0});
@@ -58,7 +58,7 @@ TEST_CASE("Transaction Scanner", "[wallet]")
   SECTION("subaddress_index is correct for identified output")
   {
     rct::key mask1;
-    tools::hex_to_type("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
+    tools::load_from_hex_guts("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
     keys->add_key_index_pair_as_ours(tx_pubkey1, 0, 0, {1,0}, mask1);
     REQUIRE(scanner->scan_received(block_tx, 0, 0).size() == 1);
     REQUIRE(scanner->scan_received(block_tx, 0, 0)[0].subaddress_index == cryptonote::subaddress_index{1,0});
@@ -67,8 +67,8 @@ TEST_CASE("Transaction Scanner", "[wallet]")
   SECTION("multiple outputs for multiple subaddresses")
   {
     rct::key mask1, mask2;
-    tools::hex_to_type("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
-    tools::hex_to_type("beefbeef000000000000000000000000000000000000000000000000beefbeef"sv, mask2);
+    tools::load_from_hex_guts("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
+    tools::load_from_hex_guts("beefbeef000000000000000000000000000000000000000000000000beefbeef"sv, mask2);
     keys->add_key_index_pair_as_ours(tx_pubkey1, 0, 0, {0,0}, mask1);
     keys->add_key_index_pair_as_ours(tx_pubkey1, 1, 0, {3,4}, mask2);
     tx.vout.push_back(out1); // second copy of same dummy output
@@ -83,7 +83,7 @@ TEST_CASE("Transaction Scanner", "[wallet]")
   SECTION("some outputs for us, some not")
   {
     rct::key mask1;
-    tools::hex_to_type("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
+    tools::load_from_hex_guts("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
     keys->add_key_index_pair_as_ours(tx_pubkey1, 0, 0, {0,0}, mask1);
     tx.vout.push_back(out2); // diff output key for second output not belonging to us, first output will be ours
     block_tx.global_indices.resize(2, 0);
@@ -96,7 +96,7 @@ TEST_CASE("Transaction Scanner", "[wallet]")
   SECTION("correct output amount")
   {
     rct::key mask1;
-    tools::hex_to_type("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
+    tools::load_from_hex_guts("deadbeef000000000000000000000000000000000000000000000000deadbeef"sv, mask1);
     keys->add_key_index_pair_as_ours(tx_pubkey1, 0, 42, {0,0}, mask1);
     auto outs = scanner->scan_received(block_tx, 0, 0);
     REQUIRE(outs.size() == 1);

@@ -35,10 +35,11 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <ratio>
-#include <stdexcept>
-#include <string>
 #include <string_view>
+
+#include <common/exception.h>
 
 using namespace std::literals;
 
@@ -54,6 +55,8 @@ inline constexpr uint64_t DEFAULT_TX_SPENDABLE_AGE = 10;
 inline constexpr uint64_t TX_OUTPUT_DECOYS = 9;
 inline constexpr size_t TX_BULLETPROOF_MAX_OUTPUTS = 16;
 
+inline constexpr uint64_t DEFAULT_DUST_THRESHOLD = 2'000'000'000;  // 2 * pow(10, 9)
+
 inline constexpr uint64_t BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW = 11;
 
 inline constexpr uint64_t REWARD_BLOCKS_WINDOW = 100;
@@ -68,17 +71,32 @@ inline constexpr uint64_t LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE = 100000;
 inline constexpr uint64_t SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR = 50;
 inline constexpr uint64_t COINBASE_BLOB_RESERVED_SIZE = 600;
 
-inline constexpr auto TARGET_BLOCK_TIME = 2min;
-inline constexpr uint64_t BLOCKS_PER_HOUR = 1h / TARGET_BLOCK_TIME;
-inline constexpr uint64_t BLOCKS_PER_DAY = 24h / TARGET_BLOCK_TIME;
-
 inline constexpr uint64_t LOCKED_TX_ALLOWED_DELTA_BLOCKS = 1;
 
 inline constexpr auto MEMPOOL_TX_LIVETIME = 3 * 24h;
 inline constexpr auto MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME = 7 * 24h;
 inline constexpr auto MEMPOOL_PRUNE_NON_STANDARD_TX_LIFETIME = 2h;
 // 3 days worth of full 300kB blocks:
-inline constexpr size_t DEFAULT_MEMPOOL_MAX_WEIGHT = 72h / TARGET_BLOCK_TIME * 300'000;
+inline constexpr size_t DEFAULT_MEMPOOL_MAX_WEIGHT = 72h / 2min * 300'000;
+
+// The default L2 provider refresh parameters (these can be changed via command-line or the config
+// file).
+//
+// How long between attempts to refresh the L2 provider state:
+inline constexpr auto ETH_L2_DEFAULT_REFRESH = 10s;
+// How long until we consider an L2 request to have timed out:
+inline constexpr auto ETH_L2_DEFAULT_REQUEST_TIMEOUT = 5s;
+// The maximum number of ethereum Logs we will request for updated smart contract state in a single
+// request.  If more than this are required multiple requests will be used to retrieve the logs.
+inline constexpr auto ETH_L2_DEFAULT_MAX_LOGS = 100;
+// How long between performing are-we-synced checks among all given L2 providers; only applies when
+// multiple L2 providers are in use.
+inline constexpr auto ETH_L2_DEFAULT_CHECK_INTERVAL = 2min;
+// How much an L2 provider must be behind the best L2 provider height before we consider that
+// provider out of sync and prefer a backup.  (120 blocks as the default corresponds to being 30s
+// out of sync on Arbitrum).
+inline constexpr int ETH_L2_DEFAULT_CHECK_THRESHOLD = 120;
+
 
 // Fallback used in wallet if no fee is available from RPC:
 inline constexpr uint64_t FEE_PER_BYTE_V13 = 215;
@@ -127,9 +145,15 @@ using MAXIMUM_ACCEPTABLE_STAKE = std::ratio<101, 100>;
 // precision of HF19+ registrations (i.e. to a percentage with two decimal places of precision).
 inline constexpr uint64_t STAKING_FEE_BASIS = 10'000;
 
-// We calculate and store batch rewards in thousanths of atomic OXEN, to reduce the size of errors
-// from integer division of rewards.
+// We calculate and store batch rewards in thousanths of atomic OXEN/SENT, to reduce the size of
+// errors from integer division of rewards.
 constexpr uint64_t BATCH_REWARD_FACTOR = 1000;
+
+// If we don't hear any SS ping/lokinet session test failures for more than this long then we
+// start considering the SN as passing for the purpose of obligation testing until we get
+// another test result.  This should be somewhat larger than SS/lokinet's max re-test backoff
+// (2min).
+inline constexpr auto REACHABLE_MAX_FAILURE_VALIDITY = 5min;
 
 // see src/cryptonote_protocol/levin_notify.cpp
 inline constexpr auto NOISE_MIN_EPOCH = 5min;
@@ -172,20 +196,21 @@ namespace p2p {
 }  // namespace p2p
 
 // filename constants:
-inline constexpr auto DATA_DIRNAME =
+inline const std::filesystem::path DATA_DIRNAME{
 #ifdef _WIN32
-        "oxen"sv;  // Buried in some windows filesystem maze location
+        u8"oxen"  // Buried in some windows filesystem maze location
 #else
-        ".oxen"sv;      // ~/.oxen
+        u8".oxen"  // ~/.oxen
 #endif
-inline constexpr auto CONF_FILENAME = "oxen.conf"sv;
-inline constexpr auto SOCKET_FILENAME = "oxend.sock"sv;
-inline constexpr auto LOG_FILENAME = "oxen.log"sv;
-inline constexpr auto POOLDATA_FILENAME = "poolstate.bin"sv;
-inline constexpr auto BLOCKCHAINDATA_FILENAME = "data.mdb"sv;
-inline constexpr auto BLOCKCHAINDATA_LOCK_FILENAME = "lock.mdb"sv;
-inline constexpr auto P2P_NET_DATA_FILENAME = "p2pstate.bin"sv;
-inline constexpr auto MINER_CONFIG_FILE_NAME = "miner_conf.json"sv;
+};
+inline const std::filesystem::path CONF_FILENAME{u8"oxen.conf"};
+inline const std::filesystem::path SOCKET_FILENAME{u8"oxend.sock"};
+inline const std::filesystem::path LOG_FILENAME{u8"oxen.log"};
+inline const std::filesystem::path POOLDATA_FILENAME{u8"poolstate.bin"};
+inline const std::filesystem::path BLOCKCHAINDATA_FILENAME{u8"data.mdb"};
+inline const std::filesystem::path BLOCKCHAINDATA_LOCK_FILENAME{u8"lock.mdb"};
+inline const std::filesystem::path P2P_NET_DATA_FILENAME{u8"p2pstate.bin"};
+inline const std::filesystem::path MINER_CONFIG_FILE_NAME{u8"miner_conf.json"};
 
 inline constexpr uint64_t PRUNING_STRIPE_SIZE = 4096;    // the smaller, the smoother the increase
 inline constexpr uint64_t PRUNING_LOG_STRIPES = 3;       // the higher, the more space saved
@@ -207,7 +232,8 @@ enum class hf : uint8_t {
     hf17,
     hf18,
     hf19_reward_batching,
-    hf20,
+    hf20_eth_transition,  // Temp period: registrations disabled, BLS pubkeys in proofs
+    hf21_eth,             // Full transition: registrations from ETH
 
     _next,
     none = 0
@@ -222,8 +248,8 @@ constexpr auto hf_prev(hf x) {
 }
 
 // This is here to make sure the numeric value of the top hf enum value is correct (i.e.
-// hf20 == 20 numerically); bump this when adding a new hf.
-static_assert(static_cast<uint8_t>(hf_max) == 20);
+// hf21_sent == 21 numerically); bump this when adding a new hf.
+static_assert(static_cast<uint8_t>(hf_max) == 21);
 
 // Constants for which hardfork activates various features:
 namespace feature {
@@ -242,33 +268,11 @@ namespace feature {
     constexpr auto PULSE = hf::hf16_pulse;
     constexpr auto CLSAG = hf::hf16_pulse;
     constexpr auto PROOF_BTENC = hf::hf18;
+    constexpr auto ETH_TRANSITION = hf::hf20_eth_transition;
+    constexpr auto ETH_BLS = hf::hf21_eth;
 }  // namespace feature
 
-enum class network_type : uint8_t { MAINNET = 0, TESTNET, DEVNET, FAKECHAIN, UNDEFINED = 255 };
-
-constexpr network_type network_type_from_string(std::string_view s) {
-    if (s == "mainnet")
-        return network_type::MAINNET;
-    if (s == "testnet")
-        return network_type::TESTNET;
-    if (s == "devnet")
-        return network_type::DEVNET;
-    if (s == "fakechain")
-        return network_type::FAKECHAIN;
-
-    return network_type::UNDEFINED;
-}
-
-constexpr std::string_view network_type_to_string(network_type t) {
-    switch (t) {
-        case network_type::MAINNET: return "mainnet";
-        case network_type::TESTNET: return "testnet";
-        case network_type::DEVNET: return "devnet";
-        case network_type::FAKECHAIN: return "fakechain";
-        default: return "undefined";
-    }
-    return "undefined";
-}
+enum class network_type : uint8_t { MAINNET = 0, TESTNET, DEVNET, STAGENET, LOCALDEV, FAKECHAIN, UNDEFINED = 255 };
 
 // Constants for older hard-forks that are mostly irrelevant now, but are still needed to sync the
 // older parts of the blockchain:
@@ -316,360 +320,16 @@ namespace old {
         return result;
     }
 
-    inline constexpr auto DATA_DIRNAME =
+    inline const std::filesystem::path DATA_DIRNAME{
 #ifdef _WIN32
-            "loki"sv;  // Buried in some windows filesystem maze location
+            u8"loki"  // Buried in some windows filesystem maze location
 #else
-            ".loki"sv;  // ~/.loki
+            u8".loki"  // ~/.loki
 #endif
-    inline constexpr auto CONF_FILENAME = "loki.conf"sv;
-    inline constexpr auto SOCKET_FILENAME = "lokid.sock"sv;
+    };
+    inline const std::filesystem::path CONF_FILENAME{u8"loki.conf"};
+    inline const std::filesystem::path SOCKET_FILENAME{u8"lokid.sock"};
 
 }  // namespace old
-
-// Various configuration defaults and network-dependent settings
-namespace config {
-    inline constexpr uint64_t DEFAULT_DUST_THRESHOLD = 2000000000;  // 2 * pow(10, 9)
-
-    // Used to estimate the blockchain height from a timestamp, with some grace time.  This can
-    // drift slightly over time (because average block time is not typically *exactly*
-    // DIFFICULTY_TARGET_V2).
-    inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 582088;
-    inline constexpr time_t HEIGHT_ESTIMATE_TIMESTAMP = 1595359932;
-
-    inline constexpr uint64_t PUBLIC_ADDRESS_BASE58_PREFIX = 114;
-    inline constexpr uint64_t PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 115;
-    inline constexpr uint64_t PUBLIC_SUBADDRESS_BASE58_PREFIX = 116;
-    inline constexpr uint16_t P2P_DEFAULT_PORT = 22022;
-    inline constexpr uint16_t RPC_DEFAULT_PORT = 22023;
-    inline constexpr uint16_t ZMQ_RPC_DEFAULT_PORT = 22024;
-    inline constexpr uint16_t QNET_DEFAULT_PORT = 22025;
-    inline constexpr boost::uuids::uuid const NETWORK_ID = {
-            {0x46,
-             0x61,
-             0x72,
-             0x62,
-             0x61,
-             0x75,
-             0x74,
-             0x69,
-             0x2a,
-             0x4c,
-             0x61,
-             0x75,
-             0x66,
-             0x65,
-             0x79}};  // Bender's nightmare
-    inline constexpr std::string_view GENESIS_TX =
-            "021e01ff000380808d93f5d771027c4fd4553bc9886f1f49e3f76d945bf71e8632a94e6c177b19cb"
-            "c780e7e6bdb48080b4ccd4dfc60302c8b9f6461f58ef3f2107e577c7425d06af584a1c7482bf1906"
-            "0e84059c98b4c3808088fccdbcc32302732b53b0b0db706fcc3087074fb4b786da5ab72b2065699f"
-            "9453448b0db27f892101ed71f2ce3fc70d7b2036f8a4e4b3fb75c66c12184b55a908e7d1a1d69955"
-            "66cf00"sv;
-    inline constexpr uint32_t GENESIS_NONCE = 1022201;
-
-    inline constexpr uint64_t GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 7 * cryptonote::BLOCKS_PER_DAY;
-    inline constexpr std::array GOVERNANCE_WALLET_ADDRESS = {
-            // hardfork v7-10:
-            "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL"sv,
-            // hardfork v11
-            "LDBEN6Ut4NkMwyaXWZ7kBEAx8X64o6YtDhLXUP26uLHyYT4nFmcaPU2Z2fauqrhTLh4Qfr61pUUZVLaTHqAdycETKM1STrz"sv,
-    };
-
-    // After a hardfork we will decommission sns but won't dereg, allowing time to update
-    inline constexpr uint64_t HARDFORK_DEREGISTRATION_GRACE_PERIOD = 7 * cryptonote::BLOCKS_PER_DAY;
-    // How much an uptime proof timestamp can deviate from our timestamp before we refuse it:
-    inline constexpr auto UPTIME_PROOF_TOLERANCE = 5min;
-    // How long to wait after startup before broadcasting a proof
-    inline constexpr auto UPTIME_PROOF_STARTUP_DELAY = 30s;
-    // How frequently to check whether we need to broadcast a proof
-    inline constexpr auto UPTIME_PROOF_CHECK_INTERVAL = 30s;
-    // How often to send proofs out to the network since the last proof we successfully sent.
-    // (Approximately; this can be up to CHECK_INTERFACE/2 off in either direction).  The minimum
-    // accepted time between proofs is half of this.
-    inline constexpr auto UPTIME_PROOF_FREQUENCY = 1h;
-    // The maximum time that we consider an uptime proof to be valid (i.e. after this time since the
-    // last proof we consider the SN to be down)
-    inline constexpr auto UPTIME_PROOF_VALIDITY = 2h + 5min;
-    // If we don't hear any SS ping/lokinet session test failures for more than this long then we
-    // start considering the SN as passing for the purpose of obligation testing until we get
-    // another test result.  This should be somewhat larger than SS/lokinet's max re-test backoff
-    // (2min).
-    inline constexpr auto REACHABLE_MAX_FAILURE_VALIDITY = 5min;
-
-    // Batching SN Rewards
-    inline constexpr uint64_t BATCHING_INTERVAL = 2520;
-    inline constexpr uint64_t MIN_BATCH_PAYMENT_AMOUNT = 1'000'000'000;  // 1 OXEN (in atomic units)
-    inline constexpr uint64_t LIMIT_BATCH_OUTPUTS = 15;
-    // If a node has been online for this amount of blocks they will receive SN rewards
-    inline constexpr uint64_t SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 720;
-
-    // batching and SNL will save the state every STORE_LONG_TERM_STATE_INTERVAL blocks
-    inline constexpr uint64_t STORE_LONG_TERM_STATE_INTERVAL = 10000;
-
-    namespace testnet {
-        inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 339767;
-        inline constexpr time_t HEIGHT_ESTIMATE_TIMESTAMP = 1595360006;
-        inline constexpr uint64_t PUBLIC_ADDRESS_BASE58_PREFIX = 156;
-        inline constexpr uint64_t PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 157;
-        inline constexpr uint64_t PUBLIC_SUBADDRESS_BASE58_PREFIX = 158;
-        inline constexpr uint16_t P2P_DEFAULT_PORT = 38156;
-        inline constexpr uint16_t RPC_DEFAULT_PORT = 38157;
-        inline constexpr uint16_t ZMQ_RPC_DEFAULT_PORT = 38158;
-        inline constexpr uint16_t QNET_DEFAULT_PORT = 38159;
-        inline constexpr boost::uuids::uuid const NETWORK_ID = {{
-                0x22,
-                0x3a,
-                0x78,
-                0x65,
-                0xe1,
-                0x6f,
-                0xca,
-                0xb8,
-                0x02,
-                0xa1,
-                0xdc,
-                0x17,
-                0x61,
-                0x64,
-                0x15,
-                0xbe,
-        }};
-        inline constexpr std::string_view GENESIS_TX =
-                "04011e1e01ff00018080c9db97f4fb2702fa27e905f604faa4eb084ee675faca77b0cfea9adec152"
-                "6da33cae5e286f31624201dae05bf3fa1662b7fd373c92426763d921cf3745e10ee43edb510f690c"
-                "656f247200000000000000000000000000000000000000000000000000000000000000000000"sv;
-        inline constexpr uint32_t GENESIS_NONCE = 12345;
-
-        inline constexpr uint64_t GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 1000;
-        inline constexpr std::array GOVERNANCE_WALLET_ADDRESS = {
-                // hardfork v7-9
-                "T6Tnu9YUgVcSzswBgVioqFNTfcqGopvTrcYjs4YDLHUfU64DuHxFoEmbwoyipTidGiTXx5EuYdgzZhDLMTo9uEv82M482ypm7"sv,
-                // hardfork v10
-                "T6Tnu9YUgVcSzswBgVioqFNTfcqGopvTrcYjs4YDLHUfU64DuHxFoEmbwoyipTidGiTXx5EuYdgzZhDLMTo9uEv82M482ypm7"sv,
-        };
-
-        // Testnet uptime proofs are 6x faster than mainnet (devnet config also uses these)
-        inline constexpr auto UPTIME_PROOF_FREQUENCY = 10min;
-        inline constexpr auto UPTIME_PROOF_VALIDITY = 21min;
-        inline constexpr uint64_t BATCHING_INTERVAL = 20;
-        inline constexpr uint64_t SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 4;
-    }  // namespace testnet
-
-    namespace devnet {
-        inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 0;
-        inline constexpr time_t HEIGHT_ESTIMATE_TIMESTAMP = 1597170000;
-        inline constexpr uint64_t PUBLIC_ADDRESS_BASE58_PREFIX = 3930;             // ~ dV1 .. dV3
-        inline constexpr uint64_t PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 4442;  // ~ dVA .. dVC
-        inline constexpr uint64_t PUBLIC_SUBADDRESS_BASE58_PREFIX = 5850;          // ~dVa .. dVc
-        inline constexpr uint16_t P2P_DEFAULT_PORT = 38856;
-        inline constexpr uint16_t RPC_DEFAULT_PORT = 38857;
-        inline constexpr uint16_t ZMQ_RPC_DEFAULT_PORT = 38858;
-        inline constexpr uint16_t QNET_DEFAULT_PORT = 38859;
-        inline constexpr boost::uuids::uuid const NETWORK_ID = {
-                {0xa9,
-                 0xf7,
-                 0x5c,
-                 0x7d,
-                 0x55,
-                 0x17,
-                 0xcb,
-                 0x6b,
-                 0x5b,
-                 0xf4,
-                 0x63,
-                 0x79,
-                 0x7a,
-                 0x57,
-                 0xab,
-                 0xd4}};
-        inline constexpr std::string_view GENESIS_TX =
-                "04011e1e01ff00018080c9db97f4fb2702fa27e905f604faa4eb084ee675faca77b0cfea9adec152"
-                "6da33cae5e286f31624201dae05bf3fa1662b7fd373c92426763d921cf3745e10ee43edb510f690c"
-                "656f247200000000000000000000000000000000000000000000000000000000000000000000"sv;
-        inline constexpr uint32_t GENESIS_NONCE = 12345;
-
-        inline constexpr uint64_t GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 7 * BLOCKS_PER_DAY;
-        inline constexpr std::array GOVERNANCE_WALLET_ADDRESS = {
-                // hardfork v7-9
-                "dV3EhSE1xXgSzswBgVioqFNTfcqGopvTrcYjs4YDLHUfU64DuHxFoEmbwoyipTidGiTXx5EuYdgzZhDLMTo9uEv82M4A7Uimp"sv,
-                // hardfork v10
-                "dV3EhSE1xXgSzswBgVioqFNTfcqGopvTrcYjs4YDLHUfU64DuHxFoEmbwoyipTidGiTXx5EuYdgzZhDLMTo9uEv82M4A7Uimp"sv,
-        };
-
-        inline constexpr auto UPTIME_PROOF_STARTUP_DELAY = 5s;
-    }  // namespace devnet
-
-    namespace fakechain {
-        // Fakechain uptime proofs are 60x faster than mainnet, because this really only runs on a
-        // hand-crafted, typically local temporary network.
-        inline constexpr auto UPTIME_PROOF_STARTUP_DELAY = 5s;
-        inline constexpr auto UPTIME_PROOF_CHECK_INTERVAL = 5s;
-        inline constexpr auto UPTIME_PROOF_FREQUENCY = 1min;
-        inline constexpr auto UPTIME_PROOF_VALIDITY = 2min + 5s;
-    }  // namespace fakechain
-}  // namespace config
-
-struct network_config {
-    network_type NETWORK_TYPE;
-    uint64_t HEIGHT_ESTIMATE_HEIGHT;
-    time_t HEIGHT_ESTIMATE_TIMESTAMP;
-    uint64_t PUBLIC_ADDRESS_BASE58_PREFIX;
-    uint64_t PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX;
-    uint64_t PUBLIC_SUBADDRESS_BASE58_PREFIX;
-    uint16_t P2P_DEFAULT_PORT;
-    uint16_t RPC_DEFAULT_PORT;
-    uint16_t ZMQ_RPC_DEFAULT_PORT;
-    uint16_t QNET_DEFAULT_PORT;
-    boost::uuids::uuid NETWORK_ID;
-    std::string_view GENESIS_TX;
-    uint32_t GENESIS_NONCE;
-    uint64_t GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
-    std::array<std::string_view, 2> GOVERNANCE_WALLET_ADDRESS;
-
-    std::chrono::seconds UPTIME_PROOF_TOLERANCE;
-    std::chrono::seconds UPTIME_PROOF_STARTUP_DELAY;
-    std::chrono::seconds UPTIME_PROOF_CHECK_INTERVAL;
-    std::chrono::seconds UPTIME_PROOF_FREQUENCY;
-    std::chrono::seconds UPTIME_PROOF_VALIDITY;
-
-    uint64_t BATCHING_INTERVAL;
-    uint64_t MIN_BATCH_PAYMENT_AMOUNT;
-    uint64_t LIMIT_BATCH_OUTPUTS;
-    uint64_t SERVICE_NODE_PAYABLE_AFTER_BLOCKS;
-
-    uint64_t HARDFORK_DEREGISTRATION_GRACE_PERIOD;
-
-    uint64_t STORE_LONG_TERM_STATE_INTERVAL;
-
-    inline constexpr std::string_view governance_wallet_address(hf hard_fork_version) const {
-        const auto wallet_switch =
-                (NETWORK_TYPE == network_type::MAINNET || NETWORK_TYPE == network_type::FAKECHAIN)
-                        ? hf::hf11_infinite_staking
-                        : hf::hf10_bulletproofs;
-        return GOVERNANCE_WALLET_ADDRESS[hard_fork_version >= wallet_switch ? 1 : 0];
-    }
-};
-inline constexpr network_config mainnet_config{
-        network_type::MAINNET,
-        config::HEIGHT_ESTIMATE_HEIGHT,
-        config::HEIGHT_ESTIMATE_TIMESTAMP,
-        config::PUBLIC_ADDRESS_BASE58_PREFIX,
-        config::PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
-        config::PUBLIC_SUBADDRESS_BASE58_PREFIX,
-        config::P2P_DEFAULT_PORT,
-        config::RPC_DEFAULT_PORT,
-        config::ZMQ_RPC_DEFAULT_PORT,
-        config::QNET_DEFAULT_PORT,
-        config::NETWORK_ID,
-        config::GENESIS_TX,
-        config::GENESIS_NONCE,
-        config::GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
-        config::GOVERNANCE_WALLET_ADDRESS,
-        config::UPTIME_PROOF_TOLERANCE,
-        config::UPTIME_PROOF_STARTUP_DELAY,
-        config::UPTIME_PROOF_CHECK_INTERVAL,
-        config::UPTIME_PROOF_FREQUENCY,
-        config::UPTIME_PROOF_VALIDITY,
-        config::BATCHING_INTERVAL,
-        config::MIN_BATCH_PAYMENT_AMOUNT,
-        config::LIMIT_BATCH_OUTPUTS,
-        config::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
-        config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
-        config::STORE_LONG_TERM_STATE_INTERVAL,
-};
-inline constexpr network_config testnet_config{
-        network_type::TESTNET,
-        config::testnet::HEIGHT_ESTIMATE_HEIGHT,
-        config::testnet::HEIGHT_ESTIMATE_TIMESTAMP,
-        config::testnet::PUBLIC_ADDRESS_BASE58_PREFIX,
-        config::testnet::PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
-        config::testnet::PUBLIC_SUBADDRESS_BASE58_PREFIX,
-        config::testnet::P2P_DEFAULT_PORT,
-        config::testnet::RPC_DEFAULT_PORT,
-        config::testnet::ZMQ_RPC_DEFAULT_PORT,
-        config::testnet::QNET_DEFAULT_PORT,
-        config::testnet::NETWORK_ID,
-        config::testnet::GENESIS_TX,
-        config::testnet::GENESIS_NONCE,
-        config::testnet::GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
-        config::testnet::GOVERNANCE_WALLET_ADDRESS,
-        config::UPTIME_PROOF_TOLERANCE,
-        config::UPTIME_PROOF_STARTUP_DELAY,
-        config::UPTIME_PROOF_CHECK_INTERVAL,
-        config::testnet::UPTIME_PROOF_FREQUENCY,
-        config::testnet::UPTIME_PROOF_VALIDITY,
-        config::testnet::BATCHING_INTERVAL,
-        config::MIN_BATCH_PAYMENT_AMOUNT,
-        config::LIMIT_BATCH_OUTPUTS,
-        config::testnet::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
-        config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
-        config::STORE_LONG_TERM_STATE_INTERVAL,
-};
-inline constexpr network_config devnet_config{
-        network_type::DEVNET,
-        config::devnet::HEIGHT_ESTIMATE_HEIGHT,
-        config::devnet::HEIGHT_ESTIMATE_TIMESTAMP,
-        config::devnet::PUBLIC_ADDRESS_BASE58_PREFIX,
-        config::devnet::PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
-        config::devnet::PUBLIC_SUBADDRESS_BASE58_PREFIX,
-        config::devnet::P2P_DEFAULT_PORT,
-        config::devnet::RPC_DEFAULT_PORT,
-        config::devnet::ZMQ_RPC_DEFAULT_PORT,
-        config::devnet::QNET_DEFAULT_PORT,
-        config::devnet::NETWORK_ID,
-        config::devnet::GENESIS_TX,
-        config::devnet::GENESIS_NONCE,
-        config::devnet::GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
-        config::devnet::GOVERNANCE_WALLET_ADDRESS,
-        config::UPTIME_PROOF_TOLERANCE,
-        config::UPTIME_PROOF_STARTUP_DELAY,
-        config::UPTIME_PROOF_CHECK_INTERVAL,
-        config::testnet::UPTIME_PROOF_FREQUENCY,
-        config::testnet::UPTIME_PROOF_VALIDITY,
-        config::testnet::BATCHING_INTERVAL,
-        config::MIN_BATCH_PAYMENT_AMOUNT,
-        config::LIMIT_BATCH_OUTPUTS,
-        config::testnet::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
-        config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
-};
-inline constexpr network_config fakenet_config{
-        network_type::FAKECHAIN,
-        config::HEIGHT_ESTIMATE_HEIGHT,
-        config::HEIGHT_ESTIMATE_TIMESTAMP,
-        config::PUBLIC_ADDRESS_BASE58_PREFIX,
-        config::PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
-        config::PUBLIC_SUBADDRESS_BASE58_PREFIX,
-        config::P2P_DEFAULT_PORT,
-        config::RPC_DEFAULT_PORT,
-        config::ZMQ_RPC_DEFAULT_PORT,
-        config::QNET_DEFAULT_PORT,
-        config::NETWORK_ID,
-        config::GENESIS_TX,
-        config::GENESIS_NONCE,
-        100,  //::config::GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
-        config::GOVERNANCE_WALLET_ADDRESS,
-        config::UPTIME_PROOF_TOLERANCE,
-        config::fakechain::UPTIME_PROOF_STARTUP_DELAY,
-        config::fakechain::UPTIME_PROOF_CHECK_INTERVAL,
-        config::fakechain::UPTIME_PROOF_FREQUENCY,
-        config::fakechain::UPTIME_PROOF_VALIDITY,
-        config::testnet::BATCHING_INTERVAL,
-        config::MIN_BATCH_PAYMENT_AMOUNT,
-        config::LIMIT_BATCH_OUTPUTS,
-        config::testnet::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
-        config::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
-        config::STORE_LONG_TERM_STATE_INTERVAL,
-};
-
-inline constexpr const network_config& get_config(network_type nettype) {
-    switch (nettype) {
-        case network_type::MAINNET: return mainnet_config;
-        case network_type::TESTNET: return testnet_config;
-        case network_type::DEVNET: return devnet_config;
-        case network_type::FAKECHAIN: return fakenet_config;
-        default: throw std::runtime_error{"Invalid network type"};
-    }
-}
 
 }  // namespace cryptonote

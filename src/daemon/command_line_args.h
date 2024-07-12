@@ -39,17 +39,24 @@ namespace daemon_args {
 const command_line::arg_descriptor<std::string> arg_config_file = {
         "config-file",
         "Specify configuration file",
-        "<data-dir>/" + std::string{cryptonote::CONF_FILENAME}};
+        "<data-dir>/" + tools::convert_str<char>(cryptonote::CONF_FILENAME.u8string())};
 
 const command_line::arg_descriptor<std::string> arg_log_file = {
-        "log-file", "Specify log file", "<data-dir>/" + std::string{cryptonote::LOG_FILENAME}};
+        "log-file",
+        "Specify log file",
+        "<data-dir>/" + tools::convert_str<char>(cryptonote::LOG_FILENAME.u8string())};
 const command_line::arg_descriptor<std::size_t> arg_max_log_file_size = {
         "max-log-file-size", "Specify maximum log file size [B]", 104850000};
 const command_line::arg_descriptor<std::size_t> arg_max_log_files = {
         "max-log-files",
         "Specify maximum number of rotated log files to be saved (no limit by setting to 0)",
         50};
-const command_line::arg_descriptor<std::string> arg_log_level = {"log-level", "", ""};
+const command_line::arg_descriptor<std::string> arg_log_level = {
+        "log-level",
+        "Specifies a log level (critical, error, warning, info, debug, or trace) and/or a "
+        "comma-separated list of CAT=LEVEL values (e.g. daemon=info) to set individual logging "
+        "subsystem log levels",
+        "warning"};
 const command_line::arg_descriptor<std::vector<std::string>> arg_command = {
         "daemon_command", "Hidden"};
 const command_line::arg_descriptor<unsigned> arg_max_concurrency = {

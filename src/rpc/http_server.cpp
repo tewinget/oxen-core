@@ -7,6 +7,7 @@
 #include <exception>
 #include <variant>
 
+#include "common/exception.h"
 #include "common/command_line.h"
 #include "common/string_util.h"
 #include "cryptonote_config.h"
@@ -25,26 +26,15 @@ const command_line::arg_descriptor<std::vector<std::string>> http_server::arg_rp
         "Specifies an IP:PORT to listen on for public (restricted) RPC requests; can be specified "
         "multiple times."};
 
-const command_line::arg_descriptor<std::vector<std::string>, false, true, 2>
-        http_server::arg_rpc_admin{
-                "rpc-admin",
-                "Specifies an IP:PORT to listen on for admin (unrestricted) RPC requests; can be "
-                "specified multiple times. Specify \"none\" to disable.",
-                {"127.0.0.1:" + std::to_string(config::RPC_DEFAULT_PORT),
-                 "[::1]:" + std::to_string(config::RPC_DEFAULT_PORT)},
-                {{&cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on}},
-                [](std::array<bool, 2> testnet_devnet,
-                   bool defaulted,
-                   std::vector<std::string> val) {
-                    auto& [testnet, devnet] = testnet_devnet;
-                    if (defaulted && (testnet || devnet)) {
-                        auto port = std::to_string(
-                                testnet ? config::testnet::RPC_DEFAULT_PORT
-                                        : config::devnet::RPC_DEFAULT_PORT);
-                        val = {"127.0.0.1:" + port, "[::1]:" + port};
-                    }
-                    return val;
-                }};
+const command_line::arg_descriptor<std::vector<std::string>> http_server::arg_rpc_admin{
+        "rpc-admin",
+        "Specifies an IP:PORT to listen on for admin (unrestricted) RPC requests; can be "
+        "specified multiple times. Specify \"none\" to disable.",
+        [](cryptonote::network_type nettype) -> std::vector<std::string> {
+            const auto& conf = get_config(nettype);
+            return {"127.0.0.1:{}"_format(conf.RPC_DEFAULT_PORT),
+                    "[::1]:{}"_format(conf.RPC_DEFAULT_PORT)};
+        }};
 
 const command_line::arg_descriptor<uint16_t> http_server::arg_rpc_bind_port = {
         "rpc-bind-port",
@@ -56,13 +46,13 @@ const command_line::arg_descriptor<uint16_t> http_server::arg_rpc_restricted_bin
         "Port for restricted RPC server; deprecated, use --rpc-public instead",
         0};
 
-const command_line::arg_descriptor<bool> http_server::arg_restricted_rpc = {
-        "restricted-rpc", "Deprecated, use --rpc-public instead", false};
+const command_line::arg_flag http_server::arg_restricted_rpc = {
+        "restricted-rpc", "Deprecated, use --rpc-public instead"};
 
 // This option doesn't do anything anymore, but keep it here for now in case people added it to
 // config files/startup flags.
-const command_line::arg_descriptor<bool> http_server::arg_public_node = {
-        "public-node", "Deprecated; use --rpc-public option instead", false};
+const command_line::arg_flag http_server::arg_public_node = {
+        "public-node", "Deprecated; use --rpc-public option instead"};
 
 namespace {
     void long_poll_trigger(cryptonote::tx_memory_pool&);
@@ -161,7 +151,7 @@ http_server::http_server(
                         error << "tried to bind to:";
                         for (const auto& [addr, port, required] : bind)
                             error << ' ' << addr << ':' << port;
-                        throw std::runtime_error(error.str());
+                        throw oxen::traced<std::runtime_error>(error.str());
                     }
                 } catch (...) {
                     startup_success.set_exception(std::current_exception());
@@ -230,6 +220,15 @@ namespace {
         bool jsonrpc{false};
         nlohmann::json jsonrpc_id{nullptr};
         std::vector<std::pair<std::string, std::string>> extra_headers;  // Extra headers to send
+
+        call_data(
+                http_server& http,
+                core_rpc_server& core_rpc,
+                HttpResponse& res,
+                std::string uri,
+                const rpc_command* call = nullptr) :
+
+                http{http}, core_rpc{core_rpc}, res{res}, uri{std::move(uri)}, call{call} {}
 
         // If we have to drop the request because we are overloaded we want to reply with an error
         // (so that we close the connection instead of leaking it and leaving it hanging).  We don't
@@ -534,8 +533,7 @@ namespace {
 
 void http_server::handle_base_request(
         HttpResponse& res, HttpRequest& req, const rpc_command& call) {
-    std::shared_ptr<call_data> data{
-            new call_data{*this, m_server, res, std::string{req.getUrl()}, &call}};
+    auto data = std::make_shared<call_data>(*this, m_server, res, std::string{req.getUrl()}, &call);
     auto& request = data->request;
     request.body = std::monostate{};
     request.context.admin = !m_restricted;
@@ -573,7 +571,7 @@ void http_server::handle_base_request(
 }
 
 void http_server::handle_json_rpc_request(HttpResponse& res, HttpRequest& req) {
-    std::shared_ptr<call_data> data{new call_data{*this, m_server, res, std::string{req.getUrl()}}};
+    auto data = std::make_shared<call_data>(*this, m_server, res, std::string{req.getUrl()});
     data->jsonrpc = true;
     auto& request = data->request;
     request.context.admin = !m_restricted;
@@ -666,17 +664,12 @@ static std::unordered_set<oxenmq::OxenMQ*> timer_started;
 
 void http_server::start() {
     if (m_sent_startup)
-        throw std::logic_error{"Cannot call http_server::start() more than once"};
+        throw oxen::traced<std::logic_error>{"Cannot call http_server::start() more than once"};
 
     auto net = m_server.nettype();
-    m_server_header =
-            "oxend/"s +
-            (m_restricted ? std::to_string(OXEN_VERSION[0]) : std::string{OXEN_VERSION_FULL}) +
-            (net == network_type::MAINNET     ? " mainnet"
-             : net == network_type::TESTNET   ? " testnet"
-             : net == network_type::DEVNET    ? " devnet"
-             : net == network_type::FAKECHAIN ? " fakenet"
-                                              : " unknown net");
+    m_server_header = "oxend/{} {}"_format(
+            (m_restricted ? std::to_string(OXEN_VERSION[0]) : std::string{OXEN_VERSION_FULL}),
+            network_type_to_string(net));
 
     m_startup_promise.set_value(true);
     m_sent_startup = true;

@@ -29,9 +29,10 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <cstdint>
+#include "cryptonote_config.h"
 
 namespace cryptonote::rules {
 
-bool is_output_unlocked(uint64_t unlock_time, uint64_t height);
+bool is_output_unlocked(cryptonote::network_type nettype, uint64_t unlock_time, uint64_t height);
 
 }  // namespace cryptonote::rules
