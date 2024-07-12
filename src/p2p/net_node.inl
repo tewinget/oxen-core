@@ -1137,9 +1137,9 @@ bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_p
     auto con = zone.m_connect(zone, na);
     if (!con) {
         if (is_priority_node(na))
-            log::info(logcat, "{}[priority] Connect failed to {}", con, na.str());
+            log::info(logcat, "[priority] Connect failed to {}", na.str());
         else
-            log::info(logcat, "{} Connect failed to {}", con, na.str());
+            log::info(logcat, "Connect failed to {}", na.str());
         record_addr_failed(na);
         return false;
     }
