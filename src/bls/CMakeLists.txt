@@ -37,7 +37,6 @@ target_link_libraries(oxen_bls
     bls::bls256
     cncrypto
     cryptonote_basic
-    cryptonote_core
   PRIVATE
     SQLiteCpp
     common

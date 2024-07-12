@@ -37,7 +37,6 @@ target_link_libraries(device
   PUBLIC
     common
     cncrypto
-    cryptonote_core
     ringct_basic
     Boost::serialization
   PRIVATE
