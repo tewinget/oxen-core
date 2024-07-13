@@ -50,15 +50,18 @@ set(BLS_ETH ON CACHE BOOL "" FORCE)
 set(MCL_STATIC_LIB ON CACHE BOOL "" FORCE)
 add_subdirectory(bls EXCLUDE_FROM_ALL)
 
-set(JSON_BuildTests OFF CACHE INTERNAL "")
-set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
-add_subdirectory(nlohmann-json EXCLUDE_FROM_ALL)
 if(BUILD_STATIC_DEPS)
   set(OXEN_LOGGING_FORCE_SUBMODULES TRUE CACHE BOOL "" FORCE)
 endif()
 add_subdirectory(oxen-logging)
 oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}")
 oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}/src")
+
+install(
+    DIRECTORY boost
+    DESTINATION include${OXEN_INSTALL_INCLUDEDIR_SUFFIX}
+    COMPONENT development
+    FILES_MATCHING PATTERN "*.hpp")
 
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
 # ourselves.
@@ -121,7 +124,19 @@ endif()
 
 
 set(ethyl_ENABLE_CRYPTO_LIBRARY FALSE CACHE BOOL "" FORCE)
-add_subdirectory(ethyl)
+system_or_submodule(ETHYL ethyl libethyl>=0.1.0 ethyl)
+
+if(NOT TARGET cpr::cpr)
+    set(CPR_USE_SYSTEM_CURL ON CACHE BOOL "")
+    add_subdirectory(ethyl/external/cpr EXCLUDE_FROM_ALL)
+endif()
+
+if(NOT TARGET nlohmann_json::nlohmann_json)
+    set(JSON_BuildTests OFF CACHE INTERNAL "")
+    set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
+    system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 nlohmann-json)
+endif()
+
 
 # NOTE: By default cpptrace is configured to make stack-traces using libdwarf.
 # On this codebase libdward segfaults trying to handle our stack-traces so we

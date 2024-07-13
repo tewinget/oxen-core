@@ -492,6 +492,11 @@ if(NOT BUILD_STATIC_DEPS)
   add_library(SQLite::SQLite3 ALIAS PkgConfig::SQLITE3)
 endif()
 
+set(OXEN_EXECUTABLE_SUFFIX "" CACHE STRING "suffix to add to executable names")
+set(OXEN_INSTALL_INCLUDEDIR_SUFFIX "/oxen" CACHE STRING "subdirectory name for headers for the install target")
+set(OXEN_INSTALL_LIBDIR_SUFFIX "/oxen" CACHE STRING "subdirectory name for library files for the install target")
+option(OXEN_VERSION_SO "Add the project version into shared library filenames (e.g. libcryptonote_core11.2.3.so instead of libcryptonote_core.so)" OFF)
+
 add_subdirectory(external)
 
 if(USE_DEVICE_TREZOR)
@@ -859,8 +864,8 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND ARCH_WIDTH EQUAL "32" AND NOT IOS AN
 endif()
 
 
-add_subdirectory(contrib)
 add_subdirectory(src)
+add_subdirectory(contrib)
 
 if(BUILD_TESTS)
   message(STATUS "Building tests")

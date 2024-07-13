@@ -1,5 +1,5 @@
 
-add_library(sqlitedb
+oxen_add_library(sqlitedb
   database.cpp)
 
 target_link_libraries(sqlitedb
