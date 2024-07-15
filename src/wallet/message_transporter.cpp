@@ -31,7 +31,6 @@
 #include <oxenc/base64.h>
 
 #include <algorithm>
-#include <boost/format.hpp>
 
 #include "wallet_errors.h"
 
@@ -278,25 +277,22 @@ std::string message_transporter::get_str_between_tags(
 }
 
 void message_transporter::start_xml_rpc_cmd(std::string& xml, const std::string& method_name) {
-    xml = (boost::format("<?xml version=\"1.0\"?><methodCall><methodName>%s</methodName><params>") %
-           method_name)
-                  .str();
+    xml = "<?xml version=\"1.0\"?><methodCall><methodName>{}</methodName><params>"_format(
+            method_name);
 }
 
 void message_transporter::add_xml_rpc_string_param(std::string& xml, const std::string& param) {
-    xml += (boost::format("<param><value><string>%s</string></value></param>") % param).str();
+    xml += "<param><value><string>{}</string></value></param>"_format(param);
 }
 
 void message_transporter::add_xml_rpc_base64_param(std::string& xml, const std::string& param) {
     // Bitmessage expects some arguments Base64-encoded, but it wants them as parameters of type
     // "string", not "base64" that is also part of XML-RPC
-    xml += (boost::format("<param><value><string>%s</string></value></param>") %
-            oxenc::to_base64(param))
-                   .str();
+    xml += "<param><value><string>{}</string></value></param>"_format(oxenc::to_base64(param));
 }
 
 void message_transporter::add_xml_rpc_integer_param(std::string& xml, const int32_t& param) {
-    xml += (boost::format("<param><value><int>%i</int></value></param>") % param).str();
+    xml += "<param><value><int>{}</int></value></param>"_format(param);
 }
 
 void message_transporter::end_xml_rpc_cmd(std::string& xml) {
