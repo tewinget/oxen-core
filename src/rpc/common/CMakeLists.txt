@@ -1,4 +1,4 @@
-add_library(rpc_common
+oxen_add_library(rpc_common
   command_decorators.cpp
   json_bt.cpp
   rpc_args.cpp
