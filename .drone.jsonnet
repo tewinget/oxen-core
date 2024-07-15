@@ -118,6 +118,63 @@ local clang(version, lto=false) = debian_pipeline(
   build_everything=true
 );
 
+local distro_deb_suffix = {
+  unstable: '',
+  sid: '',
+  forky: '~deb14',
+  trixie: '~deb13',
+  bookworm: '~deb12',
+  bullseye: '~deb11',
+  oracular: '~ubuntu2410',
+  noble: '~ubuntu2404',
+  jammy: '~ubuntu2204',
+  focal: '~ubuntu2004',
+};
+local distro_fmtspdsecp(distro) = !(distro == 'bullseye' || distro == 'jammy' || distro == 'focal');
+local distro_build_env(distro, deb_suffix_base) = {
+  DEBIAN_CODENAME: distro,
+  DEBIAN_SUFFIX: deb_suffix_base + distro_deb_suffix[distro],
+} + (if distro_fmtspdsecp(distro) then { WITH_FMT: 1, WITH_SPD: 1, WITH_SECP: 1 } else {}) + (
+  if distro == 'focal' then { OXEN_APPEND_DEPS: ', g++-10', OXEN_DEB_CMAKE_EXTRA: '-DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 -DC_SUPPORTS__WCONDITIONAL_UNINITIALIZED=FALSE -DC_SUPPORTS__WRESERVED_IDENTIFIER=FALSE' } else {}
+);
+
+local snapshot_deb(distro, deb_suffix_base='-1', buildarch='amd64', debarch='amd64', jobs=6, repo_suffix='/staging') = {
+  kind: 'pipeline',
+  type: 'docker',
+  name: distro + ' snapshot deb (' + debarch + ')',
+  platform: { arch: buildarch },
+  steps: [
+    submodules,
+    {
+      name: 'build',
+      image: 'registry.oxen.rocks/' +
+             (if std.startsWith(distro_deb_suffix[distro], '~ubuntu') then 'ubuntu' else 'debian') +
+             '-' + distro + '-builder',
+      environment: {
+        SSH_KEY: { from_secret: 'SSH_KEY' },
+      } + distro_build_env(distro, deb_suffix_base),
+      commands: [
+        'echo "Building on ${DRONE_STAGE_MACHINE}"',
+        'echo "man-db man-db/auto-update boolean false" | debconf-set-selections',
+        'cp contrib/deb.oxen.io.gpg /etc/apt/trusted.gpg.d/deb.oxen.io.gpg',
+        'echo deb http://deb.oxen.io' + repo_suffix + ' ' + distro + ' main >/etc/apt/sources.list.d/loki.list',
+        apt_get_quiet + ' update',
+        apt_get_quiet + ' install -y eatmydata',
+        'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
+        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git-buildpackage devscripts equivs g++ ccache openssh-client',
+        'eatmydata dpkg-reconfigure ccache',
+        './debian/setup-build.sh',
+        'cd debian',
+        'eatmydata mk-build-deps -i -r --tool="' + apt_get_quiet + ' -o Debug::pkgProblemResolver=yes --no-install-recommends -y" control',
+        'cd ..',
+        'eatmydata debuild --preserve-envvar=CCACHE_* --preserve-envvar=OXEN_DEB_CMAKE_EXTRA -us -uc -b -j' + jobs,
+        './debian/ci-upload.sh ' + distro + ' ' + debarch,
+      ],
+    },
+  ],
+};
+
+
 // Macos build
 local mac_builder(name,
                   build_type='Release',
@@ -287,6 +344,14 @@ local gui_wallet_step_darwin = {
     /*extra_steps=[gui_wallet_step('ubuntu:bionic')]*/
   ),
 
+  snapshot_deb('sid'),
+  snapshot_deb('trixie'),
+  snapshot_deb('bookworm'),
+  snapshot_deb('bullseye'),
+  snapshot_deb('noble'),
+  snapshot_deb('jammy'),
+  snapshot_deb('focal'),
+
   // Static mingw build (on focal) which gets uploaded to builds.lokinet.dev:
   debian_pipeline(
     'Static (win64)',
@@ -312,7 +377,6 @@ local gui_wallet_step_darwin = {
               extra_cmds=static_check_and_upload,/*extra_steps=[gui_wallet_step_darwin]*/),
   mac_builder('macOS (Release)', run_tests=true),
   mac_builder('macOS (Debug)', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
-
 
   // Android builds; we do them all in one image because the android NDK is huge
   {

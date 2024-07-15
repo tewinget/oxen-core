@@ -754,6 +754,9 @@ else()
   # At least some CLANGs default to not enough for monero
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-depth=900")
 
+  include(cmake/check_atomic.cmake)
+  link_libatomic()
+
   if(STATIC)
     # STATIC already configures most deps to be linked in statically,
     # here we make more deps static if the platform permits it

@@ -44,6 +44,7 @@ system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.13 oxen-mq)
 
 add_subdirectory(db_drivers)
 add_subdirectory(randomx EXCLUDE_FROM_ALL)
+oxen_install_library(randomx)
 add_subdirectory(date EXCLUDE_FROM_ALL)
 
 set(BLS_ETH ON CACHE BOOL "" FORCE)
