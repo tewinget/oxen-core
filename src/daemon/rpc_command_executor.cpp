@@ -1842,70 +1842,76 @@ static void append_printable_service_node_list_entry(
         if (entry.value("public_ip", "0.0.0.0"s) == "0.0.0.0")
             stream << "(Awaiting confirmation from network)";
         else
-            stream << entry["public_ip"].get<std::string_view>() << " :"
-                   << entry["storage_port"].get<uint16_t>()
-                   << " (storage https), :" << entry["storage_lmq_port"].get<uint16_t>()
-                   << " (storage omq), :" << entry["quorumnet_port"].get<uint16_t>()
-                   << " (quorumnet)";
+            stream << entry["public_ip"].get<std::string_view>() << " ";
+        if (conf.HAVE_STORAGE_AND_LOKINET)
+            stream << ": {} (storage https), :{} (storage omq), "_format(
+                    entry["storage_port"].get<uint16_t>(),
+                    entry["storage_lmq_port"].get<uint16_t>());
+        stream << ": {} (oxen quorums)"_format(entry["quorumnet_port"].get<uint16_t>());
 
         stream << "\n";
         if (detailed_view) {
             auto ed_pk = entry.value("pubkey_ed25519", ""sv);
+            // OXEN11 TODO FIXME: add BLS key
             stream << indent2 << "Auxiliary Public Keys:\n"
-                   << indent3 << (ed_pk.empty() ? "(not yet received)"sv : ed_pk) << " (Ed25519)\n"
-                   << indent3
-                   << (ed_pk.empty() ? "(not yet received)"s
-                                     : oxenc::to_base32z(oxenc::from_hex(ed_pk)) + ".snode")
-                   << " (Lokinet)\n"
-                   << indent3 << entry.value("pubkey_x25519", "(not yet received)"sv)
+                   << indent3 << (ed_pk.empty() ? "(not yet received)"sv : ed_pk) << " (Ed25519)\n";
+            if (conf.HAVE_STORAGE_AND_LOKINET) {
+                stream << indent3
+                       << (ed_pk.empty() ? "(not yet received)"s
+                                         : oxenc::to_base32z(oxenc::from_hex(ed_pk)) + ".snode")
+                       << " (Lokinet)\n";
+            }
+            stream << indent3 << entry.value("pubkey_x25519", "(not yet received)"sv)
                    << " (X25519)\n";
         }
 
-        //
-        // NOTE: Storage Server Test
-        //
-        auto print_reachable = [&stream, &now](const json& j, const std::string& prefix) {
-            auto first_unreachable = j.value<time_t>(prefix + "_first_unreachable", 0),
-                 last_unreachable = j.value<time_t>(prefix + "_last_unreachable", 0),
-                 last_reachable = j.value<time_t>(prefix + "_last_reachable", 0);
+        if (conf.HAVE_STORAGE_AND_LOKINET) {
+            //
+            // NOTE: Storage Server Test
+            //
+            auto print_reachable = [&stream, &now](const json& j, const std::string& prefix) {
+                auto first_unreachable = j.value<time_t>(prefix + "_first_unreachable", 0),
+                     last_unreachable = j.value<time_t>(prefix + "_last_unreachable", 0),
+                     last_reachable = j.value<time_t>(prefix + "_last_reachable", 0);
 
-            if (first_unreachable == 0) {
-                if (last_reachable == 0)
-                    stream << "Not yet tested";
-                else {
-                    stream << "Yes (last tested " << get_human_time_ago(last_reachable, now);
-                    if (last_unreachable)
-                        stream << "; last failure " << get_human_time_ago(last_unreachable, now);
+                if (first_unreachable == 0) {
+                    if (last_reachable == 0)
+                        stream << "Not yet tested";
+                    else {
+                        stream << "Yes (last tested " << get_human_time_ago(last_reachable, now);
+                        if (last_unreachable)
+                            stream << "; last failure " << get_human_time_ago(last_unreachable, now);
+                        stream << ")";
+                    }
+                } else {
+                    stream << "NO";
+                    if (!j.value(prefix + "_reachable", false))
+                        stream << " - FAILING!";
+                    stream << " (last tested " << get_human_time_ago(last_unreachable, now)
+                           << "; failing since " << get_human_time_ago(first_unreachable, now);
+                    if (last_reachable)
+                        stream << "; last good " << get_human_time_ago(last_reachable, now);
                     stream << ")";
                 }
-            } else {
-                stream << "NO";
-                if (!j.value(prefix + "_reachable", false))
-                    stream << " - FAILING!";
-                stream << " (last tested " << get_human_time_ago(last_unreachable, now)
-                       << "; failing since " << get_human_time_ago(first_unreachable, now);
-                if (last_reachable)
-                    stream << "; last good " << get_human_time_ago(last_reachable, now);
-                stream << ")";
-            }
-            stream << '\n';
-        };
-        stream << indent2 << "Storage Server Reachable: ";
-        print_reachable(entry, "storage_server");
-        stream << indent2 << "Lokinet Reachable: ";
-        print_reachable(entry, "lokinet");
+                stream << '\n';
+            };
+            stream << indent2 << "Storage Server Reachable: ";
+            print_reachable(entry, "storage_server");
+            stream << indent2 << "Lokinet Reachable: ";
+            print_reachable(entry, "lokinet");
 
-        //
-        // NOTE: Component Versions
-        //
-        auto show_component_version = [](const json& j, std::string_view name) {
-            if (!j.is_array() || j.front().get<int>() == 0)
-                return "("s + std::string{name} + " ping not yet received)"s;
-            return tools::join(".", j.get<std::array<int, 3>>());
-        };
-        stream << indent2 << "Storage Server / Lokinet Router versions: "
-               << show_component_version(entry["storage_server_version"], "Storage Server") << " / "
-               << show_component_version(entry["storage_server_version"], "Lokinet") << "\n";
+            //
+            // NOTE: Component Versions
+            //
+            auto show_component_version = [](const json& j, std::string_view name) {
+                if (!j.is_array() || j.front().get<int>() == 0)
+                    return "("s + std::string{name} + " ping not yet received)"s;
+                return tools::join(".", j.get<std::array<int, 3>>());
+            };
+            stream << indent2 << "Storage Server / Lokinet Router versions: "
+                   << show_component_version(entry["storage_server_version"], "Storage Server") << " / "
+                   << show_component_version(entry["storage_server_version"], "Lokinet") << "\n";
+        }
 
         //
         // NOTE: Print Voting History
@@ -1952,7 +1958,9 @@ static void append_printable_service_node_list_entry(
         auto n_contributors = entry["contributors"].size();
         stream << indent2 << "Contributors (" << n_contributors << "):\n";
         for (auto& contributor : entry["contributors"]) {
-            stream << indent3 << contributor["address"].get<std::string_view>();
+            auto addr = contributor["address"].get<std::string_view>();
+            // FIXME: case-format an ETH address instead of going all lower-case?
+            stream << indent3 << (addr.size() == 40 ? "0x" : "") << addr;
             auto amount = contributor["amount"].get<uint64_t>();
             auto reserved = contributor.value("reserved", amount);
             stream << " (" << cryptonote::print_money(amount, true);
