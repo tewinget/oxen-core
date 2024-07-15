@@ -270,6 +270,7 @@ namespace feature {
     constexpr auto PROOF_BTENC = hf::hf18;
     constexpr auto ETH_TRANSITION = hf::hf20_eth_transition;
     constexpr auto ETH_BLS = hf::hf21_eth;
+    constexpr auto SN_PK_IS_ED25519 = hf::hf21_eth;
 }  // namespace feature
 
 enum class network_type : uint8_t { MAINNET = 0, TESTNET, DEVNET, STAGENET, LOCALDEV, FAKECHAIN, UNDEFINED = 255 };

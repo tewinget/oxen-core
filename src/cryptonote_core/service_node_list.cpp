@@ -966,7 +966,7 @@ bool service_node_list::state_t::process_state_change_tx(
                 }
             }
 
-            service_nodes_infos.erase(iter);
+            erase_info(iter);
             return true;
 
         case new_state::decommission:
@@ -1145,7 +1145,7 @@ bool service_node_list::state_t::process_ethereum_deregister_tx(
     else
         log::info(logcat, "Deregistration for service node: {}", snode_key);
 
-    service_nodes_infos.erase(iter);
+    erase_info(iter);
     return true;
 }
 
@@ -1674,7 +1674,7 @@ bool service_node_list::state_t::process_registration_tx(
         }
     }
 
-    service_nodes_infos[key] = std::move(info_ptr);
+    insert_info(key, std::move(info_ptr));
     return true;
 }
 
@@ -1688,7 +1688,7 @@ bool service_node_list::state_t::process_ethereum_registration_tx(
     uint64_t const block_height = cryptonote::get_block_height(block);
 
     try {
-        const auto [key, service_node_info] = validate_and_get_ethereum_registration(
+        auto [key, service_node_info] = validate_and_get_ethereum_registration(
                 nettype, hf_version, tx, block.timestamp, block_height, index);
         // TODO sean -> explore what happens if registration contains duplicate service node pubkey?
         if (sn_list && !sn_list->m_rescanning) {
@@ -1709,7 +1709,7 @@ bool service_node_list::state_t::process_ethereum_registration_tx(
                     "New service node registered from ethereum: {} on height: {}",
                     key,
                     block_height);
-        service_nodes_infos[key] = std::move(service_node_info);
+        insert_info(key, std::move(service_node_info));
         return true;
     } catch (const std::exception& e) {
         log::error(logcat, "Failed to register node from ethereum transaction: {}", e.what());
@@ -2765,6 +2765,18 @@ static void generate_other_quorums(
     }
 }
 
+// Converts an Ed25519 public key to an x25519 pubkey.  Only intended for use with hf >=
+// feature::SN_PK_IS_ED25519 (because before that we don't have a guarantee that a
+// crypto::public_key is actually the correct Ed25519 pubkeys that we want to convert to get the
+// X25519 pubkey).
+static crypto::x25519_public_key snpk_to_xpk(const crypto::public_key& snpk) {
+    crypto::x25519_public_key xpk;
+    if (0 != crypto_sign_ed25519_pk_to_curve25519(xpk.data(), snpk.data()))
+        throw oxen::traced<std::runtime_error>{
+                "Unable to convert SN Ed25519 pubkey {} to X25519 pubkey"_format(snpk)};
+    return xpk;
+}
+
 void service_node_list::state_t::update_from_block(
         cryptonote::BlockchainDB const& db,
         cryptonote::network_type nettype,
@@ -2775,6 +2787,11 @@ void service_node_list::state_t::update_from_block(
         const std::vector<cryptonote::transaction>& txs,
         const service_node_keys* my_keys) {
     ++height;
+    log::debug(
+            logcat,
+            "Updating state_t{} from block for height {}",
+            sn_list ? "" : " (without sn_list yet)",
+            height);
     bool need_swarm_update = false;
     uint64_t block_height = cryptonote::get_block_height(block);
     assert(height == block_height);
@@ -2806,8 +2823,7 @@ void service_node_list::state_t::update_from_block(
             for (size_t quorum_index = 0; quorum_index < pulse_quorum.validators.size();
                  quorum_index++) {
                 crypto::public_key const& key = pulse_quorum.validators[quorum_index];
-                auto& info_ptr = service_nodes_infos[key];
-                service_node_info& new_info = duplicate_info(info_ptr);
+                service_node_info& new_info = duplicate_info(service_nodes_infos[key]);
                 new_info.pulse_sorter.last_height_validating_in_quorum = height;
                 new_info.pulse_sorter.quorum_index = quorum_index;
             }
@@ -2834,28 +2850,28 @@ void service_node_list::state_t::update_from_block(
     for (const crypto::public_key& pubkey :
          get_expired_nodes(db, nettype, block.major_version, block_height)) {
         auto i = service_nodes_infos.find(pubkey);
-        if (i != service_nodes_infos.end()) {
-            if (my_keys && my_keys->pub == pubkey)
-                log::info(
-                        logcat,
-                        fg(fmt::terminal_color::green),
-                        "Service node expired (yours): {} at block height: {}",
-                        pubkey,
-                        block_height);
-            else
-                log::info(
-                        logcat,
-                        "Service node expired: {} at block height: {}",
-                        pubkey,
-                        block_height);
+        if (i == service_nodes_infos.end())
+            continue;
+        if (my_keys && my_keys->pub == pubkey)
+            log::info(
+                    globallogcat,
+                    fg(fmt::terminal_color::green),
+                    "Service node expired (yours): {} at block height: {}",
+                    pubkey,
+                    block_height);
+        else
+            log::info(
+                    logcat,
+                    "Service node expired: {} at block height: {}",
+                    pubkey,
+                    block_height);
 
-            need_swarm_update = need_swarm_update || i->second->is_active();
-            // NOTE: sn_list is not set in tests when we construct events to replay
-            if (sn_list)
-                sn_list->recently_expired_nodes.emplace(
-                        i->second->bls_public_key, block_height + netconf.ETH_EXIT_BUFFER);
-            service_nodes_infos.erase(i);
-        }
+        need_swarm_update = need_swarm_update || i->second->is_active();
+        // NOTE: sn_list is not set in tests when we construct events to replay
+        if (sn_list)
+            sn_list->recently_expired_nodes.emplace(
+                    i->second->bls_public_key, block_height + netconf.ETH_EXIT_BUFFER);
+        erase_info(i);
     }
 
     //
@@ -2882,20 +2898,27 @@ void service_node_list::state_t::update_from_block(
     for (uint32_t index = 0; index < txs.size(); ++index) {
         const cryptonote::transaction& tx = txs[index];
         if (tx.type == staking_tx_type) {
+            log::debug(logcat, "Processing registration tx");
             process_registration_tx(nettype, block, tx, index, my_keys);
             need_swarm_update += process_contribution_tx(nettype, block, tx, index);
         } else if (tx.type == cryptonote::txtype::state_change) {
+            log::debug(logcat, "Processing state change tx");
             need_swarm_update += process_state_change_tx(
                     state_history, state_archive, alt_states, nettype, block, tx, my_keys);
         } else if (tx.type == cryptonote::txtype::key_image_unlock) {
+            log::debug(logcat, "Processing key image unlock tx");
             process_key_image_unlock_tx(nettype, hf_version, block_height, tx);
         } else if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
+            log::debug(logcat, "Processing eth registration tx");
             process_ethereum_registration_tx(nettype, block, tx, index, my_keys);
         } else if (tx.type == cryptonote::txtype::ethereum_service_node_leave_request) {
+            log::debug(logcat, "Processing eth unlock tx");
             process_ethereum_unlock_tx(nettype, hf_version, block_height, tx);
         } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit) {
+            log::debug(logcat, "Processing eth exit tx");
             process_ethereum_exit_tx(nettype, hf_version, block_height, tx);
         } else if (tx.type == cryptonote::txtype::ethereum_service_node_deregister) {
+            log::debug(logcat, "Processing eth deregister tx");
             process_ethereum_deregister_tx(nettype, hf_version, block_height, tx, my_keys);
         }
     }
@@ -2927,6 +2950,12 @@ void service_node_list::state_t::update_from_block(
         }
     }
     generate_other_quorums(*this, active_snode_list, nettype, hf_version);
+
+    // If our x25519 map is empty then try populating it (which only does something if we're into
+    // the unified-pubkey-and-ed-pubkey hardfork).  In normal operation, this only happens once (for
+    // the first post-unified-keys hard fork state block).
+    if (x25519_map.empty())
+        initialize_xpk_map();
 }
 
 void service_node_list::process_block(
@@ -2956,8 +2985,9 @@ void service_node_list::process_block(
                 m_transient.state_added_to_archive = true;
                 if (need_quorum_for_future_states)  // Preserve just quorum
                 {
-                    state_t& state = const_cast<state_t&>(
-                            *it);  // safe: set order only depends on state_t.height
+                    // This const cast is a little ugly, but is safe because we don't touch
+                    // state_t.height (which is all the set order depends on).
+                    state_t& state = const_cast<state_t&>(*it);
                     state.service_nodes_infos = {};
                     state.key_image_blacklist = {};
                     state.only_loaded_quorums = true;
@@ -3843,7 +3873,7 @@ bool service_node_list::handle_uptime_proof(
         return false;
     }
 
-    if (vers.first >= feature::ETH_BLS) {
+    if (vers.first >= feature::SN_PK_IS_ED25519) {
         // Starting at the ETH_BLS hard fork we prohibit proofs with differing pubkey/ed25519
         // pubkey; any mixed node registrations get updated as part of the HF transition.
         if (tools::view_guts(proof->pubkey) != tools::view_guts(proof->pubkey_ed25519)) {
@@ -3852,7 +3882,7 @@ bool service_node_list::handle_uptime_proof(
                     "Rejecting uptime proof from {}: pubkey != pubkey_ed25519 is not allowed since "
                     "HF{}",
                     proof->pubkey,
-                    static_cast<uint8_t>(feature::ETH_BLS));
+                    static_cast<uint8_t>(feature::SN_PK_IS_ED25519));
             return false;
         }
     }
@@ -3885,7 +3915,7 @@ bool service_node_list::handle_uptime_proof(
     assert(proof->proof_hash);  // This gets set during parsing of an incoming proof
     const auto& hash = proof->proof_hash;
 
-    if (vers.first < feature::ETH_BLS) {
+    if (vers.first < feature::SN_PK_IS_ED25519) {
         // pre-ETH_BLS includes a Monero-style (i.e. wrongly computed, though cryptographically
         // equivalent) Ed25519 signature signed by `pubkey`.  (Post-ETH_BLS sends and uses only the
         // proper Ed25519 signature, and requires the pubkeys be the same).
@@ -4030,23 +4060,25 @@ bool service_node_list::handle_uptime_proof(
         iproof.store(iproof.proof->pubkey, m_blockchain);
     }
 
-    if (now - x25519_map_last_pruned >= X25519_MAP_PRUNING_INTERVAL) {
-        time_t cutoff = std::chrono::system_clock::to_time_t(now - X25519_MAP_PRUNING_LAG);
-        std::erase_if(x25519_to_pub, [&cutoff](const decltype(x25519_to_pub)::value_type& x) {
-            return x.second.second < cutoff;
-        });
-        x25519_map_last_pruned = now;
+    if (vers.first < feature::SN_PK_IS_ED25519) {
+        if (now - x25519_map_last_pruned >= X25519_MAP_PRUNING_INTERVAL) {
+            time_t cutoff = std::chrono::system_clock::to_time_t(now - X25519_MAP_PRUNING_LAG);
+            std::erase_if(x25519_to_pub, [&cutoff](const auto& x) {
+                return x.second.second < cutoff;
+            });
+            x25519_map_last_pruned = now;
+        }
+
+        if (old_x25519 && old_x25519 != derived_x25519_pubkey)
+            x25519_to_pub.erase(old_x25519);
+
+        if (derived_x25519_pubkey)
+            x25519_to_pub[derived_x25519_pubkey] = {
+                    iproof.proof->pubkey, std::chrono::system_clock::to_time_t(now)};
+
+        if (derived_x25519_pubkey && (old_x25519 != derived_x25519_pubkey))
+            x25519_pkey = derived_x25519_pubkey;
     }
-
-    if (old_x25519 && old_x25519 != derived_x25519_pubkey)
-        x25519_to_pub.erase(old_x25519);
-
-    if (derived_x25519_pubkey)
-        x25519_to_pub[derived_x25519_pubkey] = {
-                iproof.proof->pubkey, std::chrono::system_clock::to_time_t(now)};
-
-    if (derived_x25519_pubkey && (old_x25519 != derived_x25519_pubkey))
-        x25519_pkey = derived_x25519_pubkey;
 
     return true;
 }
@@ -4073,24 +4105,34 @@ void service_node_list::cleanup_proofs() {
 
 crypto::public_key service_node_list::get_pubkey_from_x25519(
         const crypto::x25519_public_key& x25519) const {
-    std::shared_lock lock{m_x25519_map_mutex};
-    auto it = x25519_to_pub.find(x25519);
-    if (it != x25519_to_pub.end())
-        return it->second.first;
+    if (cryptonote::is_hard_fork_at_least(
+                m_blockchain.nettype(),
+                feature::SN_PK_IS_ED25519,
+                m_blockchain.get_current_blockchain_height())) {
+        std::lock_guard lock{m_sn_mutex};
+        auto it = m_state.x25519_map.find(x25519);
+        if (it != m_state.x25519_map.end())
+            return it->second;
+    } else {
+        std::shared_lock lock{m_x25519_map_mutex};
+        auto it = x25519_to_pub.find(x25519);
+        if (it != x25519_to_pub.end())
+            return it->second.first;
+    }
     return crypto::null<crypto::public_key>;
 }
 
 crypto::public_key service_node_list::get_random_pubkey() {
     std::lock_guard lock{m_sn_mutex};
-    auto it = tools::select_randomly(
-            m_state.service_nodes_infos.begin(), m_state.service_nodes_infos.end());
-    if (it != m_state.service_nodes_infos.end()) {
+    if (auto it = tools::select_randomly(
+                m_state.service_nodes_infos.begin(), m_state.service_nodes_infos.end());
+        it != m_state.service_nodes_infos.end()) {
         return it->first;
-    } else {
-        return m_state.service_nodes_infos.begin()->first;
     }
+    return crypto::null<crypto::public_key>;
 }
 
+// Deprecated: can be remove after HF21
 void service_node_list::initialize_x25519_map() {
     auto locks = tools::unique_locks(m_sn_mutex, m_x25519_map_mutex);
 
@@ -4107,8 +4149,7 @@ void service_node_list::initialize_x25519_map() {
 std::string service_node_list::remote_lookup(std::string_view xpk) {
     if (xpk.size() != sizeof(crypto::x25519_public_key))
         return "";
-    crypto::x25519_public_key x25519_pub;
-    std::memcpy(x25519_pub.data(), xpk.data(), xpk.size());
+    auto x25519_pub = tools::make_from_guts<crypto::x25519_public_key>(xpk);
 
     auto pubkey = get_pubkey_from_x25519(x25519_pub);
     if (!pubkey) {
@@ -4313,7 +4354,6 @@ service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& s
             // only two valid values here: initial for a node that has never been recommissioned, or
             // 0 for a recommission.
 
-            auto was = info.recommission_credit;
             if (info.decommission_count <= info.is_decommissioned())
                 // Has never been decommissioned (or is currently in the first decommission), so add
                 // initial starting credit
@@ -4337,7 +4377,40 @@ service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& s
         assert(info.version == tools::enum_top<decltype(info.version)>);
         service_nodes_infos.emplace(std::move(pubkey_info.pubkey), std::move(pubkey_info.info));
     }
+
+    initialize_xpk_map();
+
     quorums = quorum_for_serialization_to_quorum_manager(state.quorums);
+}
+
+void service_node_list::state_t::initialize_xpk_map() {
+    // Compute the x25519 -> pubkey mappings for this state for post-merged-pubkey hardforks.
+    // (Before that the primary and Ed keys might differ, and we need the Ed key to get the correct
+    // X key, which only happens once we get a proof).
+    assert(x25519_map.empty());
+    if (sn_list && cryptonote::is_hard_fork_at_least(
+                sn_list->m_blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
+        for (const auto& [snpk, _ignore] : service_nodes_infos)
+            x25519_map[snpk_to_xpk(snpk)] = snpk;
+}
+
+void service_node_list::state_t::insert_info(
+        const crypto::public_key& pubkey, std::shared_ptr<service_node_info>&& info_ptr) {
+    service_nodes_infos[pubkey] = std::move(info_ptr);
+
+    if (sn_list && cryptonote::is_hard_fork_at_least(
+                           sn_list->m_blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
+        x25519_map[snpk_to_xpk(pubkey)] = pubkey;
+}
+
+service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
+        const service_nodes_infos_t::iterator& it) {
+    const auto& snpk = it->first;
+    if (sn_list && cryptonote::is_hard_fork_at_least(
+                           sn_list->m_blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
+        x25519_map.erase(snpk_to_xpk(snpk));
+
+    return service_nodes_infos.erase(it);
 }
 
 bool service_node_list::load(const uint64_t current_height) {
@@ -4516,7 +4589,10 @@ bool service_node_list::load(const uint64_t current_height) {
         mine.timestamp = mine.effective_timestamp = 0;
     }
 
-    initialize_x25519_map();
+    if (!cryptonote::is_hard_fork_at_least(
+            m_blockchain.nettype(), feature::SN_PK_IS_ED25519, current_height))
+        initialize_x25519_map();
+    // else the x25519 map is part of state_t
 
     log::info(globallogcat, "Service node data loaded successfully, height: {}", m_state.height);
     log::info(

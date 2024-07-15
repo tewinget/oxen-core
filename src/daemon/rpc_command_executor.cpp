@@ -867,28 +867,20 @@ bool rpc_command_executor::print_quorum_state(
     return true;
 }
 
-bool rpc_command_executor::set_log_level(int8_t level) {
-    try {
-        invoke<SET_LOG_LEVEL>(json{{"level", level}});
-    } catch (const std::exception& e) {
-        tools::fail_msg_writer("Failed to set log level: {}", e.what());
+bool rpc_command_executor::set_log_level(std::string categories) {
+    auto maybe_categories = try_running(
+            [this, &categories] {
+                return invoke<SET_LOG_LEVEL>(json{{"categories", std::move(categories)}});
+            },
+            "Failed to set log level");
+    if (!maybe_categories)
         return false;
-    }
 
-    tools::success_msg_writer("Log level set to {:d}", level);
-    return true;
-}
-
-bool rpc_command_executor::set_log_categories(std::string categories) {
-    // auto maybe_categories = try_running([this, &categories] { return
-    // invoke<SET_LOG_CATEGORIES>(json{{"categories", std::move(categories)}}); }, "Failed to set
-    // log categories"); if (!maybe_categories) return false;
-    // auto& categories_response = *maybe_categories;
-    auto categories_response =
-            make_request<SET_LOG_CATEGORIES>(json{{"categories", std::move(categories)}});
+    auto& cats = *maybe_categories;
 
     tools::success_msg_writer(
-            "Log categories are now {}", categories_response["categories"].get<std::string_view>());
+            "Applied log categories {}",
+            fmt::join(cats["applied"].get<std::vector<std::string_view>>(), ", "));
 
     return true;
 }
@@ -2287,18 +2279,11 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
     auto& snode_keys = *maybe_keys;
 
     if (hf_version >= cryptonote::feature::ETH_BLS) {
-        // TODO FIXME XXX
-        tools::fail_msg_writer("FIXME: REPLACE THIS FOR feature::ETH_BLS");
-        assert(false);
-
-        tools::success_msg_writer(
-                "Service Node Pubkey: {}\n"
-                "Service Node Signature: {}\n",
-                snode_keys.value<std::string>("service_node_pubkey", ""),
-                snode_keys.value<std::string>(
-                        "service_node_signature",
-                        ""));  // Assuming 'service_node_signature' is the key for signature
-        return true;
+        tools::fail_msg_writer(
+                "prepare_registration is no longer usable as of HF {}; you should use the "
+                "`prepare_eth_registration` command instead",
+                static_cast<int>(cryptonote::feature::ETH_BLS));
+        return false;
     }
 
     auto nettype = cryptonote::network_type_from_string(info["nettype"].get<std::string_view>());

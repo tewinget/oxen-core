@@ -111,10 +111,12 @@ void command_server::init_commands(cryptonote::rpc::core_rpc_server* rpc_server)
     m_command_lookup.set_handler(
             "prepare_eth_registration",
             [this](const auto& x) { return m_parser.prepare_eth_registration(x); },
-            "prepare_eth_registration <operator address> [multi-contributor contract address] [\"print_only\"]",
-            "Interactive prompt to prepare a service node registration for submission to eth.  By default"
-            " this information is submitted to INSERT_URL_HERE to make it easy to submit your registration."
-            "  If you would prefer to just print the information, put print_only as the final argument.");
+            "prepare_eth_registration <operator address> [multi-contributor contract address] "
+            "[\"print_only\"]",
+            "Interactive prompt to prepare a service node registration for submission to eth.  By "
+            "default this information is submitted to INSERT_URL_HERE to make it easy to submit "
+            "your registration.  If you would prefer to just print the information, append "
+            "print_only as the final argument.");
 
     m_command_lookup.set_handler(
             "print_sn",
@@ -166,8 +168,9 @@ void command_server::init_commands(cryptonote::rpc::core_rpc_server* rpc_server)
     m_command_lookup.set_handler(
             "set_log",
             [this](const auto& x) { return m_parser.set_log_level(x); },
-            "set_log <level>|<{+,-,}categories>",
-            "Change the current log level/categories where <level> is a number 0-4.");
+            "set_log [LEVEL] [CATEGORY=LEVEL ...]",
+            "Change the current global log level and/or category-specific log levels.  LEVEL is "
+            "one of critical/error/warning/info/debug/trace.");
     m_command_lookup.set_handler(
             "diff",
             [this](const auto& x) { return m_parser.show_difficulty(x); },

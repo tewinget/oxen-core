@@ -133,7 +133,8 @@ void parse_request(GET_TRANSACTIONS& get, rpc_input in) {
             get.request.tx_hashes);
 
     if (get.request.memory_pool && !get.request.tx_hashes.empty())
-        throw oxen::traced<std::runtime_error>{"Error: 'memory_pool' and 'tx_hashes' are mutually exclusive"};
+        throw oxen::traced<std::runtime_error>{
+                "Error: 'memory_pool' and 'tx_hashes' are mutually exclusive"};
 }
 void parse_request(GET_TRANSACTION_POOL& get, rpc_input in) {
     // Deprecated wrapper; GET_TRANSACTION_POOL is a no-member subclass of GET_TRANSACTIONS; it
@@ -225,11 +226,13 @@ void parse_request(GET_PEER_LIST& pl, rpc_input in) {
 }
 
 void parse_request(SET_LOG_LEVEL& set_log_level, rpc_input in) {
-    get_values(in, "level", required{set_log_level.request.level});
-}
-
-void parse_request(SET_LOG_CATEGORIES& set_log_categories, rpc_input in) {
-    get_values(in, "categories", required{set_log_categories.request.categories});
+    auto& cats = set_log_level.request.categories;
+    std::optional<int8_t> level;
+    get_values(in, "categories", cats, "level", level);
+    // If we get a deprecated level number then stringify it and pass it on; the category parser
+    // knows how to deal with "3" and whatnot.
+    if (level && *level >= 0 && *level <= 4)
+        cats = "{} {}"_format(*level, cats);
 }
 
 void parse_request(BANNED& banned, rpc_input in) {

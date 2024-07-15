@@ -54,7 +54,7 @@ Proof::Proof(
     serialized_proof = bt_encode_uptime_proof(hardfork);
     proof_hash = crypto::keccak(serialized_proof);
 
-    if (hardfork < feature::ETH_BLS)
+    if (hardfork < feature::SN_PK_IS_ED25519)
         // Starting from HF21 we have guaranteed unified pubkey/ed25519 pubkey, so don't need to
         // send the old primary SN signature anymore: the single ed25519 signature does it all.
         crypto::generate_signature(proof_hash, keys.pub, keys.key, sig);
@@ -146,7 +146,7 @@ cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request Proof::generate_request(hf ha
     cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request request;
     assert(!serialized_proof.empty());
     request.proof = serialized_proof;
-    if (hardfork < feature::ETH_BLS) {
+    if (hardfork < feature::SN_PK_IS_ED25519) {
         // Starting at the full ETH hardfork we only send the ed25519 sig (because ed and primary
         // pubkeys are guaranteed unified starting at HF21).
         request.sig = tools::view_guts(sig);

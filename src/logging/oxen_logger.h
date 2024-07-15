@@ -54,8 +54,13 @@ void apply_categories_string(std::string_view categories);
 struct LogCats {
     std::optional<log::Level> default_level;
     std::unordered_map<std::string, log::Level> cat_levels;
-    // Applies the settings in the object to the global logger.
-    void apply();
+
+    // True if this object contains no parsed levels (either neither a default nor any category levels)
+    bool empty() const { return !default_level && cat_levels.empty(); }
+
+    // Applies the settings in the object to the global logger.  Returns the actual setting applied
+    // (i.e. not including redundant or unparseable settings).
+    std::list<std::string> apply();
 };
 
 /// Given a log level string this extracts the default and individual category levels applied by the

@@ -69,6 +69,7 @@
 #include "cryptonote_core/uptime_proof.h"
 #include "epee/net/network_throttle.hpp"
 #include "epee/string_tools.h"
+#include "logging/oxen_logger.h"
 #include "net/parse.h"
 #include "oxen/log.hpp"
 #include "oxen_economy.h"
@@ -1348,20 +1349,17 @@ void core_rpc_server::invoke(GET_PEER_LIST& pl, [[maybe_unused]] rpc_context con
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, [[maybe_unused]] rpc_context context) {
-    if (set_log_level.request.level < 0 || set_log_level.request.level > 4) {
-        set_log_level.response["status"] = "Error: log level not valid";
+    auto cats = oxen::logging::extract_categories(set_log_level.request.categories);
+    if (cats.empty()) {
+        log::error(logcat, "Invalid log level/categories string for set_log_level: {}", set_log_level.request.categories);
+        set_log_level.response["status"] = "Error: invalid log level/categories string";
         return;
     }
-    auto log_level = oxen::logging::parse_level(set_log_level.request.level);
-    if (log_level.has_value())
-        log::reset_level(*log_level);
+
+    auto applied = cats.apply();
+
+    set_log_level.response["applied"] = std::move(applied);
     set_log_level.response["status"] = STATUS_OK;
-}
-//------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        SET_LOG_CATEGORIES& set_log_categories, [[maybe_unused]] rpc_context context) {
-    oxen::logging::apply_categories_string(set_log_categories.request.categories);
-    set_log_categories.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 GET_TRANSACTION_POOL_HASHES_BIN::response core_rpc_server::invoke(
