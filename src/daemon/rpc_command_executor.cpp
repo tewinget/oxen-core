@@ -254,7 +254,7 @@ json rpc_command_executor::invoke(
     json result;
 
     if (auto* rpc_client = std::get_if<cryptonote::rpc::http_client>(&m_rpc)) {
-        result = rpc_client->json_rpc(method, std::move(params));
+        result = rpc_client->json_rpc(method, std::move(params).value_or(nullptr));
     } else {
         assert(m_omq);
         auto conn = var::get<oxenmq::ConnectionID>(m_rpc);
