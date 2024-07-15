@@ -224,19 +224,6 @@ class SNNetwork:
 
         self.print_wallet_balances()
 
-        vprint("Sending fake lokinet/ss pings")
-        for sn in self.sns:
-            sn.ping()
-
-        vprint("Send uptime proofs at height 389 (HF20) to propagate BLS pubkeys")
-        for sn in self.sns:
-            sn.send_uptime_proof()
-
-        vprint("Waiting for proofs to propagate:", flush=True)
-        for sn in self.sns:
-            wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
-        vprint(timestamp=False)
-
         # This commented out code will register the last SN through Mikes wallet (Has done every other SN)
         # for sn in self.sns[-1:]:
             # self.mike.register_sn(sn)
@@ -248,12 +235,25 @@ class SNNetwork:
         # Register the last SN through Bobs wallet (Has not done any others)
         # and also get 9 other wallets to contribute the rest of the node with a 10% operator fee
         self.bob.register_sn_for_contributions(sn=self.sns[-1], cut=10, amount=coins(28), staking_requirement=self.sns[0].get_staking_requirement())
-        self.sync_nodes(self.mine(20), timeout=120) # Mining to 409
+        self.sync_nodes(self.mine(21), timeout=120) # Mining to height 410
         self.print_wallet_balances()
         for wallet in self.extrawallets:
             wallet.contribute_to_sn(self.sns[-1], coins(8))
 
-        self.sync_nodes(self.mine(1), timeout=120)
+        vprint("Sending fake lokinet/ss pings")
+        for sn in self.sns:
+            sn.ping()
+
+        vprint("Send uptime proofs at height 411 (HF20) to propagate BLS pubkeys")
+        for sn in self.sns:
+            sn.send_uptime_proof()
+
+        vprint("Waiting for proofs to propagate:", flush=True)
+        for sn in self.sns:
+            wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
+        vprint(timestamp=False)
+
+        self.sync_nodes(self.mine(1), timeout=120) # Mining to height 411
 
         # Pull out some useful keys to local variables
         sn0_pubkey            = self.ethsns[0].get_service_keys().pubkey
