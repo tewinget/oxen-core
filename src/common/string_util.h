@@ -2,6 +2,7 @@
 #include <fmt/format.h>
 #include <oxenc/common.h>
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <concepts>
