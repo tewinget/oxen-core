@@ -23,7 +23,7 @@ local default_deps = ['g++'] + default_deps_nocxx;  // g++ sometimes needs repla
 
 local gtest_filter = '-AddressFromURL.Failure:DNSResolver.DNSSEC*';
 
-local docker_base = 'registry.oxen.rocks/lokinet-ci-';
+local docker_base = 'registry.oxen.rocks/';
 
 local submodules_commands = ['git fetch --tags', 'git submodule update --init --recursive --depth=1 --jobs=4'];
 local submodules = {
@@ -308,7 +308,7 @@ local gui_wallet_step_darwin = {
         'echo "Building on ${DRONE_STAGE_MACHINE}"',
         apt_get_quiet + ' update',
         apt_get_quiet + ' install -y eatmydata',
-        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git clang-format-14 jsonnet',
+        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git clang-format-16 jsonnet',
         './contrib/drone-format-verify.sh',
       ],
     }],
@@ -317,9 +317,9 @@ local gui_wallet_step_darwin = {
   // Various debian builds
   debian_pipeline('Debian sid (w/ tests) (amd64)', docker_base + 'debian-sid', lto=true, run_tests=true, build_everything=true),
   debian_pipeline('Debian sid Debug (amd64)', docker_base + 'debian-sid', build_type='Debug', build_everything=true, cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
-  clang(14),
+  clang(18),
   debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386', cmake_extra='-DDOWNLOAD_SODIUM=ON -DARCH_ID=i386 -DARCH=i686'),
-  debian_pipeline('Debian buster (amd64)', docker_base + 'debian-buster', cmake_extra='-DDOWNLOAD_SODIUM=ON'),
+  debian_pipeline('Debian buster (amd64)', docker_base + 'debian-bullseye'),
   debian_pipeline('Ubuntu LTS (amd64)', docker_base + 'ubuntu-lts'),
   debian_pipeline('Ubuntu latest (amd64)', docker_base + 'ubuntu-rolling'),
 
@@ -333,15 +333,13 @@ local gui_wallet_step_darwin = {
 
   // Static build (on bionic) which gets uploaded to builds.lokinet.dev:
   debian_pipeline(
-    'Static (bionic amd64)',
-    docker_base + 'ubuntu-bionic',
-    deps=['g++-8'] + static_build_deps,
-    cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8 -DARCH=x86-64',
+    'Static (focal amd64)',
+    docker_base + 'ubuntu-focal',
+    deps=['g++-10'] + static_build_deps,
+    cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 -DARCH=x86-64',
     build_tests=false,
     lto=true,
     extra_cmds=static_check_and_upload,
-    kitware_cmake_distro='bionic',
-    /*extra_steps=[gui_wallet_step('ubuntu:bionic')]*/
   ),
 
   snapshot_deb('sid'),
