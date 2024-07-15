@@ -168,8 +168,6 @@ static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8
     for (uint8_t increment = 0;; increment++) {
         messageWithI[messageWithI.size() - 1] = increment;
 
-        oxen::log::trace(logcat, "msgi: {}", oxenc::to_hex(messageWithI.begin(), messageWithI.end()));
-
         // NOTE: Solidity's BN256G2.hashToField(msg, tag) => (x1, x2, b)
         mcl::bn::Fp x1 = {}, x2 = {};
         bool b = false;
