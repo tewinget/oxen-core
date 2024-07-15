@@ -442,6 +442,8 @@ add_definition_if_library_exists(c memset_s "string.h" HAVE_MEMSET_S)
 add_definition_if_library_exists(c explicit_bzero "strings.h" HAVE_EXPLICIT_BZERO)
 add_definition_if_function_found(strptime HAVE_STRPTIME)
 
+include(oxen_install)
+
 # Generate header for embedded translations
 add_subdirectory(translations)
 

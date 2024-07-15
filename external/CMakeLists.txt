@@ -49,6 +49,7 @@ add_subdirectory(date EXCLUDE_FROM_ALL)
 set(BLS_ETH ON CACHE BOOL "" FORCE)
 set(MCL_STATIC_LIB ON CACHE BOOL "" FORCE)
 add_subdirectory(bls EXCLUDE_FROM_ALL)
+oxen_install_library(bls256)
 
 if(BUILD_STATIC_DEPS)
   set(OXEN_LOGGING_FORCE_SUBMODULES TRUE CACHE BOOL "" FORCE)
@@ -114,7 +115,9 @@ set(SQLITECPP_RUN_DOXYGEN OFF CACHE BOOL "" FORCE)
 set(SQLITECPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SQLITECPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
-add_subdirectory(SQLiteCpp)
+add_subdirectory(SQLiteCpp EXCLUDE_FROM_ALL)
+oxen_install_library(SQLiteCpp)
+
 
 add_subdirectory(Catch2)
 
@@ -129,6 +132,7 @@ system_or_submodule(ETHYL ethyl libethyl>=0.1.0 ethyl)
 if(NOT TARGET cpr::cpr)
     set(CPR_USE_SYSTEM_CURL ON CACHE BOOL "")
     add_subdirectory(ethyl/external/cpr EXCLUDE_FROM_ALL)
+    oxen_install_library(cpr)
 endif()
 
 if(NOT TARGET nlohmann_json::nlohmann_json)
