@@ -25,7 +25,6 @@ void set_additional_log_categories(log::Level& log_level) {
             log::set_level("global", log::Level::info);
             log::set_level("verify", log::Level::err);
             log::set_level("serialization", log::Level::err);
-            log::set_level("logging", log::Level::info);
             log::set_level("msgwriter", log::Level::info);
             log::set_level("daemon", log::Level::info);
             break;
@@ -111,11 +110,11 @@ void init(const std::string& log_location, std::string_view log_levels, bool log
     if (!cats.default_level)
         cats.default_level = log::Level::warn;
 
+    cats.apply();
     if (log_to_stdout)
         log::add_sink(log::Type::Print, "stdout");
     if (!log_location.empty())
         set_file_sink(log_location);
-    cats.apply();
 }
 
 void set_file_sink(const std::string& log_location) {
