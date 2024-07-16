@@ -1880,7 +1880,8 @@ static void append_printable_service_node_list_entry(
                     else {
                         stream << "Yes (last tested " << get_human_time_ago(last_reachable, now);
                         if (last_unreachable)
-                            stream << "; last failure " << get_human_time_ago(last_unreachable, now);
+                            stream << "; last failure "
+                                   << get_human_time_ago(last_unreachable, now);
                         stream << ")";
                     }
                 } else {
@@ -1909,8 +1910,9 @@ static void append_printable_service_node_list_entry(
                 return tools::join(".", j.get<std::array<int, 3>>());
             };
             stream << indent2 << "Storage Server / Lokinet Router versions: "
-                   << show_component_version(entry["storage_server_version"], "Storage Server") << " / "
-                   << show_component_version(entry["storage_server_version"], "Lokinet") << "\n";
+                   << show_component_version(entry["storage_server_version"], "Storage Server")
+                   << " / " << show_component_version(entry["storage_server_version"], "Lokinet")
+                   << "\n";
         }
 
         //
@@ -2705,7 +2707,7 @@ The Service Node will not activate until the entire stake has been contributed.
 }
 
 bool rpc_command_executor::prepare_eth_registration(
-        std::string_view operator_address, std::string_view contract_address, bool print_only) {
+        std::string_view operator_address, std::string_view contract_address, bool print) {
     for (size_t i = 0; i < (contract_address.empty() ? 1 : 2); i++) {
         auto eth_arg = (i == 0) ? operator_address : contract_address;
         if (eth_arg.starts_with("0x"))
@@ -2725,51 +2727,51 @@ bool rpc_command_executor::prepare_eth_registration(
         auto bls_pubkey = reg_info["bls_pubkey"].get<std::string>();
         auto bls_sig = reg_info["proof_of_possession"].get<std::string>();
         auto reg_type_str = (i == 0) ? "operator-only"sv : "multi-contributor"sv;
-        tools::msg_writer("Printing info for {} staking\n", reg_type_str);
-        tools::msg_writer(
-                "ed25519_pubkey: {}\n"
-                "bls_pubkey: {}\n"
-                "ed25519_signature: {}\n"
-                "bls_signature: {}\n"
-                "operator_address: {}\n"
-                "multi-contributor contract address: {}\n",
-                snode_pubkey,
-                bls_pubkey,
-                ed_sig,
-                bls_sig,
-                operator_address,
-                contract_address);
-        if (print_only)
-            continue;
-
-        std::string BASE_URL = "https://ssb.oxen.observer/api/";  // TODO: make config option
-
-        tools::msg_writer(
-                "Submitting {} information to the staking website, please wait.", reg_type_str);
-        auto url = cpr::Url{BASE_URL + "store/" + snode_pubkey};
-
-        auto msg = cpr::Multipart{
-                {"sig_ed25519"s, ed_sig},
-                {"pubkey_bls"s, bls_pubkey},
-                {"sig_bls"s, bls_sig},
-                {"operator"s, std::string{operator_address}}};
-
-        if (i == 1)
-            msg.parts.emplace_back("contract", std::string{contract_address});
-
-        auto response = cpr::Post(url, msg);
-
-        if (response.status_code != 200) {
-            tools::fail_msg_writer(
-                    "Something went wrong submitting {} information to the staking website: {}",
-                    reg_type_str,
-                    response.status_line);
+        if (print) {
+            tools::msg_writer("Printing info for {} staking\n", reg_type_str);
+            tools::msg_writer(
+                    "ed25519_pubkey: {}\n"
+                    "bls_pubkey: {}\n"
+                    "ed25519_signature: {}\n"
+                    "bls_signature: {}\n"
+                    "operator_address: {}\n"
+                    "multi-contributor contract address: {}\n",
+                    snode_pubkey,
+                    bls_pubkey,
+                    ed_sig,
+                    bls_sig,
+                    operator_address,
+                    contract_address);
         } else {
-            tools::success_msg_writer(
-                    "Submitted {} information to the staking website successfully!\n"
-                    "View your registrations at: {}",
-                    reg_type_str,
-                    BASE_URL + "registrations/" + snode_pubkey);
+            tools::msg_writer(
+                    "Submitting {} information to staking.getsession.org, please wait.",
+                    reg_type_str);
+            // TODO: make config option
+            auto url = cpr::Url{"https://ssb.oxen.observer/api/store/{}"_format(snode_pubkey)};
+
+            auto msg = cpr::Multipart{
+                    {"sig_ed25519"s, ed_sig},
+                    {"pubkey_bls"s, bls_pubkey},
+                    {"sig_bls"s, bls_sig},
+                    {"operator"s, std::string{operator_address}}};
+
+            if (i == 1)
+                msg.parts.emplace_back("contract", std::string{contract_address});
+
+            auto response = cpr::Post(url, msg);
+
+            if (response.status_code != 200) {
+                tools::fail_msg_writer(
+                        "Something went wrong submitting {} information to the staking website: {}",
+                        reg_type_str,
+                        response.status_line);
+            } else {
+                tools::success_msg_writer(
+                        "Submitted {} information to the staking website successfully!\n"
+                        "View your registration at: {}",
+                        reg_type_str,
+                        "https://stake.getsession.org/register/{}"_format(snode_pubkey));
+            }
         }
     }
 

@@ -35,8 +35,8 @@
 #include <exception>
 #include <optional>
 
-#include "common/exception.h"
 #include "common/common_fwd.h"
+#include "common/exception.h"
 #include "common/scoped_message_writer.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "rpc/common/command_decorators.h"
@@ -252,7 +252,10 @@ class rpc_command_executor final {
 
     bool prepare_registration(bool force_registration = false);
 
-    bool prepare_eth_registration(std::string_view operator_address, std::string_view contract_address, bool print_only = false);
+    bool prepare_eth_registration(
+            std::string_view operator_address,
+            std::string_view contract_address,
+            bool print = false);
 
     bool print_sn(const std::vector<std::string>& args, bool self = false);
 

@@ -268,57 +268,46 @@ bool command_parser_executor::prepare_registration(const std::vector<std::string
 }
 
 bool command_parser_executor::prepare_eth_registration(const std::vector<std::string>& args) {
-    constexpr auto usage = "Eth registration args: <operator address> [multi-contributor contract address] [\"print_only\"]"sv;
+    constexpr auto usage =
+            "Eth registration args: <operator address> [multi-contributor address] [\"print\"]"sv;
 
     auto argc = args.size();
-    if (argc < 1)
-    {
+    if (argc < 1) {
         log::error(logcat, usage);
         return false;
     }
-    if (args[0].size() != 42)
-    {
+    if (args[0].size() != 42) {
         log::error(logcat, usage);
         return false;
     }
     const auto operator_address = std::string_view{args[0]};
     auto contract_address = ""sv;
-    bool print_only = false;
-    if (argc == 2)
-    {
-        if (args[1] != "print_only")
-        {
-            if (args[1].size() != 42)
-            {
+    bool print = false;
+    if (argc == 2) {
+        if (args[1] != "print") {
+            if (args[1].size() != 42) {
                 log::error(logcat, usage);
                 return false;
             }
             contract_address = std::string_view{args[1]};
-        }
-        else
-            print_only = true;
-    }
-    else if (argc == 3)
-    {
-        if (args[2] != "print_only")
-        {
+        } else
+            print = true;
+    } else if (argc == 3) {
+        if (args[2] != "print") {
             log::error(logcat, usage);
             return false;
         }
-        print_only = true;
-        if (args[1].size() != 42)
-        {
+        print = true;
+        if (args[1].size() != 42) {
             log::error(logcat, usage);
             return false;
         }
         contract_address = std::string_view{args[1]};
-    }
-    else if (argc != 1)
-    {
+    } else if (argc != 1) {
         log::error(logcat, usage);
         return false;
     }
-    return m_executor.prepare_eth_registration(operator_address, contract_address, print_only);
+    return m_executor.prepare_eth_registration(operator_address, contract_address, print);
 }
 
 bool command_parser_executor::print_sn(const std::vector<std::string>& args) {
@@ -333,7 +322,8 @@ bool command_parser_executor::print_sn_status(const std::vector<std::string>& ar
 
 bool command_parser_executor::set_log_level(const std::vector<std::string>& args) {
     if (args.empty()) {
-        std::cout << "use: set_log [critical|error|warning|info|debug|trace] [category=LEVEL ...]" << std::endl;
+        std::cout << "use: set_log [critical|error|warning|info|debug|trace] [category=LEVEL ...]"
+                  << std::endl;
         return true;
     }
 
