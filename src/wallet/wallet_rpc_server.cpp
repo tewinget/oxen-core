@@ -35,14 +35,13 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/asio/ip/address.hpp>
-#include <boost/format.hpp>
 #include <chrono>
 #include <concepts>
 #include <cstdint>
 #include <exception>
 
-#include "common/exception.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "common/guts.h"
 #include "common/i18n.h"
 #include "common/signal_handler.h"
@@ -298,12 +297,13 @@ void wallet_rpc_server::handle_json_rpc_request(HttpResponse& res, HttpRequest& 
         } catch (const tools::error::tx_not_possible& e) {
             json_error = {
                     error_code::TX_NOT_POSSIBLE,
-                    (boost::format(tr("Transaction not possible. Available only %s, transaction "
-                                      "amount %s = %s + %s (fee)")) %
-                     cryptonote::print_money(e.available()) %
-                     cryptonote::print_money(e.tx_amount() + e.fee()) %
-                     cryptonote::print_money(e.tx_amount()) % cryptonote::print_money(e.fee()))
-                            .str()};
+                    fmt::format(
+                            fmt::runtime(tr("Transaction not possible. Only {} available, but "
+                                            "transaction needs {} = {} + {} (fee)")),
+                            cryptonote::print_money(e.available()),
+                            cryptonote::print_money(e.tx_amount() + e.fee()),
+                            cryptonote::print_money(e.tx_amount()),
+                            cryptonote::print_money(e.fee()))};
         } catch (const tools::error::not_enough_outs_to_mix& e) {
             json_error = {
                     error_code::NOT_ENOUGH_OUTS_TO_MIX,
@@ -814,7 +814,7 @@ GET_ACCOUNTS::response wallet_rpc_server::invoke(GET_ACCOUNTS::request&& req) {
         if (!req.tag.empty() && account_tags.first.count(req.tag) == 0)
             throw wallet_rpc_error{
                     error_code::UNKNOWN_ERROR,
-                    (boost::format(tr("Tag %s is unregistered.")) % req.tag).str()};
+                    fmt::format(fmt::runtime(tr("Tag {} is unregistered.")), req.tag)};
         for (cryptonote::subaddress_index subaddr_index = {0, 0};
              subaddr_index.major < m_wallet->get_num_subaddress_accounts();
              ++subaddr_index.major) {

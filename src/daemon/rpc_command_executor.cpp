@@ -254,7 +254,7 @@ json rpc_command_executor::invoke(
     json result;
 
     if (auto* rpc_client = std::get_if<cryptonote::rpc::http_client>(&m_rpc)) {
-        result = rpc_client->json_rpc(method, std::move(params));
+        result = rpc_client->json_rpc(method, std::move(params).value_or(nullptr));
     } else {
         assert(m_omq);
         auto conn = var::get<oxenmq::ConnectionID>(m_rpc);
@@ -1842,70 +1842,78 @@ static void append_printable_service_node_list_entry(
         if (entry.value("public_ip", "0.0.0.0"s) == "0.0.0.0")
             stream << "(Awaiting confirmation from network)";
         else
-            stream << entry["public_ip"].get<std::string_view>() << " :"
-                   << entry["storage_port"].get<uint16_t>()
-                   << " (storage https), :" << entry["storage_lmq_port"].get<uint16_t>()
-                   << " (storage omq), :" << entry["quorumnet_port"].get<uint16_t>()
-                   << " (quorumnet)";
+            stream << entry["public_ip"].get<std::string_view>() << " ";
+        if (conf.HAVE_STORAGE_AND_LOKINET)
+            stream << ": {} (storage https), :{} (storage omq), "_format(
+                    entry["storage_port"].get<uint16_t>(),
+                    entry["storage_lmq_port"].get<uint16_t>());
+        stream << ": {} (oxen quorums)"_format(entry["quorumnet_port"].get<uint16_t>());
 
         stream << "\n";
         if (detailed_view) {
             auto ed_pk = entry.value("pubkey_ed25519", ""sv);
+            // OXEN11 TODO FIXME: add BLS key
             stream << indent2 << "Auxiliary Public Keys:\n"
-                   << indent3 << (ed_pk.empty() ? "(not yet received)"sv : ed_pk) << " (Ed25519)\n"
-                   << indent3
-                   << (ed_pk.empty() ? "(not yet received)"s
-                                     : oxenc::to_base32z(oxenc::from_hex(ed_pk)) + ".snode")
-                   << " (Lokinet)\n"
-                   << indent3 << entry.value("pubkey_x25519", "(not yet received)"sv)
+                   << indent3 << (ed_pk.empty() ? "(not yet received)"sv : ed_pk) << " (Ed25519)\n";
+            if (conf.HAVE_STORAGE_AND_LOKINET) {
+                stream << indent3
+                       << (ed_pk.empty() ? "(not yet received)"s
+                                         : oxenc::to_base32z(oxenc::from_hex(ed_pk)) + ".snode")
+                       << " (Lokinet)\n";
+            }
+            stream << indent3 << entry.value("pubkey_x25519", "(not yet received)"sv)
                    << " (X25519)\n";
         }
 
-        //
-        // NOTE: Storage Server Test
-        //
-        auto print_reachable = [&stream, &now](const json& j, const std::string& prefix) {
-            auto first_unreachable = j.value<time_t>(prefix + "_first_unreachable", 0),
-                 last_unreachable = j.value<time_t>(prefix + "_last_unreachable", 0),
-                 last_reachable = j.value<time_t>(prefix + "_last_reachable", 0);
+        if (conf.HAVE_STORAGE_AND_LOKINET) {
+            //
+            // NOTE: Storage Server Test
+            //
+            auto print_reachable = [&stream, &now](const json& j, const std::string& prefix) {
+                auto first_unreachable = j.value<time_t>(prefix + "_first_unreachable", 0),
+                     last_unreachable = j.value<time_t>(prefix + "_last_unreachable", 0),
+                     last_reachable = j.value<time_t>(prefix + "_last_reachable", 0);
 
-            if (first_unreachable == 0) {
-                if (last_reachable == 0)
-                    stream << "Not yet tested";
-                else {
-                    stream << "Yes (last tested " << get_human_time_ago(last_reachable, now);
-                    if (last_unreachable)
-                        stream << "; last failure " << get_human_time_ago(last_unreachable, now);
+                if (first_unreachable == 0) {
+                    if (last_reachable == 0)
+                        stream << "Not yet tested";
+                    else {
+                        stream << "Yes (last tested " << get_human_time_ago(last_reachable, now);
+                        if (last_unreachable)
+                            stream << "; last failure "
+                                   << get_human_time_ago(last_unreachable, now);
+                        stream << ")";
+                    }
+                } else {
+                    stream << "NO";
+                    if (!j.value(prefix + "_reachable", false))
+                        stream << " - FAILING!";
+                    stream << " (last tested " << get_human_time_ago(last_unreachable, now)
+                           << "; failing since " << get_human_time_ago(first_unreachable, now);
+                    if (last_reachable)
+                        stream << "; last good " << get_human_time_ago(last_reachable, now);
                     stream << ")";
                 }
-            } else {
-                stream << "NO";
-                if (!j.value(prefix + "_reachable", false))
-                    stream << " - FAILING!";
-                stream << " (last tested " << get_human_time_ago(last_unreachable, now)
-                       << "; failing since " << get_human_time_ago(first_unreachable, now);
-                if (last_reachable)
-                    stream << "; last good " << get_human_time_ago(last_reachable, now);
-                stream << ")";
-            }
-            stream << '\n';
-        };
-        stream << indent2 << "Storage Server Reachable: ";
-        print_reachable(entry, "storage_server");
-        stream << indent2 << "Lokinet Reachable: ";
-        print_reachable(entry, "lokinet");
+                stream << '\n';
+            };
+            stream << indent2 << "Storage Server Reachable: ";
+            print_reachable(entry, "storage_server");
+            stream << indent2 << "Lokinet Reachable: ";
+            print_reachable(entry, "lokinet");
 
-        //
-        // NOTE: Component Versions
-        //
-        auto show_component_version = [](const json& j, std::string_view name) {
-            if (!j.is_array() || j.front().get<int>() == 0)
-                return "("s + std::string{name} + " ping not yet received)"s;
-            return tools::join(".", j.get<std::array<int, 3>>());
-        };
-        stream << indent2 << "Storage Server / Lokinet Router versions: "
-               << show_component_version(entry["storage_server_version"], "Storage Server") << " / "
-               << show_component_version(entry["storage_server_version"], "Lokinet") << "\n";
+            //
+            // NOTE: Component Versions
+            //
+            auto show_component_version = [](const json& j, std::string_view name) {
+                if (!j.is_array() || j.front().get<int>() == 0)
+                    return "("s + std::string{name} + " ping not yet received)"s;
+                return tools::join(".", j.get<std::array<int, 3>>());
+            };
+            stream << indent2 << "Storage Server / Lokinet Router versions: "
+                   << show_component_version(entry["storage_server_version"], "Storage Server")
+                   << " / " << show_component_version(entry["storage_server_version"], "Lokinet")
+                   << "\n";
+        }
 
         //
         // NOTE: Print Voting History
@@ -1952,7 +1960,9 @@ static void append_printable_service_node_list_entry(
         auto n_contributors = entry["contributors"].size();
         stream << indent2 << "Contributors (" << n_contributors << "):\n";
         for (auto& contributor : entry["contributors"]) {
-            stream << indent3 << contributor["address"].get<std::string_view>();
+            auto addr = contributor["address"].get<std::string_view>();
+            // FIXME: case-format an ETH address instead of going all lower-case?
+            stream << indent3 << (addr.size() == 40 ? "0x" : "") << addr;
             auto amount = contributor["amount"].get<uint64_t>();
             auto reserved = contributor.value("reserved", amount);
             stream << " (" << cryptonote::print_money(amount, true);
@@ -2697,7 +2707,7 @@ The Service Node will not activate until the entire stake has been contributed.
 }
 
 bool rpc_command_executor::prepare_eth_registration(
-        std::string_view operator_address, std::string_view contract_address, bool print_only) {
+        std::string_view operator_address, std::string_view contract_address, bool print) {
     for (size_t i = 0; i < (contract_address.empty() ? 1 : 2); i++) {
         auto eth_arg = (i == 0) ? operator_address : contract_address;
         if (eth_arg.starts_with("0x"))
@@ -2717,51 +2727,51 @@ bool rpc_command_executor::prepare_eth_registration(
         auto bls_pubkey = reg_info["bls_pubkey"].get<std::string>();
         auto bls_sig = reg_info["proof_of_possession"].get<std::string>();
         auto reg_type_str = (i == 0) ? "operator-only"sv : "multi-contributor"sv;
-        tools::msg_writer("Printing info for {} staking\n", reg_type_str);
-        tools::msg_writer(
-                "ed25519_pubkey: {}\n"
-                "bls_pubkey: {}\n"
-                "ed25519_signature: {}\n"
-                "bls_signature: {}\n"
-                "operator_address: {}\n"
-                "multi-contributor contract address: {}\n",
-                snode_pubkey,
-                bls_pubkey,
-                ed_sig,
-                bls_sig,
-                operator_address,
-                contract_address);
-        if (print_only)
-            continue;
-
-        std::string BASE_URL = "https://ssb.oxen.observer/api/";  // TODO: make config option
-
-        tools::msg_writer(
-                "Submitting {} information to the staking website, please wait.", reg_type_str);
-        auto url = cpr::Url{BASE_URL + "store/" + snode_pubkey};
-
-        auto msg = cpr::Multipart{
-                {"sig_ed25519"s, ed_sig},
-                {"pubkey_bls"s, bls_pubkey},
-                {"sig_bls"s, bls_sig},
-                {"operator"s, std::string{operator_address}}};
-
-        if (i == 1)
-            msg.parts.emplace_back("contract", std::string{contract_address});
-
-        auto response = cpr::Post(url, msg);
-
-        if (response.status_code != 200) {
-            tools::fail_msg_writer(
-                    "Something went wrong submitting {} information to the staking website: {}",
-                    reg_type_str,
-                    response.status_line);
+        if (print) {
+            tools::msg_writer("Printing info for {} staking\n", reg_type_str);
+            tools::msg_writer(
+                    "ed25519_pubkey: {}\n"
+                    "bls_pubkey: {}\n"
+                    "ed25519_signature: {}\n"
+                    "bls_signature: {}\n"
+                    "operator_address: {}\n"
+                    "multi-contributor contract address: {}\n",
+                    snode_pubkey,
+                    bls_pubkey,
+                    ed_sig,
+                    bls_sig,
+                    operator_address,
+                    contract_address);
         } else {
-            tools::success_msg_writer(
-                    "Submitted {} information to the staking website successfully!\n"
-                    "View your registrations at: {}",
-                    reg_type_str,
-                    BASE_URL + "registrations/" + snode_pubkey);
+            tools::msg_writer(
+                    "Submitting {} information to staking.getsession.org, please wait.",
+                    reg_type_str);
+            // TODO: make config option
+            auto url = cpr::Url{"https://ssb.oxen.observer/api/store/{}"_format(snode_pubkey)};
+
+            auto msg = cpr::Multipart{
+                    {"sig_ed25519"s, ed_sig},
+                    {"pubkey_bls"s, bls_pubkey},
+                    {"sig_bls"s, bls_sig},
+                    {"operator"s, std::string{operator_address}}};
+
+            if (i == 1)
+                msg.parts.emplace_back("contract", std::string{contract_address});
+
+            auto response = cpr::Post(url, msg);
+
+            if (response.status_code != 200) {
+                tools::fail_msg_writer(
+                        "Something went wrong submitting {} information to the staking website: {}",
+                        reg_type_str,
+                        response.status_line);
+            } else {
+                tools::success_msg_writer(
+                        "Submitted {} information to the staking website successfully!\n"
+                        "View your registration at: {}",
+                        reg_type_str,
+                        "https://stake.getsession.org/register/{}"_format(snode_pubkey));
+            }
         }
     }
 

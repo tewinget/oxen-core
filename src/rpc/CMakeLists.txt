@@ -29,22 +29,22 @@
 
 add_subdirectory(common)
 
-add_library(rpc_commands
+oxen_add_library(rpc_commands
   core_rpc_server_commands_defs.cpp
   core_rpc_server_binary_commands.cpp
   core_rpc_server_command_parser.cpp
   )
 
-add_library(rpc
+oxen_add_library(rpc
   core_rpc_server.cpp
   )
 
-add_library(daemon_rpc_server
+oxen_add_library(daemon_rpc_server
   http_server.cpp
   omq_server.cpp
   )
 
-add_library(rpc_http_client
+oxen_add_library(rpc_http_client
     http_client.cpp
     )
 target_link_libraries(rpc_commands

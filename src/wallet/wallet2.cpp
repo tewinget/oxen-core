@@ -31,6 +31,7 @@
 
 #include "wallet2.h"
 
+#include <common/exception.h>
 #include <cpr/parameters.h>
 #include <fmt/core.h>
 #include <fmt/std.h>
@@ -43,7 +44,6 @@
 #include <optional>
 #include <tuple>
 #include <type_traits>
-#include <common/exception.h>
 
 #include "common/apply_permutation.h"
 #include "common/base58.h"
@@ -1156,7 +1156,8 @@ namespace {
             tx_hash = cryptonote::get_transaction_hash(tx);
             // if the hash was given, check it matches
             CHECK_AND_ASSERT_MES(
-                    entry["tx_hash"].empty() || tools::hex_guts(tx_hash) == entry["tx_hash"],
+                    entry["tx_hash"].empty() ||
+                            tools::hex_guts(tx_hash) == entry["tx_hash"].get<std::string_view>(),
                     false,
                     "Response claims a different hash than the data yields");
             return true;
@@ -7621,7 +7622,7 @@ bool wallet2::is_transfer_unlocked(
 
         for (auto const& entry : service_nodes_states) {
             for (auto const& contributor : entry.at("contributors")) {
-                if (primary_address != contributor.at("address"))
+                if (primary_address != contributor.at("address").get<std::string_view>())
                     continue;
 
                 for (auto const& contribution : contributor.at("locked_contributions")) {
@@ -16862,7 +16863,8 @@ bool wallet2::parse_uri(
 uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, uint8_t day) {
     rpc::version_t version;
     if (!check_connection(&version)) {
-        throw oxen::traced<std::runtime_error>("failed to connect to daemon: " + get_daemon_address());
+        throw oxen::traced<std::runtime_error>(
+                "failed to connect to daemon: " + get_daemon_address());
     }
     if (version < rpc::version_t{1, 6}) {
         throw oxen::traced<std::runtime_error>("this function requires RPC version 1.6 or higher");

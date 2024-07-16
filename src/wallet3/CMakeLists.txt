@@ -1,4 +1,4 @@
-add_library(wallet3
+oxen_add_library(wallet3
   db/walletdb.cpp
   default_daemon_comms.cpp
   keyring.cpp

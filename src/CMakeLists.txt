@@ -35,19 +35,6 @@ if (NOT (MINGW OR APPLE OR FREEBSD OR OPENBSD OR DRAGONFLY))
   #add_compile_options("${WARNINGS_AS_ERRORS_FLAG}") # applies only to targets that follow
 endif()
 
-set_property(GLOBAL PROPERTY oxen_executable_targets "")
-function (oxen_add_executable target binary)
-  add_executable("${target}" ${ARGN})
-  target_link_libraries("${target}" PRIVATE extra)
-  set_target_properties("${target}" PROPERTIES
-    OUTPUT_NAME "${binary}"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-  install(TARGETS "${target}" DESTINATION bin)
-  get_property(exec_tgt GLOBAL PROPERTY oxen_executable_targets)
-  list(APPEND exec_tgt "${target}")
-  set_property(GLOBAL PROPERTY oxen_executable_targets "${exec_tgt}")
-endfunction ()
-
 add_subdirectory(common)
 add_subdirectory(crypto)
 add_subdirectory(ringct)
@@ -128,7 +115,7 @@ else()
   endif()
 endif()
 
-add_library(version "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
+oxen_add_library(version "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
 
 install(
     DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/"

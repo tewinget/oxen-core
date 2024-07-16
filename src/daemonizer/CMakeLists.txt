@@ -28,7 +28,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 if(MSVC OR MINGW)
-  add_library(daemonizer
+  oxen_add_library(daemonizer
     windows_service.cpp
   )
 

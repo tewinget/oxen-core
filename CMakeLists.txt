@@ -442,6 +442,8 @@ add_definition_if_library_exists(c memset_s "string.h" HAVE_MEMSET_S)
 add_definition_if_library_exists(c explicit_bzero "strings.h" HAVE_EXPLICIT_BZERO)
 add_definition_if_function_found(strptime HAVE_STRPTIME)
 
+include(oxen_install)
+
 # Generate header for embedded translations
 add_subdirectory(translations)
 
@@ -491,6 +493,11 @@ if(NOT BUILD_STATIC_DEPS)
   message(STATUS "Found sqlite3 ${SQLITE3_VERSION}")
   add_library(SQLite::SQLite3 ALIAS PkgConfig::SQLITE3)
 endif()
+
+set(OXEN_EXECUTABLE_SUFFIX "" CACHE STRING "suffix to add to executable names")
+set(OXEN_INSTALL_INCLUDEDIR_SUFFIX "/oxen" CACHE STRING "subdirectory name for headers for the install target")
+set(OXEN_INSTALL_LIBDIR_SUFFIX "/oxen" CACHE STRING "subdirectory name for library files for the install target")
+option(OXEN_VERSION_SO "Add the project version into shared library filenames (e.g. libcryptonote_core11.2.3.so instead of libcryptonote_core.so)" OFF)
 
 add_subdirectory(external)
 
@@ -747,6 +754,9 @@ else()
   # At least some CLANGs default to not enough for monero
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-depth=900")
 
+  include(cmake/check_atomic.cmake)
+  link_libatomic()
+
   if(STATIC)
     # STATIC already configures most deps to be linked in statically,
     # here we make more deps static if the platform permits it
@@ -859,8 +869,8 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND ARCH_WIDTH EQUAL "32" AND NOT IOS AN
 endif()
 
 
-add_subdirectory(contrib)
 add_subdirectory(src)
+add_subdirectory(contrib)
 
 if(BUILD_TESTS)
   message(STATUS "Building tests")

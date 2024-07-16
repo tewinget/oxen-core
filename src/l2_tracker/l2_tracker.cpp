@@ -133,7 +133,7 @@ void L2Tracker::update_state() {
                 new_prio.push_back(hi.index);
                 if (!hi.success || hi.height < threshold) {
                     auto& name = client_info()[hi.index].name;
-                    auto& url = client_info()[hi.index].url.str();
+                    auto& url = client_info()[hi.index].url;
                     auto level = hi.index == 0 ? log::Level::err : log::Level::warn;
 
                     if (!hi.success)
@@ -175,9 +175,9 @@ void L2Tracker::update_state() {
                                 "{} [{}] is not responding or is behind; switching to {} [{}] as "
                                 "primary L2 source",
                                 old_primary.name,
-                                old_primary.url.str(),
+                                old_primary.url,
                                 new_primary.name,
-                                new_primary.url.str());
+                                new_primary.url);
                         primary_down = primary_last_warned = std::chrono::steady_clock::now();
                     } else {
                         // We *were* on a backup but now are switching back to the primary
@@ -187,7 +187,7 @@ void L2Tracker::update_state() {
                                 "{} [{}] is available again; switching back to it as primary L2 "
                                 "source",
                                 new_primary.name,
-                                new_primary.url.str());
+                                new_primary.url);
                         primary_down.reset();
                     }
                 }
@@ -199,7 +199,7 @@ void L2Tracker::update_state() {
                             logcat,
                             "{} [{}] is still unavailable",
                             client_info()[0].name,
-                            client_info()[0].url.str());
+                            client_info()[0].url);
                     primary_last_warned = now;
                 }
             }

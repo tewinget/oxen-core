@@ -31,7 +31,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/portable_binary_iarchive.hpp>
 #include <boost/archive/portable_binary_oarchive.hpp>
-#include <boost/format.hpp>
 #include <fstream>
 #include <sstream>
 
@@ -512,8 +511,11 @@ size_t message_store::add_message(
     save(state);
 
     log::info(
-            boost::format("Added %s message %s for signer %s of type %s") %
-            message_direction_to_string(direction) % m.id % signer_index %
+            logcat,
+            "Added {} message {} for signer {} of type {}",
+            message_direction_to_string(direction),
+            m.id,
+            signer_index,
             message_type_to_string(type));
     return m_messages.size() - 1;
 }
@@ -947,11 +949,10 @@ bool message_store::get_processable_messages(
                 sync = true;
             } else {
                 // Don't sync, but give a hint how this minimal set COULD be synced if really wanted
-                wait_reason += (boost::format("\nUse \"mms next sync\" if you want to sync with "
-                                              "just %s out of %s authorized signers and transact "
-                                              "just with them") %
-                                (m_num_required_signers - 1) % (m_num_authorized_signers - 1))
-                                       .str();
+                wait_reason +=
+                        "\nUse \"mms next sync\" if you want to sync with just {} out of {} "
+                        "authorized signers and transact just with them"_format(
+                                m_num_required_signers - 1, m_num_authorized_signers - 1);
             }
         }
         if (sync) {

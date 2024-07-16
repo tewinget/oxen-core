@@ -27,7 +27,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(device
+oxen_add_library(device
   device.cpp
   device_default.cpp
   log.cpp
@@ -37,7 +37,6 @@ target_link_libraries(device
   PUBLIC
     common
     cncrypto
-    cryptonote_core
     ringct_basic
     Boost::serialization
   PRIVATE

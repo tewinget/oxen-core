@@ -146,8 +146,9 @@ class http_client {
     /// is returned.
     ///
     /// \param method - the end-point to be passed as the "method" parameter of the JSON-RPC
-    /// request. \param params - the JSON to be sent as the JSON-RPC "params" value.  Omit (or pass
-    /// nullopt) to omit the params value entirely.
+    /// request.
+    /// \param params - the JSON to be sent as the JSON-RPC "params" value.  Omit or pass a json
+    /// null to omit the params value entirely.
     ///
     /// \returns nlohmann::json of the inner "result" field of the response, on success.
     ///
@@ -155,8 +156,7 @@ class http_client {
     /// \throws rpc::http_client_serialization_error on a serialization failure
     /// \throws rpc::http_client_response_error on a successful HTTP request that returns a json_rpc
     /// error, or on an HTTP request that returns an HTTP error code.
-    nlohmann::json json_rpc(
-            std::string_view method, std::optional<nlohmann::json> params = std::nullopt);
+    nlohmann::json json_rpc(std::string_view method, nlohmann::json params = nullptr);
 
     /// FIXME: drop this.
     ///

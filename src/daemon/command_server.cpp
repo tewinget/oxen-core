@@ -107,16 +107,14 @@ void command_server::init_commands(cryptonote::rpc::core_rpc_server* rpc_server)
             "registration command can be run in the command-line wallet to send the registration "
             "to the blockchain.");
 
-    // TODO: add registration website URL
     m_command_lookup.set_handler(
             "prepare_eth_registration",
             [this](const auto& x) { return m_parser.prepare_eth_registration(x); },
-            "prepare_eth_registration <operator address> [multi-contributor contract address] "
-            "[\"print_only\"]",
-            "Interactive prompt to prepare a service node registration for submission to eth.  By "
-            "default this information is submitted to INSERT_URL_HERE to make it easy to submit "
-            "your registration.  If you would prefer to just print the information, append "
-            "print_only as the final argument.");
+            "prepare_eth_registration <operator address> [multi-contributor address] [\"print\"]",
+            "Prepare a service node registration for submission to the ethereum contract.  By "
+            "default this information is submitted to https://stake.getsession.org to make it easy "
+            "to submit your registration.  If you would prefer to just print the information with "
+            "submitting it instead, add the word 'print' as the final argument.");
 
     m_command_lookup.set_handler(
             "print_sn",
