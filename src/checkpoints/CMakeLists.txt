@@ -35,7 +35,6 @@ target_link_libraries(checkpoints
   PRIVATE
     common
     cryptonote_basic
-    Boost::program_options
     Boost::serialization
     logging
     extra)

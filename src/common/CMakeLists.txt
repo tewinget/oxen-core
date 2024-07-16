@@ -68,6 +68,7 @@ target_link_libraries(common
     oxenmq::oxenmq
     oxen::logging
     nlohmann_json::nlohmann_json
+    Boost::program_options
   PRIVATE
     sodium
     logging

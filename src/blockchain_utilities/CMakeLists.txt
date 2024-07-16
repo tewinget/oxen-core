@@ -35,7 +35,6 @@ if(BUILD_BLOCKCHAIN_UTILS)
         cryptonote_core
         blockchain_db
         version
-        Boost::program_options
         SQLiteCpp
         logging
         extra)

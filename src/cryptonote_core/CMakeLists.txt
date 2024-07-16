@@ -58,7 +58,6 @@ target_link_libraries(cryptonote_core
     l2_tracker
     ethyl
   PRIVATE
-    Boost::program_options
     SQLiteCpp
     systemd
     logging

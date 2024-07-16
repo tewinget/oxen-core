@@ -67,7 +67,6 @@ target_link_libraries(rpc
   PRIVATE
     cryptonote_protocol
     Boost::thread
-    Boost::program_options
     SQLiteCpp
     logging
     extra)

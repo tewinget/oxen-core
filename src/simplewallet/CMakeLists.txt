@@ -37,7 +37,6 @@ target_link_libraries(simplewallet
     rpc_commands
     cryptonote_core
     mnemonics
-    Boost::program_options
     icu
     Boost::thread
     logging

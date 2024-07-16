@@ -40,7 +40,6 @@ if(BUILD_GEN_MULTISIG)
         rpc_commands
         cryptonote_core
         epee
-        Boost::program_options
         version
         logging
         extra)

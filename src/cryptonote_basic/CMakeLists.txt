@@ -41,7 +41,6 @@ target_link_libraries(cryptonote_basic
   PRIVATE
     common
     device
-    Boost::program_options
     Boost::serialization
     logging
     extra)
