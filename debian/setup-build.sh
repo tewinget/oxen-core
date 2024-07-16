@@ -35,7 +35,7 @@ s/@IF_SECP \([^@]*\)@/${WITH_SECP:+\\1}/g;
 " debian/control.in >debian/control
 
 timestamp=${DRONE_BUILD_STARTED:-$(date +%s)}
-date_ver=$(date -d "@$timestamp" '+%Y%M%d%H%M%S')
+date_ver=$(date -u -d "@$timestamp" '+%Y%m%d%H%M%S')
 date_changelog=$(date -d "@$timestamp" -R)
 git_commit=${DRONE_COMMIT:-$(git rev-parse HEAD)}
 git_commit_short=${git_commit:0:6}
