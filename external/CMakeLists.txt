@@ -128,13 +128,9 @@ endif()
 
 
 set(ethyl_ENABLE_CRYPTO_LIBRARY FALSE CACHE BOOL "" FORCE)
-system_or_submodule(ETHYL ethyl libethyl>=0.1.0 ethyl)
-
-if(NOT TARGET cpr::cpr)
-    set(CPR_USE_SYSTEM_CURL ON CACHE BOOL "")
-    add_subdirectory(ethyl/external/cpr EXCLUDE_FROM_ALL)
-    oxen_install_library(cpr)
-endif()
+add_subdirectory(ethyl EXCLUDE_FROM_ALL)
+oxen_install_library(ethyl)
+oxen_install_library(cpr)  # comes via ethyl
 
 if(NOT TARGET nlohmann_json::nlohmann_json)
     set(JSON_BuildTests OFF CACHE INTERNAL "")
