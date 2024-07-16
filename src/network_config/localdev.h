@@ -38,10 +38,10 @@ inline constexpr network_config config{
         .UPTIME_PROOF_FREQUENCY = testnet::config.UPTIME_PROOF_FREQUENCY,
         .UPTIME_PROOF_VALIDITY = testnet::config.UPTIME_PROOF_VALIDITY,
         .HAVE_STORAGE_AND_LOKINET = false,
-        .TARGET_BLOCK_TIME = 6s,
-        .PULSE_STAGE_TIMEOUT = 1s,
-        .PULSE_ROUND_TIMEOUT = 3s,
-        .PULSE_MAX_START_ADJUSTMENT = 3s,
+        .TARGET_BLOCK_TIME = 10s,
+        .PULSE_STAGE_TIMEOUT = 3s,
+        .PULSE_ROUND_TIMEOUT = 4s,
+        .PULSE_MAX_START_ADJUSTMENT = 4s,
         .PULSE_MIN_SERVICE_NODES = testnet::config.PULSE_MIN_SERVICE_NODES,
         .BATCHING_INTERVAL = testnet::config.BATCHING_INTERVAL,
         .MIN_BATCH_PAYMENT_AMOUNT = mainnet::config.MIN_BATCH_PAYMENT_AMOUNT,
@@ -64,6 +64,6 @@ inline constexpr network_config config{
         // All Session nodes are connected to the same RPC provider (e.g.
         // Foundry's Anvil) which is also running locally hence we have a very
         // low threshold for the number of blocks to trail the tip by.
-        .L2_TRACKER_SAFE_BLOCKS = 0,
+        .L2_TRACKER_SAFE_BLOCKS = 1,
 };
 }  // namespace cryptonote::config::localdev
