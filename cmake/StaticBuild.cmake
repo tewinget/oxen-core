@@ -587,7 +587,7 @@ foreach(curl_arch ${curl_arches})
     --enable-crypto-auth --disable-ntlm-wb --disable-tls-srp --disable-unix-sockets --disable-cookies
     --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
     --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR}
-    --without-ssl --without-schannel --without-secure-transport
+    --with-ssl --without-zstd --without-schannel --without-secure-transport
     --without-nghttp2 --without-nghttp3 --without-ngtcp2 --without-quiche
     --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
     --without-zsh-functions-dir --without-fish-functions-dir
