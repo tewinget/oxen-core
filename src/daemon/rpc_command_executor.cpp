@@ -2254,6 +2254,55 @@ namespace {
         return "\x1b[36;1m{}\x1b[0m"_format(cryptonote::format_money(amount));
     };
 
+    bool check_if_node_is_reasonably_synced(rpc_command_executor *rpc, const nlohmann::json& info)
+    {
+        uint64_t block_height =
+                std::max(info["height"].get<uint64_t>(), info["target_height"].get<uint64_t>());
+
+        // Query the latest block we've synced and check that the timestamp is sensible, issue a warning
+        // if not
+        {
+            auto const& maybe_header = try_running(
+                    [rpc] {
+                        return rpc->invoke<GET_LAST_BLOCK_HEADER>()
+                                .at("block_header")
+                                .get<block_header_response>();
+                    },
+                    "Node is syncing, please wait until all blocks are synced");
+            if (!maybe_header)
+                return false;
+
+            auto const& header = *maybe_header;
+
+            const auto now = std::chrono::system_clock::now();
+            const auto block_ts = std::chrono::system_clock::from_time_t(header.timestamp);
+
+            if (now - block_ts >= 10min) {
+                tools::fail_msg_writer(
+                        "The last block this Service Node knows about was at least {}\n"
+                        "Your node is possibly desynced from the network or still syncing to the "
+                        "network.\n\n"
+                        "Registering this node may result in a deregistration due to being out of date "
+                        "with the network\n",
+                        get_human_time_ago(now - block_ts));
+            }
+
+            if (auto synced_height = header.height; block_height >= synced_height) {
+                uint64_t delta = block_height - header.height;
+                if (delta > 5) {
+                    tools::fail_msg_writer(
+                            "The last block this Service Node synced is {} blocks away from the "
+                            "longest chain we know about.\n\n"
+                            "Registering this node may result in a deregistration due to being out of "
+                            "date with the network\n",
+                            delta);
+                }
+            }
+        }
+
+        return true;
+    }
+
 }  // namespace
 
 bool rpc_command_executor::prepare_registration(bool force_registration) {
@@ -2328,49 +2377,8 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
         }
     }
 
-    uint64_t block_height =
-            std::max(info["height"].get<uint64_t>(), info["target_height"].get<uint64_t>());
-
-    // Query the latest block we've synced and check that the timestamp is sensible, issue a warning
-    // if not
-    {
-        auto const& maybe_header = try_running(
-                [this] {
-                    return invoke<GET_LAST_BLOCK_HEADER>()
-                            .at("block_header")
-                            .get<block_header_response>();
-                },
-                "Get latest block failed, unable to check sync status");
-        if (!maybe_header)
-            return false;
-
-        auto const& header = *maybe_header;
-
-        const auto now = std::chrono::system_clock::now();
-        const auto block_ts = std::chrono::system_clock::from_time_t(header.timestamp);
-
-        if (now - block_ts >= 10min) {
-            tools::fail_msg_writer(
-                    "The last block this Service Node knows about was at least {}\n"
-                    "Your node is possibly desynced from the network or still syncing to the "
-                    "network.\n\n"
-                    "Registering this node may result in a deregistration due to being out of date "
-                    "with the network\n",
-                    get_human_time_ago(now - block_ts));
-        }
-
-        if (auto synced_height = header.height; block_height >= synced_height) {
-            uint64_t delta = block_height - header.height;
-            if (delta > 5) {
-                tools::fail_msg_writer(
-                        "The last block this Service Node synced is {} blocks away from the "
-                        "longest chain we know about.\n\n"
-                        "Registering this node may result in a deregistration due to being out of "
-                        "date with the network\n",
-                        delta);
-            }
-        }
-    }
+    if (!check_if_node_is_reasonably_synced(this, info))
+        return false;
 
     const uint64_t staking_requirement =
             service_nodes::get_staking_requirement(nettype, hf_version);
@@ -2708,6 +2716,16 @@ The Service Node will not activate until the entire stake has been contributed.
 
 bool rpc_command_executor::prepare_eth_registration(
         std::string_view operator_address, std::string_view contract_address, bool print) {
+
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
+        return false;
+
+    const nlohmann::json& info = *maybe_info;
+    if (!check_if_node_is_reasonably_synced(this, info))
+        return false;
+
     for (size_t i = 0; i < (contract_address.empty() ? 1 : 2); i++) {
         auto eth_arg = (i == 0) ? operator_address : contract_address;
         if (eth_arg.starts_with("0x"))
