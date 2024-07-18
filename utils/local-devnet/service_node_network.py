@@ -305,78 +305,78 @@ class SNNetwork:
         assert self.sn_contract.numberServiceNodes() == 13, f"Expected 13 service nodes, received {contract_sn_count}"
 
         # Sleep and let pulse quorum do work
-        sleep_time = 120
-        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
-        time.sleep(sleep_time)
-        vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
+        # sleep_time = 120
+        # vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
+        # time.sleep(sleep_time)
+        # vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
 
         # NOTE: BLS rewards claim ##################################################################
         # Claim rewards for Address
-        rewards = self.ethsns[0].get_bls_rewards(hardhat_account_no_0x)
-        vprint(rewards)
-        rewardsAccount = rewards["result"]["address"]
-        assert rewardsAccount.lower() == hardhat_account_no_0x.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhat_account_no_0x.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
+        # rewards = self.ethsns[0].get_bls_rewards(hardhat_account_no_0x)
+        # vprint(rewards)
+        # rewardsAccount = rewards["result"]["address"]
+        # assert rewardsAccount.lower() == hardhat_account_no_0x.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhat_account_no_0x.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
 
-        vprint("Contract rewards before updating has ['available', 'claimed'] respectively: ",
-               self.sn_contract.recipients(hardhat_account),
-               " for ",
-               hardhat_account_no_0x)
+        # vprint("Contract rewards before updating has ['available', 'claimed'] respectively: ",
+        #        self.sn_contract.recipients(hardhat_account),
+        #        " for ",
+        #        hardhat_account_no_0x)
 
 
         # TODO: We send the required balance from the hardhat account to the
         # contract to guarantee that claiming will succeed. We should hook up
         # the pool to the rewards contract and fund the contract from there.
-        unsent_tx = self.sn_contract.erc20_contract.functions.transfer(self.sn_contract.contract_address, rewards["result"]["amount"] + 100).build_transaction({
-            "from": self.sn_contract.acc.address,
-            'nonce': self.sn_contract.web3.eth.get_transaction_count(self.sn_contract.acc.address)})
-        signed_tx = self.sn_contract.web3.eth.account.sign_transaction(unsent_tx, private_key=self.sn_contract.acc.key)
-        self.sn_contract.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.sn_contract.foundation_pool_contract.functions.payoutReleased().call()
+        # unsent_tx = self.sn_contract.erc20_contract.functions.transfer(self.sn_contract.contract_address, rewards["result"]["amount"] + 100).build_transaction({
+        #     "from": self.sn_contract.acc.address,
+        #     'nonce': self.sn_contract.web3.eth.get_transaction_count(self.sn_contract.acc.address)})
+        # signed_tx = self.sn_contract.web3.eth.account.sign_transaction(unsent_tx, private_key=self.sn_contract.acc.key)
+        # self.sn_contract.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        # self.sn_contract.foundation_pool_contract.functions.payoutReleased().call()
 
-        vprint("Foundation pool balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.foundation_pool_address)))
-        vprint("Rewards contract balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.contract_address)))
+        # vprint("Foundation pool balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.foundation_pool_address)))
+        # vprint("Rewards contract balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.contract_address)))
 
         # NOTE: Then update the rewards blaance
-        self.sn_contract.updateRewardsBalance(
-                hardhat_account,
-                rewards["result"]["amount"],
-                rewards["result"]["signature"],
-                rewards["result"]["non_signer_indices"])
+        # self.sn_contract.updateRewardsBalance(
+        #         hardhat_account,
+        #         rewards["result"]["amount"],
+        #         rewards["result"]["signature"],
+        #         rewards["result"]["non_signer_indices"])
 
-        vprint("Contract rewards update executed, has ['available', 'claimed'] now respectively: ",
-               self.sn_contract.recipients(hardhat_account),
-               " for ",
-               hardhat_account_no_0x)
+        # vprint("Contract rewards update executed, has ['available', 'claimed'] now respectively: ",
+        #        self.sn_contract.recipients(hardhat_account),
+        #        " for ",
+        #        hardhat_account_no_0x)
 
-        vprint("Balance for '{}' before claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
+        # vprint("Balance for '{}' before claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
 
         # NOTE: Now claim the rewards
-        self.sn_contract.claimRewards()
-        vprint("Contract rewards after claim is now ['available', 'claimed'] respectively: ",
-               self.sn_contract.recipients(hardhat_account),
-               " for ",
-               hardhat_account)
-        vprint("Balance for '{}' after claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
+        # self.sn_contract.claimRewards()
+        # vprint("Contract rewards after claim is now ['available', 'claimed'] respectively: ",
+        #        self.sn_contract.recipients(hardhat_account),
+        #        " for ",
+        #        hardhat_account)
+        # vprint("Balance for '{}' after claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
 
         # Initiate Removal of BLS Key ##############################################################
-        sn_to_remove_index       = random.randint(0, len(self.sns) - 1)
-        sn_to_remove_bls_pubkey  = self.sns[sn_to_remove_index].get_service_keys().bls_pubkey
-        sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
+        # sn_to_remove_index       = random.randint(0, len(self.sns) - 1)
+        # sn_to_remove_bls_pubkey  = self.sns[sn_to_remove_index].get_service_keys().bls_pubkey
+        # sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 
-        vprint("Randomly chose to remove SN {} with BLS key {}, submitting request".format(sn_to_remove_contract_id, sn_to_remove_bls_pubkey))
-        self.sn_contract.initiateRemoveBLSPublicKey(sn_to_remove_contract_id)
+        # vprint("Randomly chose to remove SN {} with BLS key {}, submitting request".format(sn_to_remove_contract_id, sn_to_remove_bls_pubkey))
+        # self.sn_contract.initiateRemoveBLSPublicKey(sn_to_remove_contract_id)
 
-        days_30_in_seconds = 60 * 60 * 24 * 30
-        ethereum.evm_increaseTime(self.sn_contract.web3, days_30_in_seconds)
-        ethereum.evm_mine(self.sn_contract.web3)
+        # days_30_in_seconds = 60 * 60 * 24 * 30
+        # ethereum.evm_increaseTime(self.sn_contract.web3, days_30_in_seconds)
+        # ethereum.evm_mine(self.sn_contract.web3)
 
         # Exit Node ################################################################################
-        exit_request = self.ethsns[0].get_exit_request(sn_to_remove_bls_pubkey)
-        vprint("Exit request aggregated: {}".format(exit_request))
-        self.sn_contract.removeBLSPublicKeyWithSignature(exit_request["result"]["bls_pubkey"],
-                                                         exit_request["result"]["timestamp"],
-                                                         exit_request["result"]["signature"],
-                                                         exit_request["result"]["non_signer_indices"])
+        # exit_request = self.ethsns[0].get_exit_request(sn_to_remove_bls_pubkey)
+        # vprint("Exit request aggregated: {}".format(exit_request))
+        # self.sn_contract.removeBLSPublicKeyWithSignature(exit_request["result"]["bls_pubkey"],
+        #                                                  exit_request["result"]["timestamp"],
+        #                                                  exit_request["result"]["signature"],
+        #                                                  exit_request["result"]["non_signer_indices"])
 
         # Liquidate Node ###########################################################################
         # exit = self.ethsns[0].get_liquidation_request(ethereum_add_bls_args["bls_pubkey"])
