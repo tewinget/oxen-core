@@ -1170,7 +1170,7 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
     if (hf_version >= feature::ETH_BLS) {
         log::warning(
                 logcat,
-                "Invalid OXEN unlock tx ({} @ {}): SN unlocks must be come from ethereum",
+                "Invalid OXEN unlock tx ({} @ {}): SN unlocks must come from ethereum",
                 cryptonote::get_transaction_hash(tx),
                 block_height);
         return false;
