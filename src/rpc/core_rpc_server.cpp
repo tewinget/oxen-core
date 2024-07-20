@@ -211,7 +211,7 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
 
     info.response["height"] = height;
     info.response["l2_height"] = top_block.l2_height;
-    info.response_hex["top_block_hash"] = top_block.hash;
+    info.response_hex["top_block_hash"] = get_block_hash(top_block);
     info.response["target_height"] = m_core.get_target_blockchain_height();
 
     info.response["hard_fork"] = m_core.get_blockchain_storage().get_network_version();
