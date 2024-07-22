@@ -207,7 +207,8 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
     auto& bs = m_core.get_blockchain_storage();
     auto& db = bs.get_db();
     const cryptonote::block top_block = db.get_top_block();
-    auto height = top_block.height + 1;  // turn top block height into blockchain height
+    auto top_height = get_block_height(top_block);
+    auto height = top_height + 1;  // turn top block height into blockchain height
 
     info.response["height"] = height;
     info.response["l2_height"] = top_block.l2_height;
@@ -226,7 +227,7 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
     }
 
     if (cryptonote::checkpoint_t checkpoint;
-        db.get_immutable_checkpoint(&checkpoint, top_block.height)) {
+        db.get_immutable_checkpoint(&checkpoint, top_height)) {
         info.response["immutable_height"] = checkpoint.height;
         info.response_hex["immutable_block_hash"] = checkpoint.block_hash;
     }
@@ -257,11 +258,11 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
     info.response["nettype"] = network_type_to_string(nettype);
 
     try {
-        auto cd = db.get_block_cumulative_difficulty(top_block.height);
+        auto cd = db.get_block_cumulative_difficulty(top_height);
         info.response["cumulative_difficulty"] = cd;
     } catch (std::exception const& e) {
         info.response["status"] = "Error retrieving cumulative difficulty at height " +
-                                  std::to_string(top_block.height);
+                                  std::to_string(top_height);
         return;
     }
 
