@@ -38,7 +38,7 @@ inline constexpr network_config config{
         .UPTIME_PROOF_FREQUENCY = testnet::config.UPTIME_PROOF_FREQUENCY,
         .UPTIME_PROOF_VALIDITY = testnet::config.UPTIME_PROOF_VALIDITY,
         .HAVE_STORAGE_AND_LOKINET = false,
-        .TARGET_BLOCK_TIME = 10s,
+        .TARGET_BLOCK_TIME = 8s,
         .PULSE_STAGE_TIMEOUT = 3s,
         .PULSE_ROUND_TIMEOUT = 4s,
         .PULSE_MAX_START_ADJUSTMENT = 4s,
@@ -46,7 +46,7 @@ inline constexpr network_config config{
         .BATCHING_INTERVAL = testnet::config.BATCHING_INTERVAL,
         .MIN_BATCH_PAYMENT_AMOUNT = mainnet::config.MIN_BATCH_PAYMENT_AMOUNT,
         .LIMIT_BATCH_OUTPUTS = mainnet::config.LIMIT_BATCH_OUTPUTS,
-        .SERVICE_NODE_PAYABLE_AFTER_BLOCKS = testnet::config.SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
+        .SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 1,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD =
                 mainnet::config.HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,
@@ -55,12 +55,12 @@ inline constexpr network_config config{
         .ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv,
         .ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv,
         // Set the reward rate, polled from the smart contract to be sampled
-        // essentially every block because everything is running locally.
+        // very frequently because everything is running locally.
         // This is needed for tests because we are running Pulse nodes
         // which means block producing is slowed down due to round
         // timings and IPC. The L2 similarly is updating in lock-step with
         // the Oxen workchain.
-        .L2_REWARD_POOL_UPDATE_BLOCKS = 1,
+        .L2_REWARD_POOL_UPDATE_BLOCKS = 4,
         // All Session nodes are connected to the same RPC provider (e.g.
         // Foundry's Anvil) which is also running locally hence we have a very
         // low threshold for the number of blocks to trail the tip by.
