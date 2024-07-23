@@ -2867,6 +2867,18 @@ void service_node_list::state_t::update_from_block(
     }
 
     //
+    // If our x25519 map is empty then try populating it (which only does something if we're into
+    // the unified-pubkey-and-ed-pubkey hardfork).  In normal operation, this only happens once (for
+    // the first post-unified-keys hard fork state block).
+    //
+    // NOTE: We initialise the XPK map _first_ before processing transactions because if there's a
+    // registration in the block, then that'll seed the XPK map and make the `empty` check fail
+    // hence failing to migrate over all the keys.
+    //
+    if (x25519_map.empty())
+        initialize_xpk_map();
+
+    //
     // Process TXs in the Block
     //
     cryptonote::txtype max_tx_type = cryptonote::transaction::get_max_type_for_hf(hf_version);
@@ -2925,12 +2937,6 @@ void service_node_list::state_t::update_from_block(
         }
     }
     generate_other_quorums(*this, active_snode_list, nettype, hf_version);
-
-    // If our x25519 map is empty then try populating it (which only does something if we're into
-    // the unified-pubkey-and-ed-pubkey hardfork).  In normal operation, this only happens once (for
-    // the first post-unified-keys hard fork state block).
-    if (x25519_map.empty())
-        initialize_xpk_map();
 }
 
 void service_node_list::process_block(
