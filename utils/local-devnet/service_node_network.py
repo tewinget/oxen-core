@@ -263,17 +263,30 @@ class SNNetwork:
 
         # Construct the seed list for initiating the smart contract.
         # Note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
-        seed_node_list = []
+        oxen_staking_requirement     = self.sns[0].get_staking_requirement()
+        contract_staking_requirement = self.sn_contract.stakingRequirement()
+        seed_node_list      = []
         for sn in self.sns:
-            deposit   = coins(100)
-            node      = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey, deposit)
+            node      = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey)
             assert node.pubkey is not None
             contributors = sn.sn_status()["service_node_state"]["contributors"]
+            total_staked = 0
+
             for entry in contributors:
                 contributor              = ContractServiceNodeContributor()
                 contributor.addr         = hardhat_account # Default to the hardhat account
-                contributor.stakedAmount = entry["amount"]    # Use the oxen amount as the SENT amount
+
+                # Use the oxen amount proportionally as the SENT amount
+                contributor.stakedAmount = int((entry["amount"] / oxen_staking_requirement * contract_staking_requirement))
+                total_staked += contributor.stakedAmount
+
                 node.contributors.append(contributor)
+
+            # Assign any left over SENt to be staked to the operator
+            left_over_to_be_staked = contract_staking_requirement - total_staked
+            if left_over_to_be_staked > 0:
+                node.contributors[0].stakedAmount += left_over_to_be_staked
+
             seed_node_list.append(node)
 
         self.sn_contract.seedPublicKeyList(seed_node_list)
@@ -288,6 +301,11 @@ class SNNetwork:
                                                                                              sn0_pubkey,
                                                                                              ethereum_add_bls_args))
         self.sn_contract.addBLSPublicKey(ethereum_add_bls_args)
+
+        # Advance the Arbitrum blockchain so that the SN registration is observed in oxen
+        ethereum.evm_mine(self.sn_contract.web3);
+        ethereum.evm_mine(self.sn_contract.web3);
+        ethereum.evm_mine(self.sn_contract.web3);
 
         # NOTE: Log all the SNs in the contract ####################################################
         contract_sn_id_it = 0
@@ -305,58 +323,57 @@ class SNNetwork:
         assert self.sn_contract.numberServiceNodes() == 13, f"Expected 13 service nodes, received {contract_sn_count}"
 
         # Sleep and let pulse quorum do work
-        # sleep_time = 120
-        # vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
-        # time.sleep(sleep_time)
-        # vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
+        sleep_time = 40
+        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
+        time.sleep(sleep_time)
+        vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
 
         # NOTE: BLS rewards claim ##################################################################
         # Claim rewards for Address
-        # rewards = self.ethsns[0].get_bls_rewards(hardhat_account_no_0x)
-        # vprint(rewards)
-        # rewardsAccount = rewards["result"]["address"]
-        # assert rewardsAccount.lower() == hardhat_account_no_0x.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhat_account_no_0x.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
+        rewards = self.ethsns[0].get_bls_rewards(hardhat_account_no_0x)
+        vprint(rewards)
+        rewardsAccount = rewards["result"]["address"]
+        assert rewardsAccount.lower() == hardhat_account_no_0x.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhat_account_no_0x.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
 
-        # vprint("Contract rewards before updating has ['available', 'claimed'] respectively: ",
-        #        self.sn_contract.recipients(hardhat_account),
-        #        " for ",
-        #        hardhat_account_no_0x)
-
+        vprint("Contract rewards before updating has ['available', 'claimed'] respectively: ",
+               self.sn_contract.recipients(hardhat_account),
+               " for ",
+               hardhat_account_no_0x)
 
         # TODO: We send the required balance from the hardhat account to the
         # contract to guarantee that claiming will succeed. We should hook up
         # the pool to the rewards contract and fund the contract from there.
-        # unsent_tx = self.sn_contract.erc20_contract.functions.transfer(self.sn_contract.contract_address, rewards["result"]["amount"] + 100).build_transaction({
-        #     "from": self.sn_contract.acc.address,
-        #     'nonce': self.sn_contract.web3.eth.get_transaction_count(self.sn_contract.acc.address)})
-        # signed_tx = self.sn_contract.web3.eth.account.sign_transaction(unsent_tx, private_key=self.sn_contract.acc.key)
-        # self.sn_contract.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        # self.sn_contract.foundation_pool_contract.functions.payoutReleased().call()
+        unsent_tx = self.sn_contract.erc20_contract.functions.transfer(self.sn_contract.contract_address, rewards["result"]["amount"] + 100).build_transaction({
+            "from": self.sn_contract.acc.address,
+            'nonce': self.sn_contract.web3.eth.get_transaction_count(self.sn_contract.acc.address)})
+        signed_tx = self.sn_contract.web3.eth.account.sign_transaction(unsent_tx, private_key=self.sn_contract.acc.key)
+        self.sn_contract.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        self.sn_contract.foundation_pool_contract.functions.payoutReleased().call()
 
-        # vprint("Foundation pool balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.foundation_pool_address)))
-        # vprint("Rewards contract balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.contract_address)))
+        vprint("Foundation pool balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.foundation_pool_address)))
+        vprint("Rewards contract balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.contract_address)))
 
         # NOTE: Then update the rewards blaance
-        # self.sn_contract.updateRewardsBalance(
-        #         hardhat_account,
-        #         rewards["result"]["amount"],
-        #         rewards["result"]["signature"],
-        #         rewards["result"]["non_signer_indices"])
+        self.sn_contract.updateRewardsBalance(
+                hardhat_account,
+                rewards["result"]["amount"],
+                rewards["result"]["signature"],
+                rewards["result"]["non_signer_indices"])
 
-        # vprint("Contract rewards update executed, has ['available', 'claimed'] now respectively: ",
-        #        self.sn_contract.recipients(hardhat_account),
-        #        " for ",
-        #        hardhat_account_no_0x)
+        vprint("Contract rewards update executed, has ['available', 'claimed'] now respectively: ",
+               self.sn_contract.recipients(hardhat_account),
+               " for ",
+               hardhat_account_no_0x)
 
-        # vprint("Balance for '{}' before claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
+        vprint("Balance for '{}' before claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
 
         # NOTE: Now claim the rewards
-        # self.sn_contract.claimRewards()
-        # vprint("Contract rewards after claim is now ['available', 'claimed'] respectively: ",
-        #        self.sn_contract.recipients(hardhat_account),
-        #        " for ",
-        #        hardhat_account)
-        # vprint("Balance for '{}' after claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
+        self.sn_contract.claimRewards()
+        vprint("Contract rewards after claim is now ['available', 'claimed'] respectively: ",
+               self.sn_contract.recipients(hardhat_account),
+               " for ",
+               hardhat_account)
+        vprint("Balance for '{}' after claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
 
         # Initiate Removal of BLS Key ##############################################################
         # sn_to_remove_index       = random.randint(0, len(self.sns) - 1)
