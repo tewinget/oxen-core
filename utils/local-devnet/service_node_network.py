@@ -323,7 +323,7 @@ class SNNetwork:
         assert self.sn_contract.numberServiceNodes() == 13, f"Expected 13 service nodes, received {contract_sn_count}"
 
         # Sleep and let pulse quorum do work
-        sleep_time = 60
+        sleep_time = 30
         vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
         time.sleep(sleep_time)
         vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
