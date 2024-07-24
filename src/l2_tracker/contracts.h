@@ -24,8 +24,8 @@ namespace event {
 namespace call {
 
     extern const crypto::hash4 Pool_rewardRate;
-
     extern const crypto::hash4 ServiceNodeRewards_serviceNodes;
+    extern const crypto::hash4 ServiceNodeRewards_allServiceNodeIDs;
 
 }  // namespace call
 

@@ -310,6 +310,92 @@ std::vector<bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumb
     return blsPublicKeys;
 }
 
+RewardsContract::ServiceNodeIDs RewardsContract::allServiceNodeIDs(std::optional<uint64_t> blockNumber)
+{
+    std::string callData =
+            "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs);
+    std::string blockNumArg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
+    nlohmann::json call_result =
+            provider.callReadFunctionJSON(contractAddress, callData, blockNumArg);
+
+    auto call_result_hex = call_result.get<std::string_view>();
+    if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
+        call_result_hex.remove_prefix(2);
+
+    // NOTE: Extract the ID payload
+    ServiceNodeIDs result = {};
+    const auto [offset_to_ids_bytes, offset_to_keys_bytes, _unused] =
+            tools::split_hex_into<u256, u256, std::string_view>(call_result_hex);
+    const uint64_t offset_to_ids = tools::decode_integer_be(offset_to_ids_bytes);
+    const uint64_t offset_to_keys = tools::decode_integer_be(offset_to_keys_bytes);
+
+    std::string_view ids_start_hex = tools::string_safe_substr(call_result_hex, offset_to_ids * 2, call_result_hex.size());
+    auto [num_ids_bytes, ids_remainder_hex] = tools::split_hex_into<u256, std::string_view>(ids_start_hex);
+    uint64_t num_ids = tools::decode_integer_be(num_ids_bytes);
+
+    const size_t ID_SIZE_IN_HEX = sizeof(u256) * 2;
+    std::string_view ids_payload = tools::string_safe_substr(ids_remainder_hex, 0, num_ids * ID_SIZE_IN_HEX);
+
+    // NOTE: Extract the keys payload
+    std::string_view keys_start_hex = tools::string_safe_substr(call_result_hex, offset_to_keys * 2, call_result_hex.size());
+    auto [num_keys_bytes, keys_remainder_hex] = tools::split_hex_into<u256, std::string_view>(keys_start_hex);
+    uint64_t num_keys = tools::decode_integer_be(num_keys_bytes);
+
+    const size_t KEY_SIZE_IN_HEX = sizeof(bls_public_key) * 2;
+    std::string_view keys_payload = tools::string_safe_substr(keys_remainder_hex, 0, num_keys * KEY_SIZE_IN_HEX);
+
+    // NOTE: Validate args
+    if (num_keys != num_ids) {
+        oxen::log::warning(
+                logcat,
+                "The number of ids ({}) and bls public keys ({}) returned do not match at block '{}'",
+                num_ids,
+                num_keys,
+                blockNumArg);
+        return result;
+    }
+
+    if (ids_payload.size() != (num_ids * ID_SIZE_IN_HEX)) {
+        oxen::log::warning(
+                logcat,
+                "The number of ids ({}) specified when retrieving all SN BLS ids did not "
+                "match the size ({} bytes) of the payload returned at block '{}'",
+                num_ids,
+                ids_payload.size() / 2,
+                blockNumArg);
+        return result;
+    }
+
+    if (keys_payload.size() != (num_keys * KEY_SIZE_IN_HEX)) {
+        oxen::log::warning(
+                logcat,
+                "The number of keys ({}) specified when retrieving all SN BLS pubkeys did not "
+                "match the size ({} bytes) of the payload returned at block '{}'",
+                num_keys,
+                keys_payload.size() / 2,
+                blockNumArg);
+        return result;
+    }
+
+    result.ids.reserve(num_ids);
+    result.bls_pubkeys.reserve(num_keys);
+    for (size_t index = 0; index < num_ids; index++) {
+        std::string_view id_hex =
+                tools::string_safe_substr(ids_payload, (index * ID_SIZE_IN_HEX), ID_SIZE_IN_HEX);
+        std::string_view key_hex =
+                tools::string_safe_substr(keys_payload, (index * KEY_SIZE_IN_HEX), KEY_SIZE_IN_HEX);
+        auto [id_bytes] = tools::split_hex_into<u256>(id_hex);
+        result.ids.push_back(tools::decode_integer_be(id_bytes));
+        result.bls_pubkeys.push_back(tools::make_from_hex_guts<bls_public_key>(key_hex));
+
+        #if !defined(NDEBUG)
+        log::trace(logcat, "  {:02d} {{{}, {}}}", index, result.ids.back(), result.bls_pubkeys.back());
+        #endif
+    }
+
+    return result;
+}
+
 ContractServiceNode RewardsContract::serviceNodes(
         uint64_t index, std::optional<uint64_t> blockNumber) {
     auto callData = "0x{:x}{:064x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
@@ -417,21 +503,18 @@ ContractServiceNode RewardsContract::serviceNodes(
 
 std::vector<uint64_t> RewardsContract::getNonSigners(
         const std::unordered_set<bls_public_key>& bls_public_keys) {
-    const uint64_t service_node_sentinel_id = 0;
-    ContractServiceNode service_node_end = serviceNodes(service_node_sentinel_id);
-    uint64_t service_node_id = service_node_end.next;
-    std::vector<uint64_t> non_signers;
 
-    while (service_node_id != service_node_sentinel_id) {
-        ContractServiceNode service_node = serviceNodes(service_node_id);
-        if (!service_node.good)
-            break;
-        if (!bls_public_keys.count(service_node.pubkey))
-            non_signers.push_back(service_node_id);
-        service_node_id = service_node.next;
+    std::vector<uint64_t> result;
+    ServiceNodeIDs contract_ids = allServiceNodeIDs();
+    assert(contract_ids.ids.size() == contract_ids.bls_pubkeys.size());
+    for (size_t index = 0; index < contract_ids.ids.size(); index++) {
+        uint64_t id = contract_ids.ids[index];
+        const bls_public_key& key = contract_ids.bls_pubkeys[index];
+        if (!bls_public_keys.count(key))
+            result.push_back(id);
     }
 
-    return non_signers;
+    return result;
 }
 
 std::string NewServiceNodeTx::to_string() const {

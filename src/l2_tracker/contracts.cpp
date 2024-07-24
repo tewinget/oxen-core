@@ -22,7 +22,10 @@ namespace call {
             crypto::keccak_prefix<crypto::hash4>("rewardRate()"sv);  // 0x7b0a47ee
 
     const crypto::hash4 ServiceNodeRewards_serviceNodes =
-            crypto::keccak_prefix<crypto::hash4>("serviceNodes(uint64)"sv); // 0x040f9853
+            crypto::keccak_prefix<crypto::hash4>("serviceNodes(uint64)"sv);  // 0x040f9853
+
+    const crypto::hash4 ServiceNodeRewards_allServiceNodeIDs =
+            crypto::keccak_prefix<crypto::hash4>("allServiceNodeIDs()"sv);  // 0xabf2c503
 
 }  // namespace call
 
