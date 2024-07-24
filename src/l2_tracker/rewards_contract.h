@@ -76,6 +76,7 @@ struct ContractServiceNode {
     uint64_t prev;
     eth::address operatorAddr;
     bls_public_key pubkey;
+    uint64_t addedTimestamp;
     uint64_t leaveRequestTimestamp;
     uint64_t deposit;
     std::array<Contributor, oxen::MAX_CONTRIBUTORS_HF19> contributors;

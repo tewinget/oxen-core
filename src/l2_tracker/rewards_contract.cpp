@@ -312,8 +312,7 @@ std::vector<bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumb
 
 ContractServiceNode RewardsContract::serviceNodes(
         uint64_t index, std::optional<uint64_t> blockNumber) {
-    // callData.contractAddress = contractAddress;
-    auto callData = "0x{:x}{:032x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
+    auto callData = "0x{:x}{:064x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
 
     // FIXME(OXEN11): we *cannot* make a blocking request here like this because we are blocking
     // some other thread from doing work; we either need to get this from a local cache of the info,
@@ -346,12 +345,13 @@ ContractServiceNode RewardsContract::serviceNodes(
             tools::string_safe_substr(callResultHex, /*pos*/ 0, /*size*/ 64);
     auto sn_data_offset_bytes = tools::make_from_hex_guts<u256>(sn_data_offset_hex);
     auto sn_data = callResultHex.substr(tools::decode_integer_be(sn_data_offset_bytes) * 2);
-    auto [next, prev, op_addr, pubkey, leaveRequestTimestamp, deposit, contr_offset, remainder] = tools::split_hex_into<
+    auto [next, prev, op_addr, pubkey, addedTimestamp, leaveRequestTimestamp, deposit, contr_offset, remainder] = tools::split_hex_into<
             u256,
             u256,
             skip<12>,
             eth::address,
             eth::bls_public_key,
+            u256,
             u256,
             u256,
             u256,
@@ -361,6 +361,7 @@ ContractServiceNode RewardsContract::serviceNodes(
     result.prev = tools::decode_integer_be(prev);
     result.operatorAddr = op_addr;
     result.pubkey = pubkey;
+    result.addedTimestamp = tools::decode_integer_be(addedTimestamp);
     result.leaveRequestTimestamp = tools::decode_integer_be(leaveRequestTimestamp);
     result.deposit = tools::decode_integer_be(deposit);
 
