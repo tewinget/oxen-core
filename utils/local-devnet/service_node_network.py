@@ -9,12 +9,12 @@ import argparse
 import time
 import shutil
 import os
-from   os import path
 import asyncio
 from   datetime import datetime
 import subprocess
 import atexit
-import random
+import concurrent.futures
+from typing import List
 
 datadirectory="testdata"
 
@@ -138,13 +138,27 @@ class SNNetwork:
                 if i != k:
                     self.all_nodes[i].add_peer(self.all_nodes[k])
 
-        vprint("Starting new oxend service nodes with RPC on {} ports".format(self.sns[0].listen_ip), end="")
+        # Thread Pool ##############################################################################
+        thread_pool                              = concurrent.futures.ThreadPoolExecutor()
+        futures: List[concurrent.futures.Future] = []
+
+        # Start Oxen SNs ###########################################################################
+        vprint("Starting new oxend service nodes with RPC".format(self.sns[0].listen_ip), end="")
+        for sn in self.sns:
+            futures.append(thread_pool.submit(sn.start))
+        for sn in self.ethsns:
+            futures.append(thread_pool.submit(sn.start))
+
+        concurrent.futures.wait(futures)
+        futures.clear()
+
         for sn in self.sns:
             vprint(" {}".format(sn.rpc_port), end="", flush=True, timestamp=False)
-            sn.start()
+
         for sn in self.ethsns:
             vprint(" {}".format(sn.rpc_port), end="", flush=True, timestamp=False)
-            sn.start()
+
+        # Start Oxen Nodes #########################################################################
         vprint(timestamp=False)
         vprint("Starting new regular oxend nodes with RPC on {} ports".format(self.nodes[0].listen_ip), end="")
         for d in self.nodes:
@@ -156,26 +170,41 @@ class SNNetwork:
         for d in self.all_nodes:
             d.wait_for_json_rpc("get_info")
 
-        vprint("Oxends are ready. Starting wallets")
-
+        vprint("Oxends are ready. Starting wallets in parallel")
+        # Start wallet executables #################################################################
         for w in self.wallets:
             vprint("Starting new RPC wallet {w.name} at {w.listen_ip}:{w.rpc_port}".format(w=w))
-            w.start()
+            thread_pool.submit(w.start)
+
+        for w in self.extrawallets:
+            vprint("Starting new RPC wallet {w.name} at {w.listen_ip}:{w.rpc_port}".format(w=w))
+            thread_pool.submit(w.start)
+
+        concurrent.futures.wait(futures)
+        futures.clear()
+
+        # Create wallets ###########################################################################
         for w in self.wallets:
-            w.ready()
+            futures.append(thread_pool.submit(w.ready))
+
+        for w in self.extrawallets:
+            futures.append(thread_pool.submit(w.ready))
+
+        concurrent.futures.wait(futures)
+        futures.clear()
+
+        # Refresh wallets ##########################################################################
+        for w in self.wallets:
             w.refresh()
             vprint("Wallet {w.name} is ready: {a}".format(w=w, a=w.address()))
 
         for w in self.extrawallets:
-            vprint("Starting new RPC wallet {w.name} at {w.listen_ip}:{w.rpc_port}".format(w=w))
-            w.start()
-        for w in self.extrawallets:
-            w.ready()
             w.refresh()
             vprint("Wallet {w.name} is ready: {a}".format(w=w, a=w.address()))
 
         for w in self.wallets:
             w.wait_for_json_rpc("refresh")
+
         for w in self.extrawallets:
             w.wait_for_json_rpc("refresh")
 
@@ -183,6 +212,7 @@ class SNNetwork:
         with open(configfile, 'w') as filetowrite:
             filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
+        # Start blockchain setup ###################################################################
         # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
         # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
         # SN (at height 40, which is the earliest we can submit them without getting an occasional
@@ -526,7 +556,7 @@ def run():
     atexit.register(cleanup)
     global snn, verbose
     if not snn:
-        if path.isdir(datadirectory+'/'):
+        if os.path.isdir(datadirectory+'/'):
             shutil.rmtree(datadirectory+'/')
         vprint("new SNN")
         snn = SNNetwork(oxen_bin_dir=args.oxen_bin_dir,
