@@ -38,7 +38,7 @@ inline constexpr network_config config{
         .UPTIME_PROOF_FREQUENCY = testnet::config.UPTIME_PROOF_FREQUENCY,
         .UPTIME_PROOF_VALIDITY = testnet::config.UPTIME_PROOF_VALIDITY,
         .HAVE_STORAGE_AND_LOKINET = false,
-        .TARGET_BLOCK_TIME = 8s,
+        .TARGET_BLOCK_TIME = 5s,
         .PULSE_STAGE_TIMEOUT = 3s,
         .PULSE_ROUND_TIMEOUT = 4s,
         .PULSE_MAX_START_ADJUSTMENT = 4s,
