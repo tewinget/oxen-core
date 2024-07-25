@@ -32,7 +32,6 @@
 #include <iterator>
 #include <mutex>
 #include <shared_mutex>
-#include <span>
 #include <string_view>
 
 #include "common/util.h"
