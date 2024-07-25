@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include <array>
 #include <boost/uuid/uuid.hpp>
 #include <chrono>
 #include <cstddef>
@@ -38,8 +37,6 @@
 #include <filesystem>
 #include <ratio>
 #include <string_view>
-
-#include <common/exception.h>
 
 using namespace std::literals;
 
