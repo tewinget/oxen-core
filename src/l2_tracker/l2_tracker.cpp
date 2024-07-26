@@ -703,11 +703,11 @@ bool TransactionReviewSession::finalize() {
 
 std::vector<uint64_t> L2Tracker::get_non_signers(
         const std::unordered_set<eth::bls_public_key>& bls_public_keys) {
-    return rewards_contract.getNonSigners(bls_public_keys);
+    return rewards_contract.get_non_signers(bls_public_keys);
 }
 
 std::vector<eth::bls_public_key> L2Tracker::get_all_bls_public_keys(uint64_t blockNumber) {
-    return rewards_contract.getAllBLSPubkeys(blockNumber);
+    return rewards_contract.get_all_bls_pubkeys(blockNumber);
 }
 
 RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(std::optional<uint64_t> height)

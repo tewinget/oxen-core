@@ -90,11 +90,11 @@ class RewardsContract {
 
     std::string_view address() { return contractAddress; }
 
-    ContractServiceNode serviceNodes(
+    ContractServiceNode service_nodes(
             uint64_t index, std::optional<uint64_t> blockNumber = std::nullopt);
-    std::vector<uint64_t> getNonSigners(const std::unordered_set<bls_public_key>& bls_public_keys);
+    std::vector<uint64_t> get_non_signers(const std::unordered_set<bls_public_key>& bls_public_keys);
 
-    std::vector<bls_public_key> getAllBLSPubkeys(uint64_t blockNumber);
+    std::vector<bls_public_key> get_all_bls_pubkeys(uint64_t blockNumber);
 
     struct ServiceNodeIDs
     {
@@ -104,7 +104,7 @@ class RewardsContract {
 
     // Executes `allServiceNodeIDs` on the smart contract and retrieve all the BLS public keys and
     // the ID allocated for each key in the contract
-    ServiceNodeIDs allServiceNodeIDs(std::optional<uint64_t> blockNumber = std::nullopt);
+    ServiceNodeIDs all_service_node_ids(std::optional<uint64_t> blockNumber = std::nullopt);
 
   private:
     std::string contractAddress;

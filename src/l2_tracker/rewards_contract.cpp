@@ -290,7 +290,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
 RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider) :
         contractAddress{contract::rewards_address(nettype)}, provider{provider} {}
 
-std::vector<bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumber) {
+std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t blockNumber) {
     // Get the sentinel node to start the iteration
     const uint64_t service_node_sentinel_id = 0;
     ContractServiceNode sentinel_node = serviceNodes(service_node_sentinel_id, blockNumber);
@@ -396,7 +396,7 @@ RewardsContract::ServiceNodeIDs RewardsContract::allServiceNodeIDs(std::optional
     return result;
 }
 
-ContractServiceNode RewardsContract::serviceNodes(
+ContractServiceNode RewardsContract::service_nodes(
         uint64_t index, std::optional<uint64_t> blockNumber) {
     auto call_data = "0x{:x}{:064x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
 
@@ -510,11 +510,11 @@ ContractServiceNode RewardsContract::serviceNodes(
     return result;
 }
 
-std::vector<uint64_t> RewardsContract::getNonSigners(
+std::vector<uint64_t> RewardsContract::get_non_signers(
         const std::unordered_set<bls_public_key>& bls_public_keys) {
 
     std::vector<uint64_t> result;
-    ServiceNodeIDs contract_ids = allServiceNodeIDs();
+    ServiceNodeIDs contract_ids = all_service_node_ids();
     assert(contract_ids.ids.size() == contract_ids.bls_pubkeys.size());
     for (size_t index = 0; index < contract_ids.ids.size(); index++) {
         const bls_public_key& key = contract_ids.bls_pubkeys[index];
