@@ -170,6 +170,7 @@ static constexpr std::array stagenet_hard_forks = {
         hard_fork{hf::hf7, 0, 0, 1720230000},
         hard_fork{hf::hf14_blink, 0, 1, 1720230014},
         hard_fork{hf::hf21_eth, 0, 250, 1720230021},
+        hard_fork{hf::hf21_eth, 1, 15000, 1722126546},
 };
 
 template <size_t N>
