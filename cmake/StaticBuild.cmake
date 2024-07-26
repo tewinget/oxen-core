@@ -72,37 +72,41 @@ set(PROTOBUF_SOURCE protobuf-cpp-${PROTOBUF_VERSION}.tar.gz)
 set(PROTOBUF_HASH SHA512=89a3d6207d14cc9afbd50a514a7c0f781c0e530bdbbe720e7e2f645301cdf59fb6772d5a95aea4a35ebcb2e17a738d8fdba8314fbc3aa6f34a97427ccf0c7342
   CACHE STRING "protobuf source hash")
 
-set(SODIUM_VERSION 1.0.18 CACHE STRING "libsodium version")
+set(SODIUM_VERSION 1.0.19 CACHE STRING "libsodium version")
 set(SODIUM_MIRROR ${LOCAL_MIRROR}
   https://download.libsodium.org/libsodium/releases
   https://github.com/jedisct1/libsodium/releases/download/${SODIUM_VERSION}-RELEASE
   CACHE STRING "libsodium mirror(s)")
 set(SODIUM_SOURCE libsodium-${SODIUM_VERSION}.tar.gz)
-set(SODIUM_HASH SHA512=17e8638e46d8f6f7d024fe5559eccf2b8baf23e143fadd472a7d29d228b186d86686a5e6920385fe2020729119a5f12f989c3a782afbd05a8db4819bb18666ef
+set(SODIUM_HASH SHA512=8e9b6d796f6330e00921ce37f1b43545966094250938626ae227deef5fd1279f2fc18b5cd55e23484732a27df4d919cf0d2f07b9c2f1aa0c0ef689e668b0d439
   CACHE STRING "libsodium source hash")
 
-set(ZMQ_VERSION 4.3.4 CACHE STRING "libzmq version")
+set(ZMQ_VERSION 4.3.5 CACHE STRING "libzmq version")
 set(ZMQ_MIRROR ${LOCAL_MIRROR} https://github.com/zeromq/libzmq/releases/download/v${ZMQ_VERSION}
     CACHE STRING "libzmq mirror(s)")
 set(ZMQ_SOURCE zeromq-${ZMQ_VERSION}.tar.gz)
-set(ZMQ_HASH SHA512=e198ef9f82d392754caadd547537666d4fba0afd7d027749b3adae450516bcf284d241d4616cad3cb4ad9af8c10373d456de92dc6d115b037941659f141e7c0e
+set(ZMQ_HASH SHA512=a71d48aa977ad8941c1609947d8db2679fc7a951e4cd0c3a1127ae026d883c11bd4203cf315de87f95f5031aec459a731aec34e5ce5b667b8d0559b157952541
     CACHE STRING "libzmq source hash")
 
-set(ZLIB_VERSION 1.2.13 CACHE STRING "zlib version")
+set(ZLIB_VERSION 1.3.1 CACHE STRING "zlib version")
 set(ZLIB_MIRROR ${LOCAL_MIRROR} https://github.com/madler/zlib/releases/download/v${ZLIB_VERSION}
     CACHE STRING "zlib mirror(s)")
 set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
-set(ZLIB_HASH SHA256=d14c38e313afc35a9a8760dadf26042f51ea0f5d154b0630a31da0540107fb98
+set(ZLIB_HASH SHA256=38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 7.86.0 CACHE STRING "curl version")
+set(CURL_VERSION 8.6.0 CACHE STRING "curl version")
 set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
-  CACHE STRING "curl mirror(s)")
+    CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA512=18e03a3c00f22125e07bddb18becbf5acdca22baeb7b29f45ef189a5c56f95b2d51247813f7a9a90f04eb051739e9aa7d3a1c5be397bae75d763a2b918d1b656
-  CACHE STRING "curl source hash")
+set(CURL_HASH SHA512=359c08d88a5dec441255b36afe1a821730eca0ca8800ba52f57132b9e7d21f32457623907b4ae4876904b5e505eb1a59652372bb7de8dbd8db429dae9785e036
+    CACHE STRING "curl source hash")
 
-
+set(OPENSSL_VERSION 3.0.13 CACHE STRING "openssl version")
+set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://www.openssl.org/source CACHE STRING "openssl download mirror(s)")
+set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
+set(OPENSSL_HASH SHA256=88525753f79d3bec27d2fa7c66aa0b92b3aa9498dafd93d7cfa4b3780cdae313
+    CACHE STRING "openssl source hash")
 
 include(ExternalProject)
 
@@ -538,15 +542,44 @@ set_target_properties(libzmq PROPERTIES
     INTERFACE_LINK_LIBRARIES "${libzmq_link_libs}"
     INTERFACE_COMPILE_DEFINITIONS "ZMQ_STATIC")
 
-
+set(openssl_configure ./config)
+set(openssl_system_env "")
+set(openssl_cc "${deps_cc}")
+if(CMAKE_CROSSCOMPILING)
+  if(ARCH_TRIPLET STREQUAL x86_64-w64-mingw32)
+    set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
+  elseif(ARCH_TRIPLET STREQUAL i686-w64-mingw32)
+    set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
+  endif()
+endif()
+build_external(openssl
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${openssl_cc} ${openssl_system_env} ${openssl_configure}
+    --prefix=${DEPS_DESTDIR} --libdir=lib ${openssl_extra_opts}
+    no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
+    no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
+    no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
+  INSTALL_COMMAND make install_sw
+  BUILD_BYPRODUCTS
+    ${DEPS_DESTDIR}/lib/libssl.a ${DEPS_DESTDIR}/lib/libcrypto.a
+    ${DEPS_DESTDIR}/include/openssl/ssl.h ${DEPS_DESTDIR}/include/openssl/crypto.h
+)
+add_static_target(OpenSSL::SSL openssl_external libssl.a)
+add_static_target(OpenSSL::Crypto openssl_external libcrypto.a)
+target_link_libraries(OpenSSL::SSL INTERFACE OpenSSL::Crypto)
+set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include)
+set(OPENSSL_ROOT_DIR ${DEPS_DESTDIR})
 
 set(curl_extra)
-if(APPLE)
+if(WIN32)
+  set(curl_ssl_opts --with-schannel)
+elseif(APPLE)
   if(IOS)
     # This CPP crap shouldn't be necessary but is because Apple's toolchain is trash
     set(curl_extra "LDFLAGS=-L${DEPS_DESTDIR}/lib -isysroot ${CMAKE_OSX_SYSROOT}" CPP=cpp)
   endif()
+  set(curl_ssl_opts --with-secure-transport)
 else()
+  set(curl_ssl_opts --with-openssl=${DEPS_DESTDIR})
   set(curl_extra "LIBS=-pthread")
 endif()
 
@@ -578,7 +611,7 @@ foreach(curl_arch ${curl_arches})
 
   build_external(curl
     TARGET_SUFFIX ${curl_target_suffix}
-    DEPENDS zlib_external
+    DEPENDS openssl_external zlib_external
     CONFIGURE_COMMAND ./configure ${cross_host} ${cross_extra} --prefix=${curl_prefix} --disable-shared
     --enable-static --disable-ares --disable-ftp --disable-ldap --disable-laps --disable-rtsp
     --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smb
@@ -586,11 +619,10 @@ foreach(curl_arch ${curl_arches})
     --enable-ipv6 --disable-threaded-resolver --disable-pthreads --disable-verbose --disable-sspi
     --enable-crypto-auth --disable-ntlm-wb --disable-tls-srp --disable-unix-sockets --disable-cookies
     --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
-    --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR}
-    --with-ssl --without-zstd --without-schannel --without-secure-transport
-    --without-nghttp2 --without-nghttp3 --without-ngtcp2 --without-quiche
+    --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
     --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
-    --without-zsh-functions-dir --without-fish-functions-dir
+    --without-zsh-functions-dir --without-fish-functions-dir --without-zstd --without-libpsl
+    --without-nghttp2 --without-nghttp3 --without-ngtcp2 --without-quiche
     "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_extra}
     BUILD_COMMAND true
     INSTALL_COMMAND make -C lib install && make -C include install
@@ -616,7 +648,7 @@ if(IOS AND num_arches GREATER 1)
 endif()
 
 add_static_target(CURL::libcurl curl_external libcurl.a)
-set(libcurl_link_libs zlib)
+set(libcurl_link_libs OpenSSL::SSL zlib)
 if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
   list(APPEND libcurl_link_libs ws2_32)
 elseif(APPLE)
