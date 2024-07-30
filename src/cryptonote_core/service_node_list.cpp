@@ -2751,7 +2751,7 @@ static void generate_other_quorums(
 // feature::SN_PK_IS_ED25519 (because before that we don't have a guarantee that a
 // crypto::public_key is actually the correct Ed25519 pubkeys that we want to convert to get the
 // X25519 pubkey).
-static crypto::x25519_public_key snpk_to_xpk(const crypto::public_key& snpk) {
+crypto::x25519_public_key snpk_to_xpk(const crypto::public_key& snpk) {
     crypto::x25519_public_key xpk;
     if (0 != crypto_sign_ed25519_pk_to_curve25519(xpk.data(), snpk.data()))
         throw oxen::traced<std::runtime_error>{

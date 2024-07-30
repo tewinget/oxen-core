@@ -205,7 +205,7 @@ void BLSAggregator::nodesRequest(
 
     std::vector<service_nodes::service_node_address> snodes;
     core.get_service_node_list().copy_reachable_active_service_node_addresses(
-            std::back_inserter(snodes));
+            std::back_inserter(snodes), core.get_nettype());
 
     auto& omq = core.get_omq();
     for (size_t i = 0; i < snodes.size(); i++) {
