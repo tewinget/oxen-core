@@ -42,9 +42,6 @@ struct BLSRequestResult {
 };
 
 class BLSAggregator {
-  private:
-    cryptonote::core& core;
-
   public:
     using request_callback = std::function<void(
             const BLSRequestResult& request_result, const std::vector<std::string>& data)>;
@@ -84,10 +81,19 @@ class BLSAggregator {
 
     // Goes out to the nodes on the network and makes oxenmq requests to all of them, when getting
     // the reply `callback` will be called to process their reply
-    void nodesRequest(
+    // Returns the number of nodes that we dispatched a request to
+    uint64_t nodesRequest(
             std::string_view request_name,
             std::string_view message,
             const request_callback& callback);
+
+  private:
+    cryptonote::core& core;
+
+    // The BLS aggregator can be called from multiple threads via the RPC server. Since we have a
+    // cache that can be concurrently written to, we guard that around a lock.
+    std::mutex mutex;
+    std::unordered_map<eth::address, BLSRewardsResponse> rewards_response_cache;
 };
 
 }  // namespace eth

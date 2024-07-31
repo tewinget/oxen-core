@@ -194,7 +194,7 @@ BLSRegistrationResponse BLSAggregator::registration(
             .ed_signature = crypto::null<crypto::ed25519_signature>};
 }
 
-void BLSAggregator::nodesRequest(
+uint64_t BLSAggregator::nodesRequest(
         std::string_view request_name, std::string_view message, const request_callback& callback) {
     std::mutex connection_mutex;
     std::condition_variable cv;
@@ -239,6 +239,7 @@ void BLSAggregator::nodesRequest(
 
     std::unique_lock connection_lock{connection_mutex};
     cv.wait(connection_lock, [&active_connections] { return active_connections == 0; });
+    return snodes.size();
 }
 
 void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
@@ -281,10 +282,10 @@ void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
 
 BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
 
+    auto begin_ts = std::chrono::high_resolution_clock::now();
     auto [height, amount] = core.get_blockchain_storage().sqlite_db().get_accrued_rewards(address);
 
     // FIXME: make this async
-
     oxen::log::trace(
             logcat,
             "Initiating rewards request of {} SENT for {} at height {}",
@@ -323,6 +324,25 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
                 service_node_list.height()));
     }
 
+    // NOTE: Serve the response from our cache if it's a repeated request
+    {
+        std::lock_guard lock{mutex};
+        auto cache_it = rewards_response_cache.find(address);
+        if (cache_it != rewards_response_cache.end()) {
+            const BLSRewardsResponse& cache_response = cache_it->second;
+            if (cache_response.height == height && cache_response.amount == amount) {
+                log::trace(
+                        logcat,
+                        "Serving rewards request from cache for address {} at height {} with rewards "
+                        "{} amount",
+                        address,
+                        height,
+                        amount);
+                return cache_response;
+            }
+        }
+    }
+
     BLSRewardsResponse result{};
     result.address = address;
     result.amount = amount;
@@ -337,7 +357,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
 
     // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
     // call (FIXME -- it should not be!)
-    nodesRequest(
+    uint64_t totalRequests = nodesRequest(
             "bls.get_reward_balance",
             tools::view_guts(address),
             [&aggSig, &result, &sig_mutex, nettype = core.get_nettype()](
@@ -418,20 +438,32 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
 
     result.signature = bls_utils::to_crypto_signature(aggSig);
 
-#ifndef NDEBUG
+    #if !defined(NDEBUG)
     bls::PublicKey aggPub;
     aggPub.clear();
-
     for (const auto& blspk : result.signers_bls_pubkeys)
         aggPub.add(bls_utils::from_crypto_pubkey(blspk));
+    #endif
 
-    oxen::log::trace(
+    auto elapsed_ts = std::chrono::high_resolution_clock::now() - begin_ts;
+    oxen::log::debug(
             logcat,
-            "BLS aggregate pubkey for reward requests: {} ({} aggregations) with signature {}",
+            "BLS aggregate pubkey for reward requests: {} ({} aggregations) with signature {} in {:.1f}s",
+            #if defined(NDEBUG)
+            "",
+            #else
             bls_utils::to_crypto_pubkey(aggPub),
+            #endif
             result.signers_bls_pubkeys.size(),
-            result.signature);
-#endif
+            result.signature,
+            (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_ts).count() / 1000.f));
+
+    // NOTE: Store the response in to the cache if the number of non-signers was less than 1/3rd.
+    uint64_t non_signers_count = totalRequests - result.signers_bls_pubkeys.size();
+    if (non_signers_count < (totalRequests / 3)) {
+        std::lock_guard lock{mutex};
+        rewards_response_cache[address] = result;
+    }
 
     return result;
 }

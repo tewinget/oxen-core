@@ -508,10 +508,11 @@ std::vector<uint64_t> RewardsContract::getNonSigners(
     ServiceNodeIDs contract_ids = allServiceNodeIDs();
     assert(contract_ids.ids.size() == contract_ids.bls_pubkeys.size());
     for (size_t index = 0; index < contract_ids.ids.size(); index++) {
-        uint64_t id = contract_ids.ids[index];
         const bls_public_key& key = contract_ids.bls_pubkeys[index];
-        if (!bls_public_keys.count(key))
+        if (!bls_public_keys.count(key)) {
+            uint64_t id = contract_ids.ids[index];
             result.push_back(id);
+        }
     }
 
     return result;
