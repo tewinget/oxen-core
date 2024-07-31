@@ -476,7 +476,22 @@ void L2Tracker::update_logs() {
                     std::optional<std::vector<ethyl::LogEntry>> logs) {
                 bool keep_going = false;
                 {
-                    std::lock_guard lock{mutex};
+                    // NOTE: This lambda locks both the TX pool and the L2 tracker atomically
+                    // because we will add the L2 transactions into the mempool. This prevents
+                    // deadlock in other codepaths that may try to lock like
+                    //
+                    //   This thread: Lock(L2 Tracker) -> Lock (TX pool)
+                    //   Other thread: Lock(TX pool)   -> Lock (L2 Tracker)
+                    //
+                    // For example, this was happening in our worker thread for
+                    // (1) tx_memory_pool::remove_stuck_transaction and
+                    // (2) blockchain::handle_block_to_main_chain whereby
+                    //
+                    //   This thread: Lock(L2 Tracker) -> Lock(TX pool)
+                    //   (1):         Lock(TX Pool, Blockchain)
+                    //   (2):         Lock(Blockchain) -> Lock(L2 Tracker)
+                    //
+                    auto locks = tools::unique_locks(mutex, core.get_pool());
                     if (!logs) {
                         log::warning(logcat, "Failed to retrieve L2 logs for {}-{}", from, to);
                         update_in_progress = false;
