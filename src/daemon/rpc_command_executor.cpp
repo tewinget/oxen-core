@@ -1847,7 +1847,14 @@ static void append_printable_service_node_list_entry(
             stream << ": {} (storage https), :{} (storage omq), "_format(
                     entry["storage_port"].get<uint16_t>(),
                     entry["storage_lmq_port"].get<uint16_t>());
-        stream << ": {} (oxen quorums)"_format(entry["quorumnet_port"].get<uint16_t>());
+
+        // NOTE: Quorumnet port is omitted if we haven't received a uptime proof yet
+        if (auto quorumnet_port_it = entry.find("quorumnet_port"); quorumnet_port_it != entry.end()) {
+            uint16_t quorumnet_port = *quorumnet_port_it;
+            stream << ": {} (oxen quorums)"_format(quorumnet_port);
+        } else {
+            stream << ": (oxen quorums port not received yet)";
+        }
 
         stream << "\n";
         if (detailed_view) {
