@@ -710,4 +710,9 @@ std::vector<eth::bls_public_key> L2Tracker::get_all_bls_public_keys(uint64_t blo
     return rewards_contract.getAllBLSPubkeys(blockNumber);
 }
 
+RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(std::optional<uint64_t> height)
+{
+    RewardsContract::ServiceNodeIDs result = rewards_contract.allServiceNodeIDs(height);
+    return result;
+}
 }  // namespace eth

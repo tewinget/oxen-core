@@ -238,6 +238,8 @@ class L2Tracker {
     }
     std::vector<bls_public_key> get_all_bls_public_keys(uint64_t blockNumber);
 
+    RewardsContract::ServiceNodeIDs get_all_service_node_ids(std::optional<uint64_t> height);
+
     // TODO FIXME: the entire L2Tracker shouldn't be here if there are no clients
     bool provider_has_clients() const { return provider.numClients(); }
 

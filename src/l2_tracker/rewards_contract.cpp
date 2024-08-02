@@ -293,30 +293,30 @@ RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provid
 std::vector<bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumber) {
     // Get the sentinel node to start the iteration
     const uint64_t service_node_sentinel_id = 0;
-    ContractServiceNode sentinelNode = serviceNodes(service_node_sentinel_id, blockNumber);
-    uint64_t currentNodeId = sentinelNode.next;
+    ContractServiceNode sentinel_node = serviceNodes(service_node_sentinel_id, blockNumber);
+    uint64_t currentNodeId = sentinel_node.next;
 
-    std::vector<bls_public_key> blsPublicKeys;
+    std::vector<bls_public_key> result;
 
     // Iterate over the linked list of service nodes
     while (currentNodeId != service_node_sentinel_id) {
-        ContractServiceNode serviceNode = serviceNodes(currentNodeId, blockNumber);
-        if (!serviceNode.good)
+        ContractServiceNode service_node = serviceNodes(currentNodeId, blockNumber);
+        if (!service_node.good)
             break;
-        blsPublicKeys.push_back(serviceNode.pubkey);
-        currentNodeId = serviceNode.next;
+        result.push_back(service_node.pubkey);
+        currentNodeId = service_node.next;
     }
 
-    return blsPublicKeys;
+    return result;
 }
 
-RewardsContract::ServiceNodeIDs RewardsContract::allServiceNodeIDs(std::optional<uint64_t> blockNumber)
+RewardsContract::ServiceNodeIDs RewardsContract::allServiceNodeIDs(std::optional<uint64_t> height)
 {
-    std::string callData =
+    std::string call_data =
             "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs);
-    std::string blockNumArg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
+    std::string block_num_arg = height ? "0x{:x}"_format(*height) : "latest";
     nlohmann::json call_result =
-            provider.callReadFunctionJSON(contractAddress, callData, blockNumArg);
+            provider.callReadFunctionJSON(contractAddress, call_data, block_num_arg);
 
     auto call_result_hex = call_result.get<std::string_view>();
     if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
@@ -351,7 +351,7 @@ RewardsContract::ServiceNodeIDs RewardsContract::allServiceNodeIDs(std::optional
                 "The number of ids ({}) and bls public keys ({}) returned do not match at block '{}'",
                 num_ids,
                 num_keys,
-                blockNumArg);
+                block_num_arg);
         return result;
     }
 
@@ -362,7 +362,7 @@ RewardsContract::ServiceNodeIDs RewardsContract::allServiceNodeIDs(std::optional
                 "match the size ({} bytes) of the payload returned at block '{}'",
                 num_ids,
                 ids_payload.size() / 2,
-                blockNumArg);
+                block_num_arg);
         return result;
     }
 
@@ -373,7 +373,7 @@ RewardsContract::ServiceNodeIDs RewardsContract::allServiceNodeIDs(std::optional
                 "match the size ({} bytes) of the payload returned at block '{}'",
                 num_keys,
                 keys_payload.size() / 2,
-                blockNumArg);
+                block_num_arg);
         return result;
     }
 
@@ -398,7 +398,7 @@ RewardsContract::ServiceNodeIDs RewardsContract::allServiceNodeIDs(std::optional
 
 ContractServiceNode RewardsContract::serviceNodes(
         uint64_t index, std::optional<uint64_t> blockNumber) {
-    auto callData = "0x{:x}{:064x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
+    auto call_data = "0x{:x}{:064x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
 
     // FIXME(OXEN11): we *cannot* make a blocking request here like this because we are blocking
     // some other thread from doing work; we either need to get this from a local cache of the info,
@@ -406,49 +406,58 @@ ContractServiceNode RewardsContract::serviceNodes(
     // make request asynchronously if not found).
     //
     // FIXME(OXEN11): nor can we make recursive linked lists requests like this!
-    std::string blockNumArg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
+    std::string block_num_arg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
     nlohmann::json callResult =
-            provider.callReadFunctionJSON(contractAddress, callData, blockNumArg);
-    auto callResultHex = callResult.get<std::string_view>();
-    if (callResultHex.starts_with("0x") || callResultHex.starts_with("0X"))
-        callResultHex.remove_prefix(2);
+            provider.callReadFunctionJSON(contractAddress, call_data, block_num_arg);
+    auto call_result_hex = callResult.get<std::string_view>();
+    if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
+        call_result_hex.remove_prefix(2);
 
     ContractServiceNode result{};
-    result.good = false; // until proven otherwise
-    if (callResultHex.empty()) {
+    result.good = false;  // until proven otherwise
+    if (call_result_hex.empty()) {
         oxen::log::warning(
                 logcat,
                 "Provider returned an empty string when querying contract service node {} at block "
                 "'{}'",
                 index,
-                blockNumArg);
+                block_num_arg);
         return result;
     }
 
     // NOTE: The ServiceNode struct is a dynamic type (because its child `Contributor` field is
     // dynamic) hence the offset to the struct is encoded in the first 32 byte element.
     std::string_view sn_data_offset_hex =
-            tools::string_safe_substr(callResultHex, /*pos*/ 0, /*size*/ 64);
+            tools::string_safe_substr(call_result_hex, /*pos*/ 0, /*size*/ 64);
     auto sn_data_offset_bytes = tools::make_from_hex_guts<u256>(sn_data_offset_hex);
-    auto sn_data = callResultHex.substr(tools::decode_integer_be(sn_data_offset_bytes) * 2);
-    auto [next, prev, op_addr, pubkey, addedTimestamp, leaveRequestTimestamp, deposit, contr_offset, remainder] = tools::split_hex_into<
-            u256,
-            u256,
-            skip<12>,
-            eth::address,
-            eth::bls_public_key,
-            u256,
-            u256,
-            u256,
-            u256,
-            std::string_view>(sn_data);
+    auto sn_data = call_result_hex.substr(tools::decode_integer_be(sn_data_offset_bytes) * 2);
+    auto [next,
+          prev,
+          op_addr,
+          pubkey,
+          added_timestamp,
+          leave_request_timestamp,
+          deposit,
+          contr_offset,
+          remainder] =
+            tools::split_hex_into<
+                    u256,
+                    u256,
+                    skip<12>,
+                    eth::address,
+                    eth::bls_public_key,
+                    u256,
+                    u256,
+                    u256,
+                    u256,
+                    std::string_view>(sn_data);
 
     result.next = tools::decode_integer_be(next);
     result.prev = tools::decode_integer_be(prev);
     result.operatorAddr = op_addr;
     result.pubkey = pubkey;
-    result.addedTimestamp = tools::decode_integer_be(addedTimestamp);
-    result.leaveRequestTimestamp = tools::decode_integer_be(leaveRequestTimestamp);
+    result.addedTimestamp = tools::decode_integer_be(added_timestamp);
+    result.leaveRequestTimestamp = tools::decode_integer_be(leave_request_timestamp);
     result.deposit = tools::decode_integer_be(deposit);
 
     auto contrib_data = sn_data.substr(tools::decode_integer_be(contr_offset) * 2);
@@ -471,7 +480,7 @@ ContractServiceNode RewardsContract::serviceNodes(
                         result.pubkey,
                         blockNumber,
                         index));
-        oxen::log::debug(logcat, "{}", log_service_node_blob(result, callResultHex));
+        oxen::log::debug(logcat, "{}", log_service_node_blob(result, call_result_hex));
         return result;
     }
 
@@ -489,13 +498,13 @@ ContractServiceNode RewardsContract::serviceNodes(
                     "Failed to parse contributor/contribution [{}] for service node {} with BLS pubkey {} at height {}: {}",
                     i, index, result.pubkey,
                     blockNumber ? "{}"_format(*blockNumber) : "(latest)", e.what());
-            oxen::log::debug(logcat, "{}", log_service_node_blob(result, callResultHex));
+            oxen::log::debug(logcat, "{}", log_service_node_blob(result, call_result_hex));
             return result;
         }
     }
 
     oxen::log::trace(
-            logcat, "Successfully parsed new SN. {}", log_service_node_blob(result, callResultHex));
+            logcat, "Successfully parsed new SN. {}", log_service_node_blob(result, call_result_hex));
 
     result.good = true;
     return result;
