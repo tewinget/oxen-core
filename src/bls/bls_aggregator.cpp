@@ -647,7 +647,7 @@ void BLSAggregator::get_liquidation(oxenmq::Message& m) {
 // - the endpoint they go to;
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
-BLSAggregateRemovalResponse BLSAggregator::aggregate_removal_or_liquidation(
+BLSRemovalLiquidationResponse BLSAggregator::removal_or_liquidation_request(
         const bls_public_key& bls_pubkey,
         RemovalType type,
         std::string_view endpoint,
@@ -658,7 +658,7 @@ BLSAggregateRemovalResponse BLSAggregator::aggregate_removal_or_liquidation(
     assert(pubkey_key < "signature");  // response dict keys must be processed in sorted order, and
                                        // we expect the pubkey to be in a key that comes first.
 
-    BLSAggregateRemovalResponse result;
+    BLSRemovalLiquidationResponse result;
     result.remove_pubkey = bls_pubkey;
     result.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                                std::chrono::system_clock::now().time_since_epoch())
@@ -739,13 +739,13 @@ BLSAggregateRemovalResponse BLSAggregator::aggregate_removal_or_liquidation(
     return result;
 }
 
-BLSAggregateRemovalResponse BLSAggregator::aggregate_removal(const bls_public_key& bls_pubkey) {
-    return aggregate_removal_or_liquidation(
+BLSRemovalLiquidationResponse BLSAggregator::removal_request(const bls_public_key& bls_pubkey) {
+    return removal_or_liquidation_request(
             bls_pubkey, BLSAggregator::RemovalType::Normal, "bls.get_removal", "removal");
 }
 
-BLSAggregateRemovalResponse BLSAggregator::aggregate_liquidation(const bls_public_key& bls_pubkey) {
-    return aggregate_removal_or_liquidation(
+BLSRemovalLiquidationResponse BLSAggregator::liquidation_request(const bls_public_key& bls_pubkey) {
+    return removal_or_liquidation_request(
             bls_pubkey, BLSAggregator::RemovalType::Liquidate, "bls.get_liquidation", "liquidate");
 }
 

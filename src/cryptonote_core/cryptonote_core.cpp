@@ -2793,19 +2793,16 @@ eth::BLSRewardsResponse core::bls_rewards_request(const eth::address& address) {
     return m_bls_aggregator->rewards_request(address);
 }
 //-----------------------------------------------------------------------------------------------
-eth::BLSAggregateRemovalResponse core::aggregate_removal_request(const eth::bls_public_key& bls_pubkey) {
-    const auto resp = m_bls_aggregator->aggregate_removal(bls_pubkey);
-    return resp;
+eth::BLSRemovalLiquidationResponse core::bls_removal_request(const eth::bls_public_key& bls_pubkey) {
+    return m_bls_aggregator->removal_request(bls_pubkey);
 }
 //-----------------------------------------------------------------------------------------------
-eth::BLSAggregateRemovalResponse core::aggregate_liquidation_request(
+eth::BLSRemovalLiquidationResponse core::bls_liquidation_request(
         const eth::bls_public_key& bls_pubkey) {
-    const auto resp = m_bls_aggregator->aggregate_liquidation(bls_pubkey);
-    return resp;
+    return m_bls_aggregator->liquidation_request(bls_pubkey);
 }
 //-----------------------------------------------------------------------------------------------
-eth::BLSRegistrationResponse core::bls_registration(
-        const eth::address& address, const uint64_t fee) const {
+eth::BLSRegistrationResponse core::bls_registration(const eth::address& address) const {
     const auto& keys = get_service_keys();
     auto resp = m_bls_aggregator->registration(address, keys.pub);
 

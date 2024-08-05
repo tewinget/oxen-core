@@ -2554,7 +2554,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_REQUEST& rpc, rpc_context) {
-    const auto response = m_core.aggregate_removal_request(rpc.request.bls_pubkey);
+    const auto response = m_core.bls_removal_request(rpc.request.bls_pubkey);
     rpc.response["status"] = STATUS_OK;
     rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
     rpc.response_hex["msg_to_sign"] =
@@ -2566,7 +2566,7 @@ void core_rpc_server::invoke(BLS_EXIT_REQUEST& rpc, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& rpc, rpc_context) {
-    const auto response = m_core.aggregate_liquidation_request(rpc.request.bls_pubkey);
+    const auto response = m_core.bls_liquidation_request(rpc.request.bls_pubkey);
     rpc.response["status"] = STATUS_OK;
     rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
     rpc.response_hex["msg_to_sign"] =

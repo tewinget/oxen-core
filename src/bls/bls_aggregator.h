@@ -17,7 +17,7 @@ struct BLSAggregateSigned {
     bls_signature signature;
 };
 
-struct BLSAggregateRemovalResponse : BLSAggregateSigned {
+struct BLSRemovalLiquidationResponse : BLSAggregateSigned {
     bls_public_key remove_pubkey;
     uint64_t timestamp;
 };
@@ -57,8 +57,8 @@ class BLSAggregator {
     /// amount is `0` or height is greater than the current blockchain height.
     BLSRewardsResponse rewards_request(const address& addr);
 
-    BLSAggregateRemovalResponse aggregate_removal(const bls_public_key& bls_pubkey);
-    BLSAggregateRemovalResponse aggregate_liquidation(const bls_public_key& bls_pubkey);
+    BLSRemovalLiquidationResponse removal_request(const bls_public_key& bls_pubkey);
+    BLSRemovalLiquidationResponse liquidation_request(const bls_public_key& bls_pubkey);
     BLSRegistrationResponse registration(
             const address& sender, const crypto::public_key& sn_pubkey) const;
 
@@ -73,7 +73,7 @@ class BLSAggregator {
     void get_removal(oxenmq::Message& m);
     void get_liquidation(oxenmq::Message& m);
 
-    BLSAggregateRemovalResponse aggregate_removal_or_liquidation(
+    BLSRemovalLiquidationResponse removal_or_liquidation_request(
             const bls_public_key& bls_pubkey,
             RemovalType type,
             std::string_view endpoint,
