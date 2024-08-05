@@ -2793,14 +2793,14 @@ eth::BLSRewardsResponse core::bls_rewards_request(const eth::address& address) {
     return m_bls_aggregator->rewards_request(address);
 }
 //-----------------------------------------------------------------------------------------------
-eth::AggregateRemovalResponse core::aggregate_removal_request(const eth::bls_public_key& bls_pubkey) {
-    const auto resp = m_bls_aggregator->aggregateRemoval(bls_pubkey);
+eth::BLSAggregateRemovalResponse core::aggregate_removal_request(const eth::bls_public_key& bls_pubkey) {
+    const auto resp = m_bls_aggregator->aggregate_removal(bls_pubkey);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------
-eth::AggregateRemovalResponse core::aggregate_liquidation_request(
+eth::BLSAggregateRemovalResponse core::aggregate_liquidation_request(
         const eth::bls_public_key& bls_pubkey) {
-    const auto resp = m_bls_aggregator->aggregateLiquidation(bls_pubkey);
+    const auto resp = m_bls_aggregator->aggregate_liquidation(bls_pubkey);
     return resp;
 }
 //-----------------------------------------------------------------------------------------------

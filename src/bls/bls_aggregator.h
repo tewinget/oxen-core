@@ -11,19 +11,19 @@ class OxenMq;
 }
 
 namespace eth {
-struct AggregateSigned {
+struct BLSAggregateSigned {
     std::vector<uint8_t> msg_to_sign;
     std::vector<bls_public_key> signers_bls_pubkeys;
     bls_signature signature;
 };
 
-struct AggregateRemovalResponse : AggregateSigned {
+struct BLSAggregateRemovalResponse : BLSAggregateSigned {
     bls_public_key remove_pubkey;
     uint64_t timestamp;
 };
 
-struct BLSRewardsResponse : AggregateSigned {
-    eth::address address;
+struct BLSRewardsResponse : BLSAggregateSigned {
+    address addr;
     uint64_t amount;
     uint64_t height;
 };
@@ -31,7 +31,7 @@ struct BLSRewardsResponse : AggregateSigned {
 struct BLSRegistrationResponse {
     bls_public_key bls_pubkey;
     bls_signature proof_of_possession;
-    eth::address address;
+    address addr;
     crypto::public_key sn_pubkey;
     crypto::ed25519_signature ed_signature;
 };
@@ -55,12 +55,12 @@ class BLSAggregator {
     ///
     /// This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
     /// amount is `0` or height is greater than the current blockchain height.
-    BLSRewardsResponse rewards_request(const eth::address& address);
+    BLSRewardsResponse rewards_request(const address& addr);
 
-    AggregateRemovalResponse aggregateRemoval(const bls_public_key& bls_pubkey);
-    AggregateRemovalResponse aggregateLiquidation(const bls_public_key& bls_pubkey);
+    BLSAggregateRemovalResponse aggregate_removal(const bls_public_key& bls_pubkey);
+    BLSAggregateRemovalResponse aggregate_liquidation(const bls_public_key& bls_pubkey);
     BLSRegistrationResponse registration(
-            const eth::address& sender, const crypto::public_key& serviceNodePubkey) const;
+            const address& sender, const crypto::public_key& sn_pubkey) const;
 
     enum class RemovalType
     {
@@ -73,7 +73,7 @@ class BLSAggregator {
     void get_removal(oxenmq::Message& m);
     void get_liquidation(oxenmq::Message& m);
 
-    AggregateRemovalResponse aggregateRemovalOrLiquidate(
+    BLSAggregateRemovalResponse aggregate_removal_or_liquidation(
             const bls_public_key& bls_pubkey,
             RemovalType type,
             std::string_view endpoint,
@@ -82,7 +82,7 @@ class BLSAggregator {
     // Goes out to the nodes on the network and makes oxenmq requests to all of them, when getting
     // the reply `callback` will be called to process their reply
     // Returns the number of nodes that we dispatched a request to
-    uint64_t nodesRequest(
+    uint64_t nodes_request(
             std::string_view request_name,
             std::string_view message,
             const request_callback& callback);
@@ -93,7 +93,6 @@ class BLSAggregator {
     // The BLS aggregator can be called from multiple threads via the RPC server. Since we have a
     // cache that can be concurrently written to, we guard that around a lock.
     std::mutex mutex;
-    std::unordered_map<eth::address, BLSRewardsResponse> rewards_response_cache;
+    std::unordered_map<address, BLSRewardsResponse> rewards_response_cache;
 };
-
 }  // namespace eth

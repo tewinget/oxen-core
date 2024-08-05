@@ -88,7 +88,7 @@ namespace {
                 "  - height:      {}\n"
                 "  - signature:   {}\n"
                 "  - msg_to_sign: {}\n"_format(
-                        item.address,
+                        item.addr,
                         item.amount,
                         item.height,
                         item.signature,
@@ -282,17 +282,17 @@ BLSAggregator::BLSAggregator(cryptonote::core& _core) : core{_core} {
 }
 
 BLSRegistrationResponse BLSAggregator::registration(
-        const eth::address& sender, const crypto::public_key& serviceNodePubkey) const {
+        const address& sender, const crypto::public_key& sn_pubkey) const {
     auto& signer = core.get_bls_signer();
     return BLSRegistrationResponse{
             .bls_pubkey = signer.getCryptoPubkey(),
-            .proof_of_possession = signer.proofOfPossession(sender, serviceNodePubkey),
-            .address = sender,
-            .sn_pubkey = serviceNodePubkey,
+            .proof_of_possession = signer.proofOfPossession(sender, sn_pubkey),
+            .addr = sender,
+            .sn_pubkey = sn_pubkey,
             .ed_signature = crypto::null<crypto::ed25519_signature>};
 }
 
-uint64_t BLSAggregator::nodesRequest(
+uint64_t BLSAggregator::nodes_request(
         std::string_view request_name, std::string_view message, const request_callback& callback) {
     std::mutex connection_mutex;
     std::condition_variable cv;
@@ -343,7 +343,7 @@ uint64_t BLSAggregator::nodesRequest(
 void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
     oxen::log::trace(logcat, "Received omq rewards signature request");
 
-    eth::address eth_addr;
+    address eth_addr;
     if (!extract_1part_msg(m, eth_addr, "BLS rewards", "ETH address"))
         return;
 
@@ -378,27 +378,27 @@ void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
     m.send_reply("200", std::move(d).str());
 }
 
-BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
+BLSRewardsResponse BLSAggregator::rewards_request(const address& addr) {
 
     auto begin_ts = std::chrono::high_resolution_clock::now();
-    auto [height, amount] = core.get_blockchain_storage().sqlite_db().get_accrued_rewards(address);
+    auto [height, amount] = core.get_blockchain_storage().sqlite_db().get_accrued_rewards(addr);
 
     // FIXME: make this async
     oxen::log::trace(
             logcat,
             "Initiating rewards request of {} SENT for {} at height {}",
             amount,
-            address,
+            addr,
             height);
 
     const auto& service_node_list = core.get_service_node_list();
 
     // NOTE: Validate the arguments
-    if (!address) {
+    if (!addr) {
         throw oxen::traced<std::invalid_argument>(fmt::format(
                 "Aggregating a rewards request for the zero address for {} SENT at height {} is "
                 "invalid because address is invalid. Request rejected",
-                address,
+                addr,
                 amount,
                 height,
                 service_node_list.height()));
@@ -408,7 +408,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
         throw oxen::traced<std::invalid_argument>(fmt::format(
                 "Aggregating a rewards request for '{}' for 0 SENT at height {} is invalid because "
                 "no rewards are available. Request rejected.",
-                address,
+                addr,
                 height));
     }
 
@@ -416,7 +416,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
         throw oxen::traced<std::invalid_argument>(fmt::format(
                 "Aggregating a rewards request for '{}' for {} SENT at height {} is invalid "
                 "because the height is greater than the blockchain height {}. Request rejected",
-                address,
+                addr,
                 amount,
                 height,
                 service_node_list.height()));
@@ -425,7 +425,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
     // NOTE: Serve the response from our cache if it's a repeated request
     {
         std::lock_guard lock{mutex};
-        auto cache_it = rewards_response_cache.find(address);
+        auto cache_it = rewards_response_cache.find(addr);
         if (cache_it != rewards_response_cache.end()) {
             const BLSRewardsResponse& cache_response = cache_it->second;
             if (cache_response.height == height && cache_response.amount == amount) {
@@ -433,7 +433,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
                         logcat,
                         "Serving rewards request from cache for address {} at height {} with rewards "
                         "{} amount",
-                        address,
+                        addr,
                         height,
                         amount);
                 return cache_response;
@@ -442,11 +442,11 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
     }
 
     BLSRewardsResponse result{};
-    result.address = address;
+    result.addr = addr;
     result.amount = amount;
     result.height = height;
     result.msg_to_sign = get_reward_balance_msg_to_sign(
-            core.get_nettype(), result.address, tools::encode_integer_be<32>(amount));
+            core.get_nettype(), result.addr, tools::encode_integer_be<32>(amount));
 
     // `nodesRequest` dispatches to a threadpool hence we require synchronisation:
     std::mutex sig_mutex;
@@ -455,9 +455,9 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
 
     // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
     // call (FIXME -- it should not be!)
-    uint64_t totalRequests = nodesRequest(
+    uint64_t totalRequests = nodes_request(
             "bls.get_reward_balance",
-            tools::view_guts(address),
+            tools::view_guts(addr),
             [&aggSig, &result, &sig_mutex, nettype = core.get_nettype()](
                     const BLSRequestResult& request_result, const std::vector<std::string>& data) {
                 BLSRewardsResponse response = {};
@@ -469,19 +469,18 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
 
                     oxenc::bt_dict_consumer d{data[1]};
 
-                    response.address =
-                            tools::make_from_guts<eth::address>(d.require<std::string_view>("addres"
-                                                                                            "s"));
+                    response.addr =
+                            tools::make_from_guts<address>(d.require<std::string_view>("address"));
                     response.amount = d.require<uint64_t>("amount");
                     response.height = d.require<uint64_t>("height");
-                    response.signature = tools::make_from_guts<eth::bls_signature>(
+                    response.signature = tools::make_from_guts<bls_signature>(
                             d.require<std::string_view>("signature"));
                     response.msg_to_sign = get_reward_balance_msg_to_sign(nettype, response.address, tools::encode_integer_be<32>(response.amount));
 
-                    if (response.address != result.address)
+                    if (response.addr != result.addr)
                         throw oxen::traced<std::runtime_error>{
                                 "Response ETH address {} does not match the request address {}"_format(
-                                        response.address, result.address)};
+                                        response.addr, result.addr)};
                     if (response.amount != result.amount || response.height != result.height)
                         throw oxen::traced<std::runtime_error>{
                                 "Balance/height mismatch: expected {}/{}, got {}/{}"_format(
@@ -574,7 +573,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
     uint64_t non_signers_count = totalRequests - result.signers_bls_pubkeys.size();
     if (non_signers_count < (totalRequests / 3)) {
         std::lock_guard lock{mutex};
-        rewards_response_cache[address] = result;
+        rewards_response_cache[addr] = result;
     }
 
     return result;
@@ -648,8 +647,8 @@ void BLSAggregator::get_liquidation(oxenmq::Message& m) {
 // - the endpoint they go to;
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
-AggregateRemovalResponse BLSAggregator::aggregateRemovalOrLiquidate(
-        const eth::bls_public_key& bls_pubkey,
+BLSAggregateRemovalResponse BLSAggregator::aggregate_removal_or_liquidation(
+        const bls_public_key& bls_pubkey,
         RemovalType type,
         std::string_view endpoint,
         std::string_view pubkey_key) {
@@ -659,7 +658,7 @@ AggregateRemovalResponse BLSAggregator::aggregateRemovalOrLiquidate(
     assert(pubkey_key < "signature");  // response dict keys must be processed in sorted order, and
                                        // we expect the pubkey to be in a key that comes first.
 
-    AggregateRemovalResponse result;
+    BLSAggregateRemovalResponse result;
     result.remove_pubkey = bls_pubkey;
     result.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                                std::chrono::system_clock::now().time_since_epoch())
@@ -675,7 +674,7 @@ AggregateRemovalResponse BLSAggregator::aggregateRemovalOrLiquidate(
     message_dict.append("bls_pubkey", tools::view_guts(bls_pubkey));
     message_dict.append("timestamp", result.timestamp);
 
-    nodesRequest(
+    nodes_request(
             endpoint,
             std::move(message_dict).str(),
             [endpoint, pubkey_key, &aggSig, &result, &signers_mutex, nettype = core.get_nettype()](
@@ -740,13 +739,13 @@ AggregateRemovalResponse BLSAggregator::aggregateRemovalOrLiquidate(
     return result;
 }
 
-AggregateRemovalResponse BLSAggregator::aggregateRemoval(const eth::bls_public_key& bls_pubkey) {
-    return aggregateRemovalOrLiquidate(
+BLSAggregateRemovalResponse BLSAggregator::aggregate_removal(const bls_public_key& bls_pubkey) {
+    return aggregate_removal_or_liquidation(
             bls_pubkey, BLSAggregator::RemovalType::Normal, "bls.get_removal", "removal");
 }
 
-AggregateRemovalResponse BLSAggregator::aggregateLiquidation(const bls_public_key& bls_pubkey) {
-    return aggregateRemovalOrLiquidate(
+BLSAggregateRemovalResponse BLSAggregator::aggregate_liquidation(const bls_public_key& bls_pubkey) {
+    return aggregate_removal_or_liquidation(
             bls_pubkey, BLSAggregator::RemovalType::Liquidate, "bls.get_liquidation", "liquidate");
 }
 

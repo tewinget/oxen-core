@@ -2542,7 +2542,7 @@ void core_rpc_server::invoke(
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
     const auto response = m_core.bls_rewards_request(rpc.request.address);
     rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["address"] = response.address;
+    rpc.response_hex["address"] = response.addr;
     rpc.response["amount"] = response.amount;
     rpc.response["height"] = response.height;
     rpc.response_hex["msg_to_sign"] =
@@ -2580,7 +2580,7 @@ void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& rpc, rpc_context) {
 void core_rpc_server::invoke(BLS_REGISTRATION& rpc, rpc_context) {
     const auto response = m_core.bls_registration(rpc.request.address);
     rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["address"] = response.address;
+    rpc.response_hex["address"] = response.addr;
     rpc.response_hex["bls_pubkey"] = response.bls_pubkey;
     rpc.response_hex["proof_of_possession"] = response.proof_of_possession;
     rpc.response_hex["service_node_pubkey"] = response.sn_pubkey;
