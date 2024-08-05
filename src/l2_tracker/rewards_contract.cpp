@@ -288,19 +288,19 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
 }
 
 RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider) :
-        contractAddress{contract::rewards_address(nettype)}, provider{provider} {}
+        contract_address{contract::rewards_address(nettype)}, provider{provider} {}
 
 std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t blockNumber) {
     // Get the sentinel node to start the iteration
     const uint64_t service_node_sentinel_id = 0;
-    ContractServiceNode sentinel_node = serviceNodes(service_node_sentinel_id, blockNumber);
+    ContractServiceNode sentinel_node = service_nodes(service_node_sentinel_id, blockNumber);
     uint64_t currentNodeId = sentinel_node.next;
 
     std::vector<bls_public_key> result;
 
     // Iterate over the linked list of service nodes
     while (currentNodeId != service_node_sentinel_id) {
-        ContractServiceNode service_node = serviceNodes(currentNodeId, blockNumber);
+        ContractServiceNode service_node = service_nodes(currentNodeId, blockNumber);
         if (!service_node.good)
             break;
         result.push_back(service_node.pubkey);
@@ -310,13 +310,13 @@ std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t blockN
     return result;
 }
 
-RewardsContract::ServiceNodeIDs RewardsContract::allServiceNodeIDs(std::optional<uint64_t> height)
+RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(std::optional<uint64_t> height)
 {
     std::string call_data =
             "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs);
     std::string block_num_arg = height ? "0x{:x}"_format(*height) : "latest";
     nlohmann::json call_result =
-            provider.callReadFunctionJSON(contractAddress, call_data, block_num_arg);
+            provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
 
     auto call_result_hex = call_result.get<std::string_view>();
     if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
@@ -408,7 +408,7 @@ ContractServiceNode RewardsContract::service_nodes(
     // FIXME(OXEN11): nor can we make recursive linked lists requests like this!
     std::string block_num_arg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
     nlohmann::json callResult =
-            provider.callReadFunctionJSON(contractAddress, call_data, block_num_arg);
+            provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
     auto call_result_hex = callResult.get<std::string_view>();
     if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
         call_result_hex.remove_prefix(2);

@@ -259,7 +259,8 @@ void L2Tracker::update_height() {
 
 void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) {
 
-    const uint64_t reward_pool_update_blocks = get_config(core.get_nettype()).L2_REWARD_POOL_UPDATE_BLOCKS;
+    const uint64_t reward_pool_update_blocks =
+            get_config(core.get_nettype()).L2_REWARD_POOL_UPDATE_BLOCKS;
 
     // NOTE: Initial case of update_rewards from all entry-points has a nullopt
     // for `more`, e.g. this branch executes. After calling into
@@ -366,7 +367,7 @@ void L2Tracker::add_to_mempool(
 
     std::visit(
             [&tx]<typename T>(const T& arg) {
-                if constexpr (std::is_same_v<T, eth::NewServiceNodeTx>) {
+                if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
                     tx.type = txtype::ethereum_new_service_node;
                     std::vector<tx_extra_ethereum_contributor> contributors;
                     for (const auto& contributor : arg.contributors)
@@ -382,12 +383,12 @@ void L2Tracker::add_to_mempool(
                             contributors};
                     add_new_service_node_to_tx_extra(tx.extra, new_service_node);
 
-                } else if constexpr (std::is_same_v<T, eth::ServiceNodeRemovalRequestTx>) {
+                } else if constexpr (std::is_same_v<T, ServiceNodeRemovalRequestTx>) {
                     tx.type = txtype::ethereum_service_node_removal_request;
                     tx_extra_ethereum_service_node_removal_request removal_request = {
                             0, arg.bls_pubkey};
                     add_service_node_removal_request_to_tx_extra(tx.extra, removal_request);
-                } else if constexpr (std::is_same_v<T, eth::ServiceNodeRemovalTx>) {
+                } else if constexpr (std::is_same_v<T, ServiceNodeRemovalTx>) {
                     tx.type = txtype::ethereum_service_node_removal;
                     tx_extra_ethereum_service_node_removal removal_data = {
                             0, arg.eth_address, arg.amount, arg.bls_pubkey};
@@ -616,7 +617,9 @@ uint64_t L2Tracker::get_latest_height() const {
 uint64_t L2Tracker::get_safe_height() const {
     std::shared_lock lock{mutex};
     const cryptonote::network_config& config = cryptonote::get_config(core.get_nettype());
-    return config.L2_TRACKER_SAFE_BLOCKS >= latest_height ? 0 : latest_height - config.L2_TRACKER_SAFE_BLOCKS;
+    return config.L2_TRACKER_SAFE_BLOCKS >= latest_height
+                 ? 0
+                 : latest_height - config.L2_TRACKER_SAFE_BLOCKS;
 }
 
 uint64_t L2Tracker::get_confirmed_height() const {
@@ -650,8 +653,8 @@ static bool process_review_tx(bool active, std::list<Tx>& txes, Match match) {
 }
 
 bool TransactionReviewSession::processNewServiceNodeTx(
-        const eth::bls_public_key& bls_pubkey,
-        const eth::address& eth_address,
+        const bls_public_key& bls_pubkey,
+        const address& eth_address,
         const crypto::public_key& service_node_pubkey,
         std::string& fail_reason) {
     /// FIXME XXX TODO -- these should be verifying contributors and fee as well
@@ -672,9 +675,10 @@ bool TransactionReviewSession::processNewServiceNodeTx(
 }
 
 bool TransactionReviewSession::processServiceNodeRemovalRequestTx(
-        const eth::bls_public_key& bls_pubkey, std::string& fail_reason) {
-    if (process_review_tx(
-                active, removal_requests, [&](const auto& x) { return x.bls_pubkey == bls_pubkey; }))
+        const bls_public_key& bls_pubkey, std::string& fail_reason) {
+    if (process_review_tx(active, removal_requests, [&](const auto& x) {
+            return x.bls_pubkey == bls_pubkey;
+        }))
         return true;
 
     fail_reason = "Leave Request Transaction not found bls_pubkey: {}"_format(bls_pubkey);
@@ -683,9 +687,9 @@ bool TransactionReviewSession::processServiceNodeRemovalRequestTx(
 }
 
 bool TransactionReviewSession::processServiceNodeRemovalTx(
-        const eth::address& eth_address,
+        const address& eth_address,
         const uint64_t amount,
-        const eth::bls_public_key& bls_pubkey,
+        const bls_public_key& bls_pubkey,
         std::string& fail_reason) {
     if (process_review_tx(active, removals, [&](const auto& x) {
             return x.bls_pubkey == bls_pubkey && x.eth_address == eth_address && x.amount == amount;
@@ -697,22 +701,21 @@ bool TransactionReviewSession::processServiceNodeRemovalTx(
 }
 
 bool TransactionReviewSession::finalize() {
-    return !active ||
-           (new_service_nodes.empty() && removal_requests.empty() && removals.empty());
+    return !active || (new_service_nodes.empty() && removal_requests.empty() && removals.empty());
 }
 
 std::vector<uint64_t> L2Tracker::get_non_signers(
-        const std::unordered_set<eth::bls_public_key>& bls_public_keys) {
+        const std::unordered_set<bls_public_key>& bls_public_keys) {
     return rewards_contract.get_non_signers(bls_public_keys);
 }
 
-std::vector<eth::bls_public_key> L2Tracker::get_all_bls_public_keys(uint64_t blockNumber) {
+std::vector<bls_public_key> L2Tracker::get_all_bls_public_keys(uint64_t blockNumber) {
     return rewards_contract.get_all_bls_pubkeys(blockNumber);
 }
 
-RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(std::optional<uint64_t> height)
-{
-    RewardsContract::ServiceNodeIDs result = rewards_contract.allServiceNodeIDs(height);
+RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(
+        std::optional<uint64_t> height) {
+    RewardsContract::ServiceNodeIDs result = rewards_contract.all_service_node_ids(height);
     return result;
 }
 }  // namespace eth
