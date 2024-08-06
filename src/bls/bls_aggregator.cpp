@@ -169,6 +169,104 @@ namespace {
         return result;
     }
 
+    // Redo the BLS aggregation steps given the list of signers and:
+    //
+    //   - Calculate the full aggregate bls public key (e.g. all signers)
+    //   - Aggregate bls public key w/ the given signers
+    //   - Detect if there's a session node that's in oxen but not in the smart
+    //     contract
+    //   - Detect if there's a session node that's in the smart contract but not
+    //     in oxen
+    //
+    // Using this node's list of session nodes and their BLS public keys as well
+    // as a snapshot of the rewards contract's 'allServiceNodeIDs' issued
+    // at the invocation of this call.
+    void debug_redo_bls_aggregation_steps_locally(
+            const service_nodes::service_node_list& service_node_list,
+            L2Tracker& l2_tracker,
+            std::span<const bls_public_key> signature_signers) {
+        const RewardsContract::ServiceNodeIDs contract_ids =
+                l2_tracker.get_all_service_node_ids(std::nullopt);
+
+        // NOTE: Detect if the smart contract state has diverged.
+        {
+            // NOTE: Check if key is in Oxen but not the smart contract
+            std::vector<service_nodes::service_node_pubkey_info> sn_list_info =
+                    service_node_list.get_service_node_list_state();
+            size_t missing_count = 0;
+            for (const auto& sn_info : sn_list_info) {
+                bool found = false;
+                for (size_t index = 0; index < contract_ids.ids.size(); index++) {
+                    const bls_public_key& contract_bls_pkey = contract_ids.bls_pubkeys[index];
+                    if (sn_info.info->bls_public_key == contract_bls_pkey) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    missing_count++;
+                    oxen::log::warning(logcat, "Session node {} exists in Oxen but not in the contract", sn_info.pubkey);
+                }
+            }
+
+            // NOTE: Check if key is in smart contract but not in Oxen
+            for (size_t index = 0; index < contract_ids.ids.size(); index++) {
+                uint64_t contract_id                    = contract_ids.ids[index];
+                const bls_public_key& contract_bls_pkey = contract_ids.bls_pubkeys[index];
+                bool found = false;
+                for (const auto& sn_info : sn_list_info) {
+                    if (sn_info.info->bls_public_key == contract_bls_pkey) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    missing_count++;
+                    oxen::log::warning(logcat, "Session node {} {} exists in contract but not in oxen", contract_id, contract_bls_pkey);
+                }
+            }
+
+            if (missing_count == 0)
+                oxen::log::debug(logcat, "No missing nodes detected!");
+        }
+
+        // NOTE: Re-derive the BLS aggregate key and the key subtraction step
+        {
+            // NOTE: Aggregate all keys
+            bls::PublicKey cpp_agg_pubkey = {};
+            blsPublicKey *agg_pub          = const_cast<blsPublicKey*>(cpp_agg_pubkey.getPtr());
+            for (size_t index = 0; index < contract_ids.ids.size(); index++) {
+                const bls_public_key& contract_bls_pkey = contract_ids.bls_pubkeys[index];
+                const bls::PublicKey contract_key       = bls_utils::from_crypto_pubkey(contract_bls_pkey);
+                blsPublicKeyAdd(agg_pub, contract_key.getPtr());
+            }
+            oxen::log::info(logcat, "Full BLS aggregate public key {}", bls_utils::to_crypto_pubkey(cpp_agg_pubkey));
+
+            // NOTE: Subtract non-signers
+            for (size_t index = 0; index < contract_ids.ids.size(); index++) {
+                bool found = false;
+                const bls_public_key& contract_bls_pkey = contract_ids.bls_pubkeys[index];
+                for (const bls_public_key& pkey : signature_signers) {
+                    if (pkey == contract_bls_pkey) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    oxen::log::info(logcat, "  Subtracting BLS key from Session Node {} {}", contract_ids.ids[index], contract_bls_pkey);
+                    const bls::PublicKey contract_key = bls_utils::from_crypto_pubkey(contract_bls_pkey);
+                    blsPublicKeySub(agg_pub, contract_key.getPtr());
+                }
+            }
+
+            // NOTE: Dump the key we re-derived (e.g. includes the non-signers)
+            oxen::log::info(logcat, "Re-derived BLS aggregate public key {}", bls_utils::to_crypto_pubkey(cpp_agg_pubkey));
+        }
+    }
+
 }  // namespace
 
 BLSAggregator::BLSAggregator(cryptonote::core& _core) : core{_core} {
@@ -378,6 +476,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
                     response.height = d.require<uint64_t>("height");
                     response.signature = tools::make_from_guts<eth::bls_signature>(
                             d.require<std::string_view>("signature"));
+                    response.msg_to_sign = get_reward_balance_msg_to_sign(nettype, response.address, tools::encode_integer_be<32>(response.amount));
 
                     if (response.address != result.address)
                         throw oxen::traced<std::runtime_error>{
@@ -438,25 +537,38 @@ BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
 
     result.signature = bls_utils::to_crypto_signature(aggSig);
 
-    #if !defined(NDEBUG)
-    bls::PublicKey aggPub;
-    aggPub.clear();
-    for (const auto& blspk : result.signers_bls_pubkeys)
-        aggPub.add(bls_utils::from_crypto_pubkey(blspk));
-    #endif
+    // NOTE: Dump the aggregate pubkey that was generated
+    {
+        #if !defined(NDEBUG)
+        bls::PublicKey aggPub;
+        aggPub.clear();
+        for (const auto& blspk : result.signers_bls_pubkeys)
+            aggPub.add(bls_utils::from_crypto_pubkey(blspk));
+        #endif
 
-    auto elapsed_ts = std::chrono::high_resolution_clock::now() - begin_ts;
-    oxen::log::debug(
-            logcat,
-            "BLS aggregate pubkey for reward requests: {} ({} aggregations) with signature {} in {:.1f}s",
-            #if defined(NDEBUG)
-            "",
-            #else
-            bls_utils::to_crypto_pubkey(aggPub),
-            #endif
-            result.signers_bls_pubkeys.size(),
-            result.signature,
-            (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_ts).count() / 1000.f));
+        auto elapsed_ts = std::chrono::high_resolution_clock::now() - begin_ts;
+        oxen::log::info(
+                logcat,
+                "BLS aggregate pubkey for reward requests: {} ({} aggregations) with signature {} in {:.1f}s",
+                #if defined(NDEBUG)
+                "",
+                #else
+                bls_utils::to_crypto_pubkey(aggPub),
+                #endif
+                result.signers_bls_pubkeys.size(),
+                result.signature,
+                (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_ts).count() / 1000.f));
+    }
+
+    #if defined(NDEBUG)
+    const bool debug_redo_bls_aggregation = false;
+    #else
+    const bool debug_redo_bls_aggregation = true;
+    #endif
+    if (debug_redo_bls_aggregation) {
+        debug_redo_bls_aggregation_steps_locally(
+                service_node_list, core.l2_tracker(), result.signers_bls_pubkeys);
+    }
 
     // NOTE: Store the response in to the cache if the number of non-signers was less than 1/3rd.
     uint64_t non_signers_count = totalRequests - result.signers_bls_pubkeys.size();
