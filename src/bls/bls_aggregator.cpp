@@ -79,6 +79,21 @@ namespace {
         return result;
     }
 
+    std::string dump_bls_removal_liquidation_response(const bls_removal_liquidation_response& item) {
+        std::string result =
+                "BLS rewards response was:\n"
+                "\n"
+                "  - remove_pubkey: {}\n"
+                "  - timestamp:     {}\n"
+                "  - signature:     {}\n"
+                "  - msg_to_sign:   {}\n"_format(
+                        item.remove_pubkey,
+                        item.timestamp,
+                        item.signature,
+                        oxenc::to_hex(item.msg_to_sign.begin(), item.msg_to_sign.end()));
+        return result;
+    }
+
     std::vector<uint8_t> get_removal_msg_to_sign(
             cryptonote::network_type nettype,
             bls_aggregator::removal_type type,
@@ -423,19 +438,16 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
 
     // NOTE: Validate the arguments
     if (!addr) {
-        throw oxen::traced<std::invalid_argument>(fmt::format(
+        throw oxen::traced<std::invalid_argument>(
                 "Aggregating a rewards request for the zero address for {} SENT at height {} is "
-                "invalid because address is invalid. Request rejected",
-                addr,
-                amount,
-                height,
-                service_node_list.height()));
+                "invalid. Request rejected"_format(
+                        addr, amount, height, service_node_list.height()));
     }
 
     if (amount == 0) {
-        throw oxen::traced<std::invalid_argument>(fmt::format(
+        throw oxen::traced<std::invalid_argument>(
                 "Aggregating a rewards request for '{}' for 0 SENT at height {} is invalid because "
-                "no rewards are available. Request rejected.",
+                "no rewards are available. Request rejected."_format(
                 addr,
                 height));
     }
@@ -489,8 +501,8 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                         throw oxen::traced<std::runtime_error>{
                                 "Error retrieving reward balance: {}"_format(fmt::join(data, " "))};
 
+                    // NOTE: Extract parameters
                     oxenc::bt_dict_consumer d{data[1]};
-
                     rewards_response.addr =
                             tools::make_from_guts<address>(d.require<std::string_view>("address"));
                     rewards_response.amount = d.require<uint64_t>("amount");
@@ -504,6 +516,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                             rewards_response.addr,
                             tools::encode_integer_be<32>(rewards_response.amount));
 
+                    // NOTE: Verify parameters
                     if (rewards_response.addr != result.addr)
                         throw oxen::traced<std::runtime_error>{
                                 "Response ETH address {} does not match the request address {}"_format(
@@ -527,6 +540,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                                         response.sn.bls_pubkey)};
                     }
 
+                    // NOTE: Aggregate parameters
                     {
                         std::lock_guard lock{sig_mutex};
                         bls::Signature bls_sig =
@@ -645,14 +659,34 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
 bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(const bls_public_key& bls_pubkey, removal_type type) {
+
+    // NOTE: Validate the arguments
+    if (!bls_pubkey) {
+        throw oxen::traced<std::invalid_argument>(
+                "Removal/liquidation request for the zero address at height {} is invalid. Request "
+                "rejected"_format(core.get_current_blockchain_height()));
+    }
+
     // NOTE: The OMQ endpoint to hit
     std::string_view endpoint = "";
     switch (type) {
         case removal_type::normal: {
             endpoint = OMQ_BLS_REMOVAL_ENDPOINT;
+            if (!core.is_node_removable(bls_pubkey)) {
+                throw oxen::traced<std::invalid_argument>(
+                        "Remove request for {} at height {} is valid. Node cannot "
+                        "be liquidated yet. Request rejected"_format(
+                                bls_pubkey, core.get_current_blockchain_height()));
+            }
         } break;
         case removal_type::liquidate: {
             endpoint = OMQ_BLS_LIQUIDATE_ENDPOINT;
+            if (!core.is_node_liquidatable(bls_pubkey)) {
+                throw oxen::traced<std::invalid_argument>(
+                        "Liquidation request for {} at height {} is valid. Node cannot "
+                        "be liquidated yet. Request rejected"_format(
+                                bls_pubkey, core.get_current_blockchain_height()));
+            }
         } break;
     }
 
@@ -665,8 +699,8 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
             get_removal_msg_to_sign(core.get_nettype(), type, bls_pubkey, result.timestamp);
 
     std::mutex signers_mutex;
-    bls::Signature aggSig;
-    aggSig.clear();
+    bls::Signature agg_sig;
+    agg_sig.clear();
 
     oxenc::bt_dict_producer message_dict;
     message_dict.append("bls_pubkey", tools::view_guts(bls_pubkey));
@@ -676,64 +710,92 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
     nodes_request(
             endpoint,
             std::move(message_dict).str(),
-            [endpoint, &aggSig, &result, &signers_mutex, nettype = core.get_nettype()](
+            [endpoint, &agg_sig, &result, &signers_mutex, nettype = core.get_nettype()](
                     const bls_response& response, const std::vector<std::string>& data) {
+                bls_removal_liquidation_response removal_liquidation_response = {};
+                bool partially_parsed = true;
                 try {
                     if (!response.success || data.size() != 2 || data[0] != "200")
                         throw oxen::traced<std::runtime_error>{
                                 "Request returned an error: {}"_format(fmt::join(data, " "))};
 
                     oxenc::bt_dict_consumer d{data[1]};
-                    if (result.remove_pubkey != tools::make_from_guts<bls_public_key>(
-                                                        d.require<std::string_view>("remove")))
-                        throw oxen::traced<std::runtime_error>{
-                                "BLS pubkey does not match the request"};
 
-                    auto sig =
+                    // NOTE: Extract parameters
+                    removal_liquidation_response.remove_pubkey =
+                            tools::make_from_guts<bls_public_key>(d.require<std::string_view>("remo"
+                                                                                              "v"
+                                                                                              "e"));
+                    removal_liquidation_response.signature =
                             tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
                                                                                              "tur"
                                                                                              "e"));
 
+                    // NOTE: Verify parameters
+                    if (removal_liquidation_response.remove_pubkey != result.remove_pubkey)
+                        throw oxen::traced<std::runtime_error>{
+                                "BLS response pubkey {} does not match the request pubkey {}"_format(
+                                        removal_liquidation_response.remove_pubkey,
+                                        result.remove_pubkey)};
+
                     if (!BLSSigner::verifyMsg(
-                                nettype, sig, response.sn.bls_pubkey, result.msg_to_sign)) {
+                                nettype,
+                                removal_liquidation_response.signature,
+                                response.sn.bls_pubkey,
+                                result.msg_to_sign)) {
                         throw oxen::traced<std::runtime_error>{
                                 "Invalid BLS signature for BLS pubkey {}"_format(
                                         response.sn.bls_pubkey)};
                     }
 
+                    // NOTE: Aggregate parameters
                     {
                         std::lock_guard<std::mutex> lock(signers_mutex);
-                        bls::Signature bls_sig = bls_utils::from_crypto_signature(sig);
-                        aggSig.add(bls_sig);
+                        bls::Signature bls_sig = bls_utils::from_crypto_signature(
+                                removal_liquidation_response.signature);
+                        agg_sig.add(bls_sig);
                         result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
                     }
-                } catch (const std::exception& e) {
-                    oxen::log::warning(
+
+                    partially_parsed = false;
+
+                    oxen::log::trace(
                             logcat,
-                            "{} signature response rejected from {}: {}",
+                            "{} response accepted from {} (BLS {} XKEY {} {}:{})\nWe "
+                            "requested: {}\nThe response had: {}",
                             endpoint,
                             response.sn.sn_pubkey,
-                            e.what());
+                            response.sn.bls_pubkey,
+                            response.sn.x_pubkey,
+                            response.sn.ip,
+                            response.sn.port,
+                            dump_bls_removal_liquidation_response(result),
+                            dump_bls_removal_liquidation_response(removal_liquidation_response));
+                } catch (const std::exception& e) {
+                    oxen::log::debug(
+                            logcat,
+                            "{} response rejected from {}: {}\nWe requested: {}\nThe "
+                            "response had{}: {}",
+                            endpoint,
+                            response.sn.sn_pubkey,
+                            e.what(),
+                            dump_bls_removal_liquidation_response(result),
+                            partially_parsed ? " (partially parsed)" : "",
+                            dump_bls_removal_liquidation_response(removal_liquidation_response));
                 }
             });
 
-    result.signature = bls_utils::to_crypto_signature(aggSig);
+    result.signature = bls_utils::to_crypto_signature(agg_sig);
 
-#ifndef NDEBUG
-    bls::PublicKey aggPub;
-    aggPub.clear();
-
-    for (const auto& blspk : result.signers_bls_pubkeys)
-        aggPub.add(bls_utils::from_crypto_pubkey(blspk));
-
-    oxen::log::trace(
-            logcat,
-            "BLS agg pubkey for {} requests: {} ({} aggregations) with signature {}",
-            endpoint,
-            bls_utils::to_crypto_pubkey(aggPub),
-            result.signers_bls_pubkeys.size(),
-            result.signature);
+#if defined(NDEBUG)
+    const bool debug_redo_bls_aggregation = false;
+#else
+    const bool debug_redo_bls_aggregation = true;
 #endif
+    if (debug_redo_bls_aggregation) {
+        debug_redo_bls_aggregation_steps_locally(
+                core.get_service_node_list(), core.l2_tracker(), result.signers_bls_pubkeys);
+    }
 
     return result;
 }
