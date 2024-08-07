@@ -182,20 +182,19 @@ class ServiceNodeRewardContract:
         return tx_hash
 
     def removeBLSPublicKeyWithSignature(self, blsKey, timestamp, blsSig, ids):
-        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature({
-            'blsPubkey': {
-                'X': int(blsKey[:64],    16),
-                'Y': int(blsKey[64:128], 16),
-            },
-            'timestamp': timestamp,
-            'blsSignature': {
-                'sigs0': int(blsSig[:64],     16),
-                'sigs1': int(blsSig[64:128],  16),
-                'sigs2': int(blsSig[128:192], 16),
-                'sigs3': int(blsSig[192:256], 16),
-            },
-            'ids': ids
-        }).build_transaction({
+        bls_pubkey = {
+            'X': int(blsKey[:64],    16),
+            'Y': int(blsKey[64:128], 16),
+        }
+
+        bls_signature = {
+            'sigs0': int(blsSig[   :64],  16),
+            'sigs1': int(blsSig[64 :128], 16),
+            'sigs2': int(blsSig[128:192], 16),
+            'sigs3': int(blsSig[192:256], 16),
+        }
+
+        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(bls_pubkey, timestamp, bls_signature, ids).build_transaction({
             "from": self.acc.address,
             'gas': 3000000,  # Adjust gas limit as necessary
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)

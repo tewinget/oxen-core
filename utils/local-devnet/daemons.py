@@ -273,8 +273,8 @@ class Daemon(RPCDaemon):
     def get_bls_rewards(self, address):
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
 
-    def get_exit_request(self, bls_key):
-        return self.json_rpc("bls_exit_request", {"bls_pubkey": bls_key}).json()
+    def get_removal_liquidation_request(self, bls_key, liquidate = False):
+        return self.json_rpc("bls_removal_liquidation_request", {"bls_pubkey": bls_key, "liquidate": liquidate}).json()
 
     def get_liquidation_request(self, bls_key):
         return self.json_rpc("bls_liquidation_request", {"bls_pubkey": bls_key}).json()

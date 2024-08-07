@@ -14,6 +14,7 @@ from   datetime import datetime
 import subprocess
 import atexit
 import concurrent.futures
+import random
 from typing import List
 
 datadirectory="testdata"
@@ -405,24 +406,24 @@ class SNNetwork:
         vprint("Balance for '{}' after claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
 
         # Initiate Removal of BLS Key ##############################################################
-        # sn_to_remove_index       = random.randint(0, len(self.sns) - 1)
-        # sn_to_remove_bls_pubkey  = self.sns[sn_to_remove_index].get_service_keys().bls_pubkey
-        # sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
+        sn_to_remove_index       = random.randint(0, len(self.sns) - 1)
+        sn_to_remove_bls_pubkey  = self.sns[sn_to_remove_index].get_service_keys().bls_pubkey
+        sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 
-        # vprint("Randomly chose to remove SN {} with BLS key {}, submitting request".format(sn_to_remove_contract_id, sn_to_remove_bls_pubkey))
-        # self.sn_contract.initiateRemoveBLSPublicKey(sn_to_remove_contract_id)
+        vprint("Randomly chose to remove SN {} with BLS key {}, submitting request".format(sn_to_remove_contract_id, sn_to_remove_bls_pubkey))
+        self.sn_contract.initiateRemoveBLSPublicKey(sn_to_remove_contract_id)
 
-        # days_30_in_seconds = 60 * 60 * 24 * 30
-        # ethereum.evm_increaseTime(self.sn_contract.web3, days_30_in_seconds)
-        # ethereum.evm_mine(self.sn_contract.web3)
+        days_30_in_seconds = 60 * 60 * 24 * 30
+        ethereum.evm_increaseTime(self.sn_contract.web3, days_30_in_seconds)
+        ethereum.evm_mine(self.sn_contract.web3)
 
         # Exit Node ################################################################################
-        # exit_request = self.ethsns[0].get_exit_request(sn_to_remove_bls_pubkey)
-        # vprint("Exit request aggregated: {}".format(exit_request))
-        # self.sn_contract.removeBLSPublicKeyWithSignature(exit_request["result"]["bls_pubkey"],
-        #                                                  exit_request["result"]["timestamp"],
-        #                                                  exit_request["result"]["signature"],
-        #                                                  exit_request["result"]["non_signer_indices"])
+        exit_request = self.ethsns[0].get_removal_liquidation_request(sn_to_remove_bls_pubkey, liquidate=False)
+        vprint("Exit request aggregated: {}".format(exit_request))
+        self.sn_contract.removeBLSPublicKeyWithSignature(exit_request["result"]["bls_pubkey"],
+                                                         exit_request["result"]["timestamp"],
+                                                         exit_request["result"]["signature"],
+                                                         exit_request["result"]["non_signer_indices"])
 
         # Liquidate Node ###########################################################################
         # exit = self.ethsns[0].get_liquidation_request(ethereum_add_bls_args["bls_pubkey"])
