@@ -11,24 +11,24 @@ class OxenMq;
 }
 
 namespace eth {
-struct BLSAggregateSigned {
+struct bls_aggregate_signed {
     std::vector<uint8_t> msg_to_sign;
     std::vector<bls_public_key> signers_bls_pubkeys;
     bls_signature signature;
 };
 
-struct BLSRemovalLiquidationResponse : BLSAggregateSigned {
+struct bls_removal_liquidation_response : bls_aggregate_signed {
     bls_public_key remove_pubkey;
     uint64_t timestamp;
 };
 
-struct BLSRewardsResponse : BLSAggregateSigned {
+struct bls_rewards_response : bls_aggregate_signed {
     address addr;
     uint64_t amount;
     uint64_t height;
 };
 
-struct BLSRegistrationResponse {
+struct bls_registration_response {
     bls_public_key bls_pubkey;
     bls_signature proof_of_possession;
     address addr;
@@ -36,17 +36,17 @@ struct BLSRegistrationResponse {
     crypto::ed25519_signature ed_signature;
 };
 
-struct BLSRequestResult {
+struct bls_response {
     service_nodes::service_node_address sn;
     bool success;
 };
 
-class BLSAggregator {
+class bls_aggregator {
   public:
-    using request_callback = std::function<void(
-            const BLSRequestResult& request_result, const std::vector<std::string>& data)>;
+    using request_callback =
+            std::function<void(const bls_response& response, const std::vector<std::string>& data)>;
 
-    explicit BLSAggregator(cryptonote::core& core);
+    explicit bls_aggregator(cryptonote::core& core);
 
     /// Request the service node network to sign the requested amount of
     /// 'rewards' for the given Ethereum 'address' if by consensus they agree
@@ -55,17 +55,16 @@ class BLSAggregator {
     ///
     /// This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
     /// amount is `0` or height is greater than the current blockchain height.
-    BLSRewardsResponse rewards_request(const address& addr);
+    bls_rewards_response rewards_request(const address& addr);
 
-    BLSRemovalLiquidationResponse removal_request(const bls_public_key& bls_pubkey);
-    BLSRemovalLiquidationResponse liquidation_request(const bls_public_key& bls_pubkey);
-    BLSRegistrationResponse registration(
+    bls_removal_liquidation_response removal_request(const bls_public_key& bls_pubkey);
+    bls_removal_liquidation_response liquidation_request(const bls_public_key& bls_pubkey);
+    bls_registration_response registration(
             const address& sender, const crypto::public_key& sn_pubkey) const;
 
-    enum class RemovalType
-    {
-        Normal,
-        Liquidate,
+    enum class removal_type {
+        normal,
+        liquidate,
     };
 
   private:
@@ -73,9 +72,9 @@ class BLSAggregator {
     void get_removal(oxenmq::Message& m);
     void get_liquidation(oxenmq::Message& m);
 
-    BLSRemovalLiquidationResponse removal_or_liquidation_request(
+    bls_removal_liquidation_response removal_or_liquidation_request(
             const bls_public_key& bls_pubkey,
-            RemovalType type,
+            removal_type type,
             std::string_view endpoint,
             std::string_view pubkey_key);
 
@@ -93,6 +92,6 @@ class BLSAggregator {
     // The BLS aggregator can be called from multiple threads via the RPC server. Since we have a
     // cache that can be concurrently written to, we guard that around a lock.
     std::mutex mutex;
-    std::unordered_map<address, BLSRewardsResponse> rewards_response_cache;
+    std::unordered_map<address, bls_rewards_response> rewards_response_cache;
 };
 }  // namespace eth

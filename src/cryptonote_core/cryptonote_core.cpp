@@ -786,7 +786,7 @@ bool core::init(
         return false;
 
     init_oxenmq(vm);
-    m_bls_aggregator = std::make_unique<eth::BLSAggregator>(*this);
+    m_bls_aggregator = std::make_unique<eth::bls_aggregator>(*this);
 
     // FIXME: this is optional if we aren't a service node
     m_l2_tracker = std::make_unique<eth::L2Tracker>(
@@ -2789,20 +2789,20 @@ core::get_service_node_blacklisted_key_images() const {
     return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
-eth::BLSRewardsResponse core::bls_rewards_request(const eth::address& address) {
+eth::bls_rewards_response core::bls_rewards_request(const eth::address& address) {
     return m_bls_aggregator->rewards_request(address);
 }
 //-----------------------------------------------------------------------------------------------
-eth::BLSRemovalLiquidationResponse core::bls_removal_request(const eth::bls_public_key& bls_pubkey) {
+eth::bls_removal_liquidation_response core::bls_removal_request(const eth::bls_public_key& bls_pubkey) {
     return m_bls_aggregator->removal_request(bls_pubkey);
 }
 //-----------------------------------------------------------------------------------------------
-eth::BLSRemovalLiquidationResponse core::bls_liquidation_request(
+eth::bls_removal_liquidation_response core::bls_liquidation_request(
         const eth::bls_public_key& bls_pubkey) {
     return m_bls_aggregator->liquidation_request(bls_pubkey);
 }
 //-----------------------------------------------------------------------------------------------
-eth::BLSRegistrationResponse core::bls_registration(const eth::address& address) const {
+eth::bls_registration_response core::bls_registration(const eth::address& address) const {
     const auto& keys = get_service_keys();
     auto resp = m_bls_aggregator->registration(address, keys.pub);
 

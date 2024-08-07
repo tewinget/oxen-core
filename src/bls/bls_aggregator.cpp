@@ -79,7 +79,7 @@ namespace {
         return result;
     }
 
-    std::string dump_bls_rewards_response(const BLSRewardsResponse& item) {
+    std::string dump_bls_rewards_response(const bls_rewards_response& item) {
         std::string result =
                 "BLS rewards response was:\n"
                 "\n"
@@ -98,13 +98,13 @@ namespace {
 
     std::vector<uint8_t> get_removal_msg_to_sign(
             cryptonote::network_type nettype,
-            BLSAggregator::RemovalType type,
+            bls_aggregator::removal_type type,
             const bls_public_key& remove_pk,
             uint64_t unix_timestamp) {
         // TODO(doyle): See BLSSigner::proofOfPossession
         crypto::hash tag{};
         std::vector<uint8_t> result;
-        if (type == BLSAggregator::RemovalType::Normal) {
+        if (type == bls_aggregator::removal_type::normal) {
             tag = BLSSigner::buildTagHash(BLSSigner::removalTag, nettype);
             result.reserve(tag.size() + remove_pk.size() + sizeof(unix_timestamp));
             result.insert(result.end(), tag.begin(), tag.end());
@@ -113,7 +113,7 @@ namespace {
             result.insert(
                     result.end(), unix_timestamp_it, unix_timestamp_it + sizeof(unix_timestamp));
         } else {
-            assert(type == BLSAggregator::RemovalType::Liquidate);
+            assert(type == bls_aggregator::removal_type::liquidate);
             tag = BLSSigner::buildTagHash(BLSSigner::liquidateTag, nettype);
             result.reserve(tag.size() + remove_pk.size());
             result.insert(result.end(), tag.begin(), tag.end());
@@ -122,14 +122,14 @@ namespace {
         return result;
     }
 
-    struct BLSRemovalRequest {
+    struct bls_removal_request {
         bool good;
         bls_public_key remove_pk;
         std::chrono::seconds timestamp;
     };
 
-    BLSRemovalRequest extract_removal_request(oxenmq::Message& m) {
-        BLSRemovalRequest result{};
+    bls_removal_request extract_removal_request(oxenmq::Message& m) {
+        bls_removal_request result{};
         if (m.data.size() != 1) {
             m.send_reply(
                     "400",
@@ -206,13 +206,16 @@ namespace {
 
                 if (!found) {
                     missing_count++;
-                    oxen::log::warning(logcat, "Session node {} exists in Oxen but not in the contract", sn_info.pubkey);
+                    oxen::log::warning(
+                            logcat,
+                            "Session node {} exists in Oxen but not in the contract",
+                            sn_info.pubkey);
                 }
             }
 
             // NOTE: Check if key is in smart contract but not in Oxen
             for (size_t index = 0; index < contract_ids.ids.size(); index++) {
-                uint64_t contract_id                    = contract_ids.ids[index];
+                uint64_t contract_id = contract_ids.ids[index];
                 const bls_public_key& contract_bls_pkey = contract_ids.bls_pubkeys[index];
                 bool found = false;
                 for (const auto& sn_info : sn_list_info) {
@@ -224,7 +227,11 @@ namespace {
 
                 if (!found) {
                     missing_count++;
-                    oxen::log::warning(logcat, "Session node {} {} exists in contract but not in oxen", contract_id, contract_bls_pkey);
+                    oxen::log::warning(
+                            logcat,
+                            "Session node {} {} exists in contract but not in oxen",
+                            contract_id,
+                            contract_bls_pkey);
                 }
             }
 
@@ -236,13 +243,17 @@ namespace {
         {
             // NOTE: Aggregate all keys
             bls::PublicKey cpp_agg_pubkey = {};
-            blsPublicKey *agg_pub          = const_cast<blsPublicKey*>(cpp_agg_pubkey.getPtr());
+            blsPublicKey* agg_pub = const_cast<blsPublicKey*>(cpp_agg_pubkey.getPtr());
             for (size_t index = 0; index < contract_ids.ids.size(); index++) {
                 const bls_public_key& contract_bls_pkey = contract_ids.bls_pubkeys[index];
-                const bls::PublicKey contract_key       = bls_utils::from_crypto_pubkey(contract_bls_pkey);
+                const bls::PublicKey contract_key =
+                        bls_utils::from_crypto_pubkey(contract_bls_pkey);
                 blsPublicKeyAdd(agg_pub, contract_key.getPtr());
             }
-            oxen::log::info(logcat, "Full BLS aggregate public key {}", bls_utils::to_crypto_pubkey(cpp_agg_pubkey));
+            oxen::log::info(
+                    logcat,
+                    "Full BLS aggregate public key {}",
+                    bls_utils::to_crypto_pubkey(cpp_agg_pubkey));
 
             // NOTE: Subtract non-signers
             for (size_t index = 0; index < contract_ids.ids.size(); index++) {
@@ -256,20 +267,28 @@ namespace {
                 }
 
                 if (!found) {
-                    oxen::log::info(logcat, "  Subtracting BLS key from Session Node {} {}", contract_ids.ids[index], contract_bls_pkey);
-                    const bls::PublicKey contract_key = bls_utils::from_crypto_pubkey(contract_bls_pkey);
+                    oxen::log::info(
+                            logcat,
+                            "  Subtracting BLS key from Session Node {} {}",
+                            contract_ids.ids[index],
+                            contract_bls_pkey);
+                    const bls::PublicKey contract_key =
+                            bls_utils::from_crypto_pubkey(contract_bls_pkey);
                     blsPublicKeySub(agg_pub, contract_key.getPtr());
                 }
             }
 
             // NOTE: Dump the key we re-derived (e.g. includes the non-signers)
-            oxen::log::info(logcat, "Re-derived BLS aggregate public key {}", bls_utils::to_crypto_pubkey(cpp_agg_pubkey));
+            oxen::log::info(
+                    logcat,
+                    "Re-derived BLS aggregate public key {}",
+                    bls_utils::to_crypto_pubkey(cpp_agg_pubkey));
         }
     }
 
 }  // namespace
 
-BLSAggregator::BLSAggregator(cryptonote::core& _core) : core{_core} {
+bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
 
     if (core.service_node()) {
         auto& omq = core.get_omq();
@@ -281,10 +300,10 @@ BLSAggregator::BLSAggregator(cryptonote::core& _core) : core{_core} {
     }
 }
 
-BLSRegistrationResponse BLSAggregator::registration(
+bls_registration_response bls_aggregator::registration(
         const address& sender, const crypto::public_key& sn_pubkey) const {
     auto& signer = core.get_bls_signer();
-    return BLSRegistrationResponse{
+    return bls_registration_response{
             .bls_pubkey = signer.getCryptoPubkey(),
             .proof_of_possession = signer.proofOfPossession(sender, sn_pubkey),
             .addr = sender,
@@ -292,7 +311,7 @@ BLSRegistrationResponse BLSAggregator::registration(
             .ed_signature = crypto::null<crypto::ed25519_signature>};
 }
 
-uint64_t BLSAggregator::nodes_request(
+uint64_t bls_aggregator::nodes_request(
         std::string_view request_name, std::string_view message, const request_callback& callback) {
     std::mutex connection_mutex;
     std::condition_variable cv;
@@ -326,7 +345,7 @@ uint64_t BLSAggregator::nodes_request(
                 request_name,
                 [i, &snodes, &connection_mutex, &active_connections, &cv, &callback](
                         bool success, std::vector<std::string> data) {
-                    callback(BLSRequestResult{snodes[i], success}, data);
+                    callback(bls_response{snodes[i], success}, data);
                     std::lock_guard connection_lock{connection_mutex};
                     assert(active_connections);
                     if (--active_connections == 0)
@@ -340,7 +359,7 @@ uint64_t BLSAggregator::nodes_request(
     return snodes.size();
 }
 
-void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
+void bls_aggregator::get_reward_balance(oxenmq::Message& m) {
     oxen::log::trace(logcat, "Received omq rewards signature request");
 
     address eth_addr;
@@ -378,7 +397,7 @@ void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
     m.send_reply("200", std::move(d).str());
 }
 
-BLSRewardsResponse BLSAggregator::rewards_request(const address& addr) {
+bls_rewards_response bls_aggregator::rewards_request(const address& addr) {
 
     auto begin_ts = std::chrono::high_resolution_clock::now();
     auto [height, amount] = core.get_blockchain_storage().sqlite_db().get_accrued_rewards(addr);
@@ -427,11 +446,12 @@ BLSRewardsResponse BLSAggregator::rewards_request(const address& addr) {
         std::lock_guard lock{mutex};
         auto cache_it = rewards_response_cache.find(addr);
         if (cache_it != rewards_response_cache.end()) {
-            const BLSRewardsResponse& cache_response = cache_it->second;
+            const bls_rewards_response& cache_response = cache_it->second;
             if (cache_response.height == height && cache_response.amount == amount) {
                 log::trace(
                         logcat,
-                        "Serving rewards request from cache for address {} at height {} with rewards "
+                        "Serving rewards request from cache for address {} at height {} with "
+                        "rewards "
                         "{} amount",
                         addr,
                         height,
@@ -441,7 +461,7 @@ BLSRewardsResponse BLSAggregator::rewards_request(const address& addr) {
         }
     }
 
-    BLSRewardsResponse result{};
+    bls_rewards_response result{};
     result.addr = addr;
     result.amount = amount;
     result.height = height;
@@ -450,61 +470,67 @@ BLSRewardsResponse BLSAggregator::rewards_request(const address& addr) {
 
     // `nodesRequest` dispatches to a threadpool hence we require synchronisation:
     std::mutex sig_mutex;
-    bls::Signature aggSig;
-    aggSig.clear();
+    bls::Signature agg_sig;
+    agg_sig.clear();
 
     // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
     // call (FIXME -- it should not be!)
-    uint64_t totalRequests = nodes_request(
+    uint64_t total_requests = nodes_request(
             "bls.get_reward_balance",
             tools::view_guts(addr),
-            [&aggSig, &result, &sig_mutex, nettype = core.get_nettype()](
-                    const BLSRequestResult& request_result, const std::vector<std::string>& data) {
-                BLSRewardsResponse response = {};
+            [&agg_sig, &result, &sig_mutex, nettype = core.get_nettype()](
+                    const bls_response& response, const std::vector<std::string>& data) {
+                bls_rewards_response rewards_response = {};
                 bool partially_parsed = true;
                 try {
-                    if (!request_result.success || data.size() != 2 || data[0] != "200")
+                    if (!response.success || data.size() != 2 || data[0] != "200")
                         throw oxen::traced<std::runtime_error>{
                                 "Error retrieving reward balance: {}"_format(fmt::join(data, " "))};
 
                     oxenc::bt_dict_consumer d{data[1]};
 
-                    response.addr =
+                    rewards_response.addr =
                             tools::make_from_guts<address>(d.require<std::string_view>("address"));
-                    response.amount = d.require<uint64_t>("amount");
-                    response.height = d.require<uint64_t>("height");
-                    response.signature = tools::make_from_guts<bls_signature>(
-                            d.require<std::string_view>("signature"));
-                    response.msg_to_sign = get_reward_balance_msg_to_sign(nettype, response.address, tools::encode_integer_be<32>(response.amount));
+                    rewards_response.amount = d.require<uint64_t>("amount");
+                    rewards_response.height = d.require<uint64_t>("height");
+                    rewards_response.signature =
+                            tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
+                                                                                             "tur"
+                                                                                             "e"));
+                    rewards_response.msg_to_sign = get_reward_balance_msg_to_sign(
+                            nettype,
+                            rewards_response.addr,
+                            tools::encode_integer_be<32>(rewards_response.amount));
 
-                    if (response.addr != result.addr)
+                    if (rewards_response.addr != result.addr)
                         throw oxen::traced<std::runtime_error>{
                                 "Response ETH address {} does not match the request address {}"_format(
-                                        response.addr, result.addr)};
-                    if (response.amount != result.amount || response.height != result.height)
+                                        rewards_response.addr, result.addr)};
+                    if (rewards_response.amount != result.amount ||
+                        rewards_response.height != result.height)
                         throw oxen::traced<std::runtime_error>{
                                 "Balance/height mismatch: expected {}/{}, got {}/{}"_format(
                                         result.amount,
                                         result.height,
-                                        response.amount,
-                                        response.height)};
+                                        rewards_response.amount,
+                                        rewards_response.height)};
 
                     if (!BLSSigner::verifyMsg(
                                 nettype,
-                                response.signature,
-                                request_result.sn.bls_pubkey,
+                                rewards_response.signature,
+                                response.sn.bls_pubkey,
                                 result.msg_to_sign)) {
                         throw oxen::traced<std::runtime_error>{
                                 "Invalid BLS signature for BLS pubkey {}."_format(
-                                        request_result.sn.bls_pubkey)};
+                                        response.sn.bls_pubkey)};
                     }
 
                     {
                         std::lock_guard lock{sig_mutex};
                         bls::Signature bls_sig =
-                                bls_utils::from_crypto_signature(response.signature);
-                        aggSig.add(bls_sig);
-                        result.signers_bls_pubkeys.push_back(request_result.sn.bls_pubkey);
+                                bls_utils::from_crypto_signature(rewards_response.signature);
+                        agg_sig.add(bls_sig);
+                        result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
                     }
 
                     partially_parsed = false;
@@ -513,65 +539,67 @@ BLSRewardsResponse BLSAggregator::rewards_request(const address& addr) {
                             logcat,
                             "Reward balance response accepted from {} (BLS {} XKEY {} {}:{})\nWe "
                             "requested: {}\nThe response had: {}",
-                            request_result.sn.sn_pubkey,
-                            request_result.sn.bls_pubkey,
-                            request_result.sn.x_pubkey,
-                            request_result.sn.ip,
-                            request_result.sn.port,
+                            response.sn.sn_pubkey,
+                            response.sn.bls_pubkey,
+                            response.sn.x_pubkey,
+                            response.sn.ip,
+                            response.sn.port,
                             dump_bls_rewards_response(result),
-                            dump_bls_rewards_response(response));
+                            dump_bls_rewards_response(rewards_response));
 
                 } catch (const std::exception& e) {
                     oxen::log::warning(
                             logcat,
                             "Reward balance response rejected from {}: {}\nWe requested: {}\nThe "
                             "response had{}: {}",
-                            request_result.sn.sn_pubkey,
+                            response.sn.sn_pubkey,
                             e.what(),
                             dump_bls_rewards_response(result),
                             partially_parsed ? " (partially parsed)" : "",
-                            dump_bls_rewards_response(response));
+                            dump_bls_rewards_response(rewards_response));
                 }
             });
 
-    result.signature = bls_utils::to_crypto_signature(aggSig);
+    result.signature = bls_utils::to_crypto_signature(agg_sig);
 
     // NOTE: Dump the aggregate pubkey that was generated
     {
-        #if !defined(NDEBUG)
-        bls::PublicKey aggPub;
-        aggPub.clear();
+#if !defined(NDEBUG)
+        bls::PublicKey agg_pub;
+        agg_pub.clear();
         for (const auto& blspk : result.signers_bls_pubkeys)
-            aggPub.add(bls_utils::from_crypto_pubkey(blspk));
-        #endif
+            agg_pub.add(bls_utils::from_crypto_pubkey(blspk));
+#endif
 
         auto elapsed_ts = std::chrono::high_resolution_clock::now() - begin_ts;
         oxen::log::info(
                 logcat,
-                "BLS aggregate pubkey for reward requests: {} ({} aggregations) with signature {} in {:.1f}s",
-                #if defined(NDEBUG)
+                "BLS aggregate pubkey for reward requests: {} ({} aggregations) with signature {} "
+                "in {:.1f}s",
+#if defined(NDEBUG)
                 "",
-                #else
-                bls_utils::to_crypto_pubkey(aggPub),
-                #endif
+#else
+                bls_utils::to_crypto_pubkey(agg_pub),
+#endif
                 result.signers_bls_pubkeys.size(),
                 result.signature,
-                (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_ts).count() / 1000.f));
+                (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_ts).count() /
+                 1000.f));
     }
 
-    #if defined(NDEBUG)
+#if defined(NDEBUG)
     const bool debug_redo_bls_aggregation = false;
-    #else
+#else
     const bool debug_redo_bls_aggregation = true;
-    #endif
+#endif
     if (debug_redo_bls_aggregation) {
         debug_redo_bls_aggregation_steps_locally(
                 service_node_list, core.l2_tracker(), result.signers_bls_pubkeys);
     }
 
     // NOTE: Store the response in to the cache if the number of non-signers was less than 1/3rd.
-    uint64_t non_signers_count = totalRequests - result.signers_bls_pubkeys.size();
-    if (non_signers_count < (totalRequests / 3)) {
+    uint64_t non_signers_count = total_requests - result.signers_bls_pubkeys.size();
+    if (non_signers_count < (total_requests / 3)) {
         std::lock_guard lock{mutex};
         rewards_response_cache[addr] = result;
     }
@@ -579,9 +607,9 @@ BLSRewardsResponse BLSAggregator::rewards_request(const address& addr) {
     return result;
 }
 
-void BLSAggregator::get_removal(oxenmq::Message& m) {
+void bls_aggregator::get_removal(oxenmq::Message& m) {
     oxen::log::trace(logcat, "Received omq removal signature request");
-    BLSRemovalRequest removal_request = extract_removal_request(m);
+    bls_removal_request removal_request = extract_removal_request(m);
     if (!removal_request.good)
         return;
 
@@ -598,7 +626,7 @@ void BLSAggregator::get_removal(oxenmq::Message& m) {
 
     std::vector<uint8_t> msg = get_removal_msg_to_sign(
             core.get_nettype(),
-            BLSAggregator::RemovalType::Normal,
+            bls_aggregator::removal_type::normal,
             removal_request.remove_pk,
             removal_request.timestamp.count());
     bls_signature sig = signer.signMsg(msg);
@@ -612,9 +640,9 @@ void BLSAggregator::get_removal(oxenmq::Message& m) {
     m.send_reply("200", std::move(d).str());
 }
 
-void BLSAggregator::get_liquidation(oxenmq::Message& m) {
+void bls_aggregator::get_liquidation(oxenmq::Message& m) {
     oxen::log::trace(logcat, "Received omq liquidation signature request");
-    BLSRemovalRequest removal_request = extract_removal_request(m);
+    bls_removal_request removal_request = extract_removal_request(m);
     if (!removal_request.good)
         return;
 
@@ -629,7 +657,7 @@ void BLSAggregator::get_liquidation(oxenmq::Message& m) {
     auto& signer = core.get_bls_signer();
     std::vector<uint8_t> msg = get_removal_msg_to_sign(
             core.get_nettype(),
-            BLSAggregator::RemovalType::Liquidate,
+            bls_aggregator::removal_type::liquidate,
             removal_request.remove_pk,
             removal_request.timestamp.count());
     bls_signature sig = signer.signMsg(msg);
@@ -647,9 +675,9 @@ void BLSAggregator::get_liquidation(oxenmq::Message& m) {
 // - the endpoint they go to;
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
-BLSRemovalLiquidationResponse BLSAggregator::removal_or_liquidation_request(
+bls_removal_liquidation_response bls_aggregator::removal_or_liquidation_request(
         const bls_public_key& bls_pubkey,
-        RemovalType type,
+        removal_type type,
         std::string_view endpoint,
         std::string_view pubkey_key) {
 
@@ -658,7 +686,7 @@ BLSRemovalLiquidationResponse BLSAggregator::removal_or_liquidation_request(
     assert(pubkey_key < "signature");  // response dict keys must be processed in sorted order, and
                                        // we expect the pubkey to be in a key that comes first.
 
-    BLSRemovalLiquidationResponse result;
+    bls_removal_liquidation_response result;
     result.remove_pubkey = bls_pubkey;
     result.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                                std::chrono::system_clock::now().time_since_epoch())
@@ -678,9 +706,9 @@ BLSRemovalLiquidationResponse BLSAggregator::removal_or_liquidation_request(
             endpoint,
             std::move(message_dict).str(),
             [endpoint, pubkey_key, &aggSig, &result, &signers_mutex, nettype = core.get_nettype()](
-                    const BLSRequestResult& request_result, const std::vector<std::string>& data) {
+                    const bls_response& response, const std::vector<std::string>& data) {
                 try {
-                    if (!request_result.success || data.size() != 2 || data[0] != "200")
+                    if (!response.success || data.size() != 2 || data[0] != "200")
                         throw oxen::traced<std::runtime_error>{
                                 "Request returned an error: {}"_format(fmt::join(data, " "))};
 
@@ -696,24 +724,24 @@ BLSRemovalLiquidationResponse BLSAggregator::removal_or_liquidation_request(
                                                                                              "e"));
 
                     if (!BLSSigner::verifyMsg(
-                                nettype, sig, request_result.sn.bls_pubkey, result.msg_to_sign)) {
+                                nettype, sig, response.sn.bls_pubkey, result.msg_to_sign)) {
                         throw oxen::traced<std::runtime_error>{
                                 "Invalid BLS signature for BLS pubkey {}"_format(
-                                        request_result.sn.bls_pubkey)};
+                                        response.sn.bls_pubkey)};
                     }
 
                     {
                         std::lock_guard<std::mutex> lock(signers_mutex);
                         bls::Signature bls_sig = bls_utils::from_crypto_signature(sig);
                         aggSig.add(bls_sig);
-                        result.signers_bls_pubkeys.push_back(request_result.sn.bls_pubkey);
+                        result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
                     }
                 } catch (const std::exception& e) {
                     oxen::log::warning(
                             logcat,
                             "{} signature response rejected from {}: {}",
                             endpoint,
-                            request_result.sn.sn_pubkey,
+                            response.sn.sn_pubkey,
                             e.what());
                 }
             });
@@ -739,14 +767,15 @@ BLSRemovalLiquidationResponse BLSAggregator::removal_or_liquidation_request(
     return result;
 }
 
-BLSRemovalLiquidationResponse BLSAggregator::removal_request(const bls_public_key& bls_pubkey) {
+bls_removal_liquidation_response bls_aggregator::removal_request(const bls_public_key& bls_pubkey) {
     return removal_or_liquidation_request(
-            bls_pubkey, BLSAggregator::RemovalType::Normal, "bls.get_removal", "removal");
+            bls_pubkey, bls_aggregator::removal_type::normal, "bls.get_removal", "removal");
 }
 
-BLSRemovalLiquidationResponse BLSAggregator::liquidation_request(const bls_public_key& bls_pubkey) {
+bls_removal_liquidation_response bls_aggregator::liquidation_request(
+        const bls_public_key& bls_pubkey) {
     return removal_or_liquidation_request(
-            bls_pubkey, BLSAggregator::RemovalType::Liquidate, "bls.get_liquidation", "liquidate");
+            bls_pubkey, bls_aggregator::removal_type::liquidate, "bls.get_liquidation", "liquidate");
 }
 
 }  // namespace eth
