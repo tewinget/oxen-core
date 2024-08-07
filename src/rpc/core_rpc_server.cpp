@@ -2551,6 +2551,7 @@ void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) 
     const auto response =
             m_core.bls_removal_liquidation_request(rpc.request.bls_pubkey, rpc.request.liquidate);
     rpc.response["status"] = STATUS_OK;
+    rpc.response["timestamp"] = response.timestamp;
     rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
     rpc.response_hex["msg_to_sign"] =
             oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
