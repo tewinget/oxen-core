@@ -72,9 +72,9 @@ class bls_aggregator {
             const address& sender, const crypto::public_key& sn_pubkey) const;
 
   private:
-    void get_reward_balance(oxenmq::Message& m);
-    void get_removal(oxenmq::Message& m);
-    void get_liquidation(oxenmq::Message& m);
+    void get_rewards(oxenmq::Message& m) const;
+
+    void get_removal_liquidation(oxenmq::Message& m, removal_type type) const;
 
     // Goes out to the nodes on the network and makes oxenmq requests to all of them, when getting
     // the reply `callback` will be called to process their reply
@@ -84,12 +84,12 @@ class bls_aggregator {
             std::string_view message,
             const request_callback& callback);
 
-  private:
     cryptonote::core& core;
 
     // The BLS aggregator can be called from multiple threads via the RPC server. Since we have a
     // cache that can be concurrently written to, we guard that around a lock.
     std::mutex mutex;
+
     std::unordered_map<address, bls_rewards_response> rewards_response_cache;
 };
 }  // namespace eth

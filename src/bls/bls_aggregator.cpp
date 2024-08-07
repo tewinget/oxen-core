@@ -258,19 +258,21 @@ namespace {
                     bls_utils::to_crypto_pubkey(cpp_agg_pubkey));
         }
     }
-
 }  // namespace
 
 bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
+    if (!core.service_node())
+        return;
 
-    if (core.service_node()) {
-        auto& omq = core.omq();
-        omq.add_category("bls", oxenmq::Access{oxenmq::AuthLevel::none})
-                .add_request_command(
-                        "get_reward_balance", [this](auto& m) { get_reward_balance(m); })
-                .add_request_command("get_removal", [this](auto& m) { get_removal(m); })
-                .add_request_command("get_liquidation", [this](auto& m) { get_liquidation(m); });
-    }
+    auto& omq = core.omq();
+    omq.add_category("bls", oxenmq::Access{oxenmq::AuthLevel::none})
+            .add_request_command("get_reward_balance", [this](auto& m) { get_rewards(m); })
+            .add_request_command(
+                    "get_removal",
+                    [this](auto& m) { get_removal_liquidation(m, removal_type::normal); })
+            .add_request_command("get_liquidation", [this](auto& m) {
+                get_removal_liquidation(m, removal_type::liquidate);
+            });
 }
 
 bls_registration_response bls_aggregator::registration(
@@ -332,7 +334,7 @@ uint64_t bls_aggregator::nodes_request(
     return snodes.size();
 }
 
-void bls_aggregator::get_reward_balance(oxenmq::Message& m) {
+void bls_aggregator::get_rewards(oxenmq::Message& m) const {
     oxen::log::trace(logcat, "Received omq rewards signature request");
 
     if (m.data.size() != 1) {
@@ -601,8 +603,8 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
     return result;
 }
 
-void bls_aggregator::get_removal(oxenmq::Message& m) {
-    oxen::log::trace(logcat, "Received omq removal signature request");
+void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type type) const {
+    oxen::log::trace(logcat, "Received omq {} signature request", type == removal_type::normal ? "removal" : "liquidation");
     bls_removal_request removal_request = extract_removal_request(m);
     if (!removal_request.good)
         return;
@@ -611,8 +613,9 @@ void bls_aggregator::get_removal(oxenmq::Message& m) {
     if (!core.is_node_removable(removal_request.remove_pk)) {
         m.send_reply(
                 "403",
-                "Forbidden: The BLS pubkey {} is not currently removable."_format(
-                        removal_request.remove_pk));
+                "Forbidden: The BLS pubkey {} is not currently {}."_format(
+                        removal_request.remove_pk,
+                        type == removal_type::normal ? "removable" : "liquidatable"));
         return;
     }
 
@@ -620,7 +623,7 @@ void bls_aggregator::get_removal(oxenmq::Message& m) {
 
     std::vector<uint8_t> msg = get_removal_msg_to_sign(
             core.get_nettype(),
-            bls_aggregator::removal_type::normal,
+            type,
             removal_request.remove_pk,
             removal_request.timestamp.count());
     bls_signature sig = signer.signMsg(msg);
@@ -629,37 +632,6 @@ void bls_aggregator::get_removal(oxenmq::Message& m) {
     // BLS pubkey to remove:
     d.append("remove", tools::view_guts(removal_request.remove_pk));
     // signature of *this* snode of the removing pubkey:
-    d.append("signature", tools::view_guts(sig));
-
-    m.send_reply("200", std::move(d).str());
-}
-
-void bls_aggregator::get_liquidation(oxenmq::Message& m) {
-    oxen::log::trace(logcat, "Received omq liquidation signature request");
-    bls_removal_request removal_request = extract_removal_request(m);
-    if (!removal_request.good)
-        return;
-
-    if (!core.is_node_liquidatable(removal_request.remove_pk)) {
-        m.send_reply(
-                "403",
-                "Forbidden: The BLS key {} is not currently liquidatable"_format(
-                        removal_request.remove_pk));
-        return;
-    }
-
-    auto& signer = core.bls_signer();
-    std::vector<uint8_t> msg = get_removal_msg_to_sign(
-            core.get_nettype(),
-            bls_aggregator::removal_type::liquidate,
-            removal_request.remove_pk,
-            removal_request.timestamp.count());
-    bls_signature sig = signer.signMsg(msg);
-
-    oxenc::bt_dict_producer d;
-    // BLS key of the node being liquidated:
-    d.append("liquidate", tools::view_guts(removal_request.remove_pk));
-    // signature of *this* snode of the liquidating pubkey:
     d.append("signature", tools::view_guts(sig));
 
     m.send_reply("200", std::move(d).str());
@@ -682,7 +654,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
             pubkey_key = "removal";
         } break;
         case removal_type::liquidate: {
-            endpoint = "bls.get_liqudation";
+            endpoint = "bls.get_liquidation";
             pubkey_key = "liquidate";
         } break;
     }
