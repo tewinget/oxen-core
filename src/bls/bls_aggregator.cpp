@@ -390,14 +390,10 @@ void bls_aggregator::get_rewards(oxenmq::Message& m) const {
     bls_signature sig = signer.signMsg(msg);
 
     oxenc::bt_dict_producer d;
-    // Address requesting balance
-    d.append("address", tools::view_guts(eth_addr));
-    // Balance
-    d.append("amount", amount);
-    // Height of balance
-    d.append("height", height);
-    // Signature of addr + balance
-    d.append("signature", tools::view_guts(sig));
+    d.append("address", tools::view_guts(eth_addr));  // Address requesting balance
+    d.append("amount", amount);                       // Balance
+    d.append("height", height);                       // Height of balance
+    d.append("signature", tools::view_guts(sig));     // Signature of addr + balance
 
     m.send_reply("200", std::move(d).str());
 }
@@ -639,11 +635,8 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
     bls_signature sig = signer.signMsg(msg);
 
     oxenc::bt_dict_producer d;
-    // BLS pubkey to remove:
-    d.append("remove", tools::view_guts(removal_request.remove_pk));
-    // signature of *this* snode of the removing pubkey:
-    d.append("signature", tools::view_guts(sig));
-
+    d.append("remove", tools::view_guts(removal_request.remove_pk));  // BLS pubkey to remove
+    d.append("signature", tools::view_guts(sig));  // Signs over the removal key and timestamp
     m.send_reply("200", std::move(d).str());
 }
 
@@ -652,26 +645,16 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
 bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(const bls_public_key& bls_pubkey, removal_type type) {
-    // NOTE: The key in which the pubkey is inserted into the response which is a dictionary that is
-    // serialised onto OMQ with by all the service nodes we contacted.
-    std::string_view pubkey_key = "";
-
     // NOTE: The OMQ endpoint to hit
     std::string_view endpoint = "";
     switch (type) {
         case removal_type::normal: {
             endpoint = OMQ_BLS_REMOVAL_ENDPOINT;
-            pubkey_key = "removal";
         } break;
         case removal_type::liquidate: {
             endpoint = OMQ_BLS_LIQUIDATE_ENDPOINT;
-            pubkey_key = "liquidate";
         } break;
     }
-
-    // FIXME: make this async
-    assert(pubkey_key < "signature");  // response dict keys must be processed in sorted order, and
-                                       // we expect the pubkey to be in a key that comes first.
 
     bls_removal_liquidation_response result;
     result.remove_pubkey = bls_pubkey;
@@ -689,10 +672,11 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
     message_dict.append("bls_pubkey", tools::view_guts(bls_pubkey));
     message_dict.append("timestamp", result.timestamp);
 
+    // FIXME: make this async
     nodes_request(
             endpoint,
             std::move(message_dict).str(),
-            [endpoint, pubkey_key, &aggSig, &result, &signers_mutex, nettype = core.get_nettype()](
+            [endpoint, &aggSig, &result, &signers_mutex, nettype = core.get_nettype()](
                     const bls_response& response, const std::vector<std::string>& data) {
                 try {
                     if (!response.success || data.size() != 2 || data[0] != "200")
@@ -701,7 +685,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
 
                     oxenc::bt_dict_consumer d{data[1]};
                     if (result.remove_pubkey != tools::make_from_guts<bls_public_key>(
-                                                        d.require<std::string_view>(pubkey_key)))
+                                                        d.require<std::string_view>("remove")))
                         throw oxen::traced<std::runtime_error>{
                                 "BLS pubkey does not match the request"};
 
