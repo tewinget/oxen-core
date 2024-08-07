@@ -34,6 +34,16 @@ namespace eth {
 
 namespace {
     auto logcat = oxen::log::Cat("bls_aggregator");
+    constexpr std::string_view OMQ_BLS_CATEGORY = "bls";
+    constexpr std::string_view OMQ_REWARDS_ENDPOINT = "get_rewards";
+    constexpr std::string_view OMQ_LIQUIDATE_ENDPOINT = "get_liquidation";
+    constexpr std::string_view OMQ_REMOVAL_ENDPOINT = "get_removal";
+    const std::string OMQ_BLS_REMOVAL_ENDPOINT =
+            "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_REMOVAL_ENDPOINT);
+    const std::string OMQ_BLS_LIQUIDATE_ENDPOINT =
+            "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_LIQUIDATE_ENDPOINT);
+    const std::string OMQ_BLS_REWARDS_ENDPOINT =
+            "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_REWARDS_ENDPOINT);
 
     std::vector<uint8_t> get_reward_balance_msg_to_sign(
             cryptonote::network_type nettype,
@@ -265,12 +275,13 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
         return;
 
     auto& omq = core.omq();
-    omq.add_category("bls", oxenmq::Access{oxenmq::AuthLevel::none})
-            .add_request_command("get_reward_balance", [this](auto& m) { get_rewards(m); })
+    omq.add_category(std::string(OMQ_BLS_CATEGORY), oxenmq::Access{oxenmq::AuthLevel::none})
             .add_request_command(
-                    "get_removal",
+                    std::string(OMQ_REWARDS_ENDPOINT), [this](auto& m) { get_rewards(m); })
+            .add_request_command(
+                    std::string(OMQ_REMOVAL_ENDPOINT),
                     [this](auto& m) { get_removal_liquidation(m, removal_type::normal); })
-            .add_request_command("get_liquidation", [this](auto& m) {
+            .add_request_command(std::string(OMQ_LIQUIDATE_ENDPOINT), [this](auto& m) {
                 get_removal_liquidation(m, removal_type::liquidate);
             });
 }
@@ -443,8 +454,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                 log::trace(
                         logcat,
                         "Serving rewards request from cache for address {} at height {} with "
-                        "rewards "
-                        "{} amount",
+                        "rewards {} amount",
                         addr,
                         height,
                         amount);
@@ -472,7 +482,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
     // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
     // call (FIXME -- it should not be!)
     uint64_t total_requests = nodes_request(
-            "bls.get_reward_balance",
+            OMQ_BLS_REWARDS_ENDPOINT,
             std::move(d).str(),
             [&agg_sig, &result, &sig_mutex, nettype = core.get_nettype()](
                     const bls_response& response, const std::vector<std::string>& data) {
@@ -650,11 +660,11 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
     std::string_view endpoint = "";
     switch (type) {
         case removal_type::normal: {
-            endpoint = "bls.get_removal";
+            endpoint = OMQ_BLS_REMOVAL_ENDPOINT;
             pubkey_key = "removal";
         } break;
         case removal_type::liquidate: {
-            endpoint = "bls.get_liquidation";
+            endpoint = OMQ_BLS_LIQUIDATE_ENDPOINT;
             pubkey_key = "liquidate";
         } break;
     }
