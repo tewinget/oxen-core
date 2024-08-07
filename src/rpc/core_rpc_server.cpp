@@ -2553,8 +2553,9 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
                     response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_EXIT_REQUEST& rpc, rpc_context) {
-    const auto response = m_core.bls_removal_request(rpc.request.bls_pubkey);
+void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) {
+    const auto response =
+            m_core.bls_removal_liquidation_request(rpc.request.bls_pubkey, rpc.request.liquidate);
     rpc.response["status"] = STATUS_OK;
     rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
     rpc.response_hex["msg_to_sign"] =
@@ -2565,19 +2566,7 @@ void core_rpc_server::invoke(BLS_EXIT_REQUEST& rpc, rpc_context) {
                     response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& rpc, rpc_context) {
-    const auto response = m_core.bls_liquidation_request(rpc.request.bls_pubkey);
-    rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
-    rpc.response_hex["msg_to_sign"] =
-            oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
-    rpc.response_hex["signature"] = response.signature;
-    rpc.response["non_signer_indices"] =
-            m_core.get_blockchain_storage().l2_tracker().get_non_signers(
-                    response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
-}
-//------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REGISTRATION& rpc, rpc_context) {
+void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {
     const auto response = m_core.bls_registration(rpc.request.address);
     rpc.response["status"] = STATUS_OK;
     rpc.response_hex["address"] = response.addr;

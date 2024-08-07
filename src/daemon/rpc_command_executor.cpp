@@ -2740,7 +2740,7 @@ bool rpc_command_executor::prepare_eth_registration(
 
         auto maybe_reg_info = try_running(
                 [this, &eth_arg]() {
-                    return invoke<BLS_REGISTRATION>(json{{"address", eth_arg}});
+                    return invoke<BLS_REGISTRATION_REQUEST>(json{{"address", eth_arg}});
                 },
                 "Failed to generate the service node registration info");
         if (!maybe_reg_info)

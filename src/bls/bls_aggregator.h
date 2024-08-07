@@ -48,35 +48,33 @@ class bls_aggregator {
 
     explicit bls_aggregator(cryptonote::core& core);
 
-    /// Request the service node network to sign the requested amount of
-    /// 'rewards' for the given Ethereum 'address' if by consensus they agree
-    /// that the amount is valid. This node (the aggregator) will aggregate the
-    /// signatures into the response.
-    ///
-    /// This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
-    /// amount is `0` or height is greater than the current blockchain height.
+    // Request the service node network to sign the requested amount of
+    // 'rewards' for the given Ethereum 'address' if by consensus they agree
+    // that the amount is valid. This node (the aggregator) will aggregate the
+    // signatures into the response.
+    //
+    // This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
+    // amount is `0` or height is greater than the current blockchain height.
     bls_rewards_response rewards_request(const address& addr);
-
-    bls_removal_liquidation_response removal_request(const bls_public_key& bls_pubkey);
-    bls_removal_liquidation_response liquidation_request(const bls_public_key& bls_pubkey);
-    bls_registration_response registration(
-            const address& sender, const crypto::public_key& sn_pubkey) const;
 
     enum class removal_type {
         normal,
         liquidate,
     };
 
+    // Request the service node network to sign a request to remove the node specified by
+    // `bls_pubkey` from the network. The nature of this removal is set by `type`. This node (the
+    // aggregator) will aggregate the signatures into the response.
+    bls_removal_liquidation_response removal_liquidation_request(
+            const bls_public_key& bls_pubkey, removal_type type);
+
+    bls_registration_response registration(
+            const address& sender, const crypto::public_key& sn_pubkey) const;
+
   private:
     void get_reward_balance(oxenmq::Message& m);
     void get_removal(oxenmq::Message& m);
     void get_liquidation(oxenmq::Message& m);
-
-    bls_removal_liquidation_response removal_or_liquidation_request(
-            const bls_public_key& bls_pubkey,
-            removal_type type,
-            std::string_view endpoint,
-            std::string_view pubkey_key);
 
     // Goes out to the nodes on the network and makes oxenmq requests to all of them, when getting
     // the reply `callback` will be called to process their reply

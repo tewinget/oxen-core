@@ -940,10 +940,8 @@ class core : public i_miner_handler {
     get_service_node_blacklisted_key_images() const;
 
     eth::bls_rewards_response bls_rewards_request(const eth::address& address);
-    eth::bls_removal_liquidation_response bls_removal_request(
-            const eth::bls_public_key& bls_pubkey);
-    eth::bls_removal_liquidation_response bls_liquidation_request(
-            const eth::bls_public_key& bls_pubkey);
+    eth::bls_removal_liquidation_response bls_removal_liquidation_request(
+            const eth::bls_public_key& bls_pubkey, bool liquidate);
     eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 
     /**

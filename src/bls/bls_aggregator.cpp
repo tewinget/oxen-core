@@ -675,14 +675,25 @@ void bls_aggregator::get_liquidation(oxenmq::Message& m) {
 // - the endpoint they go to;
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
-bls_removal_liquidation_response bls_aggregator::removal_or_liquidation_request(
-        const bls_public_key& bls_pubkey,
-        removal_type type,
-        std::string_view endpoint,
-        std::string_view pubkey_key) {
+bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(const bls_public_key& bls_pubkey, removal_type type) {
+    // NOTE: The key in which the pubkey is inserted into the response which is a dictionary that is
+    // serialised onto OMQ with by all the service nodes we contacted.
+    std::string_view pubkey_key = "";
+
+    // NOTE: The OMQ endpoint to hit
+    std::string_view endpoint = "";
+    switch (type) {
+        case removal_type::normal: {
+            endpoint = "bls.get_removal";
+            pubkey_key = "removal";
+        } break;
+        case removal_type::liquidate: {
+            endpoint = "bls.get_liqudation";
+            pubkey_key = "liquidate";
+        } break;
+    }
 
     // FIXME: make this async
-
     assert(pubkey_key < "signature");  // response dict keys must be processed in sorted order, and
                                        // we expect the pubkey to be in a key that comes first.
 
@@ -766,16 +777,4 @@ bls_removal_liquidation_response bls_aggregator::removal_or_liquidation_request(
 
     return result;
 }
-
-bls_removal_liquidation_response bls_aggregator::removal_request(const bls_public_key& bls_pubkey) {
-    return removal_or_liquidation_request(
-            bls_pubkey, bls_aggregator::removal_type::normal, "bls.get_removal", "removal");
-}
-
-bls_removal_liquidation_response bls_aggregator::liquidation_request(
-        const bls_public_key& bls_pubkey) {
-    return removal_or_liquidation_request(
-            bls_pubkey, bls_aggregator::removal_type::liquidate, "bls.get_liquidation", "liquidate");
-}
-
 }  // namespace eth

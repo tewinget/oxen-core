@@ -2793,13 +2793,11 @@ eth::bls_rewards_response core::bls_rewards_request(const eth::address& address)
     return m_bls_aggregator->rewards_request(address);
 }
 //-----------------------------------------------------------------------------------------------
-eth::bls_removal_liquidation_response core::bls_removal_request(const eth::bls_public_key& bls_pubkey) {
-    return m_bls_aggregator->removal_request(bls_pubkey);
-}
-//-----------------------------------------------------------------------------------------------
-eth::bls_removal_liquidation_response core::bls_liquidation_request(
-        const eth::bls_public_key& bls_pubkey) {
-    return m_bls_aggregator->liquidation_request(bls_pubkey);
+eth::bls_removal_liquidation_response core::bls_removal_liquidation_request(const eth::bls_public_key& bls_pubkey, bool liquidate) {
+    eth::bls_aggregator::removal_type type = liquidate
+                                                   ? eth::bls_aggregator::removal_type::normal
+                                                   : eth::bls_aggregator::removal_type::liquidate;
+    return m_bls_aggregator->removal_liquidation_request(bls_pubkey, type);
 }
 //-----------------------------------------------------------------------------------------------
 eth::bls_registration_response core::bls_registration(const eth::address& address) const {
