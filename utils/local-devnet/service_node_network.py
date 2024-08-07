@@ -345,10 +345,17 @@ class SNNetwork:
         assert self.sn_contract.numberServiceNodes() == 13, f"Expected 13 service nodes, received {contract_sn_count}"
 
         # Sleep and let pulse quorum do work
-        sleep_time = 25
         vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
-        time.sleep(sleep_time)
-        vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
+
+        total_sleep_time = 0
+        sleep_time       = 8
+        target_height = self.ethsns[0].height() + 2;
+
+        while self.ethsns[0].height() < target_height:
+            total_sleep_time += sleep_time
+            time.sleep(sleep_time)
+
+        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}");
 
         # NOTE: BLS rewards claim ##################################################################
         # Claim rewards for Address
