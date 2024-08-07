@@ -250,7 +250,7 @@ namespace {
                         bls_utils::from_crypto_pubkey(contract_bls_pkey);
                 blsPublicKeyAdd(agg_pub, contract_key.getPtr());
             }
-            oxen::log::info(
+            oxen::log::debug(
                     logcat,
                     "Full BLS aggregate public key {}",
                     bls_utils::to_crypto_pubkey(cpp_agg_pubkey));
@@ -267,7 +267,7 @@ namespace {
                 }
 
                 if (!found) {
-                    oxen::log::info(
+                    oxen::log::debug(
                             logcat,
                             "  Subtracting BLS key from Session Node {} {}",
                             contract_ids.ids[index],
@@ -279,7 +279,7 @@ namespace {
             }
 
             // NOTE: Dump the key we re-derived (e.g. includes the non-signers)
-            oxen::log::info(
+            oxen::log::debug(
                     logcat,
                     "Re-derived BLS aggregate public key {}",
                     bls_utils::to_crypto_pubkey(cpp_agg_pubkey));
@@ -548,7 +548,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr) {
                             dump_bls_rewards_response(rewards_response));
 
                 } catch (const std::exception& e) {
-                    oxen::log::warning(
+                    oxen::log::debug(
                             logcat,
                             "Reward balance response rejected from {}: {}\nWe requested: {}\nThe "
                             "response had{}: {}",
@@ -572,7 +572,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr) {
 #endif
 
         auto elapsed_ts = std::chrono::high_resolution_clock::now() - begin_ts;
-        oxen::log::info(
+        oxen::log::debug(
                 logcat,
                 "BLS aggregate pubkey for reward requests: {} ({} aggregations) with signature {} "
                 "in {:.1f}s",
