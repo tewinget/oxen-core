@@ -664,7 +664,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
     if (!bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
                 "Removal/liquidation request for the zero address at height {} is invalid. Request "
-                "rejected"_format(core.get_current_blockchain_height()));
+                "rejected"_format(core.blockchain.get_current_blockchain_height()));
     }
 
     // NOTE: The OMQ endpoint to hit
@@ -676,7 +676,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
                 throw oxen::traced<std::invalid_argument>(
                         "Remove request for {} at height {} is valid. Node cannot "
                         "be liquidated yet. Request rejected"_format(
-                                bls_pubkey, core.get_current_blockchain_height()));
+                                bls_pubkey, core.blockchain.get_current_blockchain_height()));
             }
         } break;
         case removal_type::liquidate: {
@@ -685,7 +685,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
                 throw oxen::traced<std::invalid_argument>(
                         "Liquidation request for {} at height {} is valid. Node cannot "
                         "be liquidated yet. Request rejected"_format(
-                                bls_pubkey, core.get_current_blockchain_height()));
+                                bls_pubkey, core.blockchain.get_current_blockchain_height()));
             }
         } break;
     }
@@ -794,7 +794,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
 #endif
     if (debug_redo_bls_aggregation) {
         debug_redo_bls_aggregation_steps_locally(
-                core.get_service_node_list(), core.l2_tracker(), result.signers_bls_pubkeys);
+                core.service_node_list, core.l2_tracker(), result.signers_bls_pubkeys);
     }
 
     return result;
