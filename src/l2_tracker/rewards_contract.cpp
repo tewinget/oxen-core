@@ -306,17 +306,17 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider) :
         contract_address{contract::rewards_address(nettype)}, provider{provider} {}
 
-std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t blockNumber) {
+std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t block_number) {
     // Get the sentinel node to start the iteration
     const uint64_t service_node_sentinel_id = 0;
-    ContractServiceNode sentinel_node = service_nodes(service_node_sentinel_id, blockNumber);
+    ContractServiceNode sentinel_node = service_nodes(service_node_sentinel_id, block_number);
     uint64_t currentNodeId = sentinel_node.next;
 
     std::vector<bls_public_key> result;
 
     // Iterate over the linked list of service nodes
     while (currentNodeId != service_node_sentinel_id) {
-        ContractServiceNode service_node = service_nodes(currentNodeId, blockNumber);
+        ContractServiceNode service_node = service_nodes(currentNodeId, block_number);
         if (!service_node.good)
             break;
         result.push_back(service_node.pubkey);
