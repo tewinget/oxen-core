@@ -1051,7 +1051,7 @@ class service_node_list {
                 cryptonote::hf hf_version,
                 uint64_t block_height) const;
         void update_from_block(
-                cryptonote::BlockchainDB const& db,
+                cryptonote::Blockchain& blockchain,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
                 state_set const& state_archive,

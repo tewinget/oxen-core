@@ -66,6 +66,7 @@
 #include "pulse.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
+#include "sent_transition/sent_transition.h"
 #include "service_node_quorum_cop.h"
 #include "service_node_rules.h"
 #include "service_node_swarm.h"
@@ -1654,6 +1655,7 @@ bool service_node_list::state_t::process_registration_tx(
     crypto::public_key key;
     auto info_ptr = std::make_shared<service_node_info>();
     service_node_info& info = *info_ptr;
+
     if (!is_registration_tx(
                 nettype,
                 hf_version,
@@ -3253,7 +3255,7 @@ crypto::x25519_public_key snpk_to_xpk(const crypto::public_key& snpk) {
 }
 
 void service_node_list::state_t::update_from_block(
-        cryptonote::BlockchainDB const& db,
+        cryptonote::Blockchain& blockchain,
         cryptonote::network_type nettype,
         state_set const& state_history,
         state_set const& state_archive,
@@ -3261,6 +3263,9 @@ void service_node_list::state_t::update_from_block(
         const cryptonote::block& block,
         const std::vector<cryptonote::transaction>& txs,
         const service_node_keys* my_keys) {
+    const auto& db = blockchain.get_db();
+    auto& sqlite_db = blockchain.sqlite_db();
+
     log::trace(
             logcat,
             "Updating state_t{} from block for height {}",
@@ -3316,10 +3321,18 @@ void service_node_list::state_t::update_from_block(
         }
     }
 
+    // On first block of hf21, do hf21 transition.
+    if (auto hf21_height = hard_fork_begins(nettype, hf::hf21_eth); height == *hf21_height)
+    {
+        oxen::sent::transition(*this, sqlite_db, nettype);
+    }
+
     //
     // Remove expired blacklisted key images
+    // Starting at hf21, blacklist represents permanent stakes converted to SENT
+    // and do not get removed.
     //
-    if (hf_version >= hf::hf11_infinite_staking) {
+    if (hf_version >= hf::hf11_infinite_staking && hf_version < hf::hf21_eth) {
         for (auto entry = key_image_blacklist.begin(); entry != key_image_blacklist.end();) {
             if (height >= entry->unlock_height)
                 entry = key_image_blacklist.erase(entry);
@@ -3654,7 +3667,7 @@ void service_node_list::process_block(
     }
 
     m_state.update_from_block(
-            blockchain.db(),
+            blockchain,
             blockchain.nettype(),
             m_transient->state_history,
             m_transient->state_archive,
@@ -4422,7 +4435,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     // NOTE: Generate the next Service Node list state from this Alt block.
     state_t alt_state = *starting_state;
     alt_state.update_from_block(
-            blockchain.db(),
+            blockchain,
             blockchain.nettype(),
             m_transient->state_history,
             m_transient->state_archive,
