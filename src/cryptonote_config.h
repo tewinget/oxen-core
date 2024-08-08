@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include <array>
 #include <boost/uuid/uuid.hpp>
 #include <chrono>
 #include <cstddef>
@@ -38,8 +37,6 @@
 #include <filesystem>
 #include <ratio>
 #include <string_view>
-
-#include <common/exception.h>
 
 using namespace std::literals;
 
@@ -96,7 +93,6 @@ inline constexpr auto ETH_L2_DEFAULT_CHECK_INTERVAL = 2min;
 // provider out of sync and prefer a backup.  (120 blocks as the default corresponds to being 30s
 // out of sync on Arbitrum).
 inline constexpr int ETH_L2_DEFAULT_CHECK_THRESHOLD = 120;
-
 
 // Fallback used in wallet if no fee is available from RPC:
 inline constexpr uint64_t FEE_PER_BYTE_V13 = 215;

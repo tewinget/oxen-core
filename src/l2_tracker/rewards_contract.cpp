@@ -288,32 +288,117 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
 }
 
 RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider) :
-        contractAddress{contract::rewards_address(nettype)}, provider{provider} {}
+        contract_address{contract::rewards_address(nettype)}, provider{provider} {}
 
-std::vector<bls_public_key> RewardsContract::getAllBLSPubkeys(uint64_t blockNumber) {
+std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t blockNumber) {
     // Get the sentinel node to start the iteration
     const uint64_t service_node_sentinel_id = 0;
-    ContractServiceNode sentinelNode = serviceNodes(service_node_sentinel_id, blockNumber);
-    uint64_t currentNodeId = sentinelNode.next;
+    ContractServiceNode sentinel_node = service_nodes(service_node_sentinel_id, blockNumber);
+    uint64_t currentNodeId = sentinel_node.next;
 
-    std::vector<bls_public_key> blsPublicKeys;
+    std::vector<bls_public_key> result;
 
     // Iterate over the linked list of service nodes
     while (currentNodeId != service_node_sentinel_id) {
-        ContractServiceNode serviceNode = serviceNodes(currentNodeId, blockNumber);
-        if (!serviceNode.good)
+        ContractServiceNode service_node = service_nodes(currentNodeId, blockNumber);
+        if (!service_node.good)
             break;
-        blsPublicKeys.push_back(serviceNode.pubkey);
-        currentNodeId = serviceNode.next;
+        result.push_back(service_node.pubkey);
+        currentNodeId = service_node.next;
     }
 
-    return blsPublicKeys;
+    return result;
 }
 
-ContractServiceNode RewardsContract::serviceNodes(
+RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(std::optional<uint64_t> height)
+{
+    std::string call_data =
+            "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs);
+    std::string block_num_arg = height ? "0x{:x}"_format(*height) : "latest";
+    nlohmann::json call_result =
+            provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
+
+    auto call_result_hex = call_result.get<std::string_view>();
+    if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
+        call_result_hex.remove_prefix(2);
+
+    // NOTE: Extract the ID payload
+    ServiceNodeIDs result = {};
+    const auto [offset_to_ids_bytes, offset_to_keys_bytes, _unused] =
+            tools::split_hex_into<u256, u256, std::string_view>(call_result_hex);
+    const uint64_t offset_to_ids = tools::decode_integer_be(offset_to_ids_bytes);
+    const uint64_t offset_to_keys = tools::decode_integer_be(offset_to_keys_bytes);
+
+    std::string_view ids_start_hex = tools::string_safe_substr(call_result_hex, offset_to_ids * 2, call_result_hex.size());
+    auto [num_ids_bytes, ids_remainder_hex] = tools::split_hex_into<u256, std::string_view>(ids_start_hex);
+    uint64_t num_ids = tools::decode_integer_be(num_ids_bytes);
+
+    const size_t ID_SIZE_IN_HEX = sizeof(u256) * 2;
+    std::string_view ids_payload = tools::string_safe_substr(ids_remainder_hex, 0, num_ids * ID_SIZE_IN_HEX);
+
+    // NOTE: Extract the keys payload
+    std::string_view keys_start_hex = tools::string_safe_substr(call_result_hex, offset_to_keys * 2, call_result_hex.size());
+    auto [num_keys_bytes, keys_remainder_hex] = tools::split_hex_into<u256, std::string_view>(keys_start_hex);
+    uint64_t num_keys = tools::decode_integer_be(num_keys_bytes);
+
+    const size_t KEY_SIZE_IN_HEX = sizeof(bls_public_key) * 2;
+    std::string_view keys_payload = tools::string_safe_substr(keys_remainder_hex, 0, num_keys * KEY_SIZE_IN_HEX);
+
+    // NOTE: Validate args
+    if (num_keys != num_ids) {
+        oxen::log::warning(
+                logcat,
+                "The number of ids ({}) and bls public keys ({}) returned do not match at block '{}'",
+                num_ids,
+                num_keys,
+                block_num_arg);
+        return result;
+    }
+
+    if (ids_payload.size() != (num_ids * ID_SIZE_IN_HEX)) {
+        oxen::log::warning(
+                logcat,
+                "The number of ids ({}) specified when retrieving all SN BLS ids did not "
+                "match the size ({} bytes) of the payload returned at block '{}'",
+                num_ids,
+                ids_payload.size() / 2,
+                block_num_arg);
+        return result;
+    }
+
+    if (keys_payload.size() != (num_keys * KEY_SIZE_IN_HEX)) {
+        oxen::log::warning(
+                logcat,
+                "The number of keys ({}) specified when retrieving all SN BLS pubkeys did not "
+                "match the size ({} bytes) of the payload returned at block '{}'",
+                num_keys,
+                keys_payload.size() / 2,
+                block_num_arg);
+        return result;
+    }
+
+    result.ids.reserve(num_ids);
+    result.bls_pubkeys.reserve(num_keys);
+    for (size_t index = 0; index < num_ids; index++) {
+        std::string_view id_hex =
+                tools::string_safe_substr(ids_payload, (index * ID_SIZE_IN_HEX), ID_SIZE_IN_HEX);
+        std::string_view key_hex =
+                tools::string_safe_substr(keys_payload, (index * KEY_SIZE_IN_HEX), KEY_SIZE_IN_HEX);
+        auto [id_bytes] = tools::split_hex_into<u256>(id_hex);
+        result.ids.push_back(tools::decode_integer_be(id_bytes));
+        result.bls_pubkeys.push_back(tools::make_from_hex_guts<bls_public_key>(key_hex));
+
+        #if !defined(NDEBUG)
+        log::trace(logcat, "  {:02d} {{{}, {}}}", index, result.ids.back(), result.bls_pubkeys.back());
+        #endif
+    }
+
+    return result;
+}
+
+ContractServiceNode RewardsContract::service_nodes(
         uint64_t index, std::optional<uint64_t> blockNumber) {
-    // callData.contractAddress = contractAddress;
-    auto callData = "0x{:x}{:032x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
+    auto call_data = "0x{:x}{:064x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
 
     // FIXME(OXEN11): we *cannot* make a blocking request here like this because we are blocking
     // some other thread from doing work; we either need to get this from a local cache of the info,
@@ -321,47 +406,58 @@ ContractServiceNode RewardsContract::serviceNodes(
     // make request asynchronously if not found).
     //
     // FIXME(OXEN11): nor can we make recursive linked lists requests like this!
-    std::string blockNumArg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
+    std::string block_num_arg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
     nlohmann::json callResult =
-            provider.callReadFunctionJSON(contractAddress, callData, blockNumArg);
-    auto callResultHex = callResult.get<std::string_view>();
-    if (callResultHex.starts_with("0x") || callResultHex.starts_with("0X"))
-        callResultHex.remove_prefix(2);
+            provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
+    auto call_result_hex = callResult.get<std::string_view>();
+    if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
+        call_result_hex.remove_prefix(2);
 
     ContractServiceNode result{};
-    result.good = false; // until proven otherwise
-    if (callResultHex.empty()) {
+    result.good = false;  // until proven otherwise
+    if (call_result_hex.empty()) {
         oxen::log::warning(
                 logcat,
                 "Provider returned an empty string when querying contract service node {} at block "
                 "'{}'",
                 index,
-                blockNumArg);
+                block_num_arg);
         return result;
     }
 
     // NOTE: The ServiceNode struct is a dynamic type (because its child `Contributor` field is
     // dynamic) hence the offset to the struct is encoded in the first 32 byte element.
     std::string_view sn_data_offset_hex =
-            tools::string_safe_substr(callResultHex, /*pos*/ 0, /*size*/ 64);
+            tools::string_safe_substr(call_result_hex, /*pos*/ 0, /*size*/ 64);
     auto sn_data_offset_bytes = tools::make_from_hex_guts<u256>(sn_data_offset_hex);
-    auto sn_data = callResultHex.substr(tools::decode_integer_be(sn_data_offset_bytes) * 2);
-    auto [next, prev, op_addr, pubkey, leaveRequestTimestamp, deposit, contr_offset, remainder] = tools::split_hex_into<
-            u256,
-            u256,
-            skip<12>,
-            eth::address,
-            eth::bls_public_key,
-            u256,
-            u256,
-            u256,
-            std::string_view>(sn_data);
+    auto sn_data = call_result_hex.substr(tools::decode_integer_be(sn_data_offset_bytes) * 2);
+    auto [next,
+          prev,
+          op_addr,
+          pubkey,
+          added_timestamp,
+          leave_request_timestamp,
+          deposit,
+          contr_offset,
+          remainder] =
+            tools::split_hex_into<
+                    u256,
+                    u256,
+                    skip<12>,
+                    eth::address,
+                    eth::bls_public_key,
+                    u256,
+                    u256,
+                    u256,
+                    u256,
+                    std::string_view>(sn_data);
 
     result.next = tools::decode_integer_be(next);
     result.prev = tools::decode_integer_be(prev);
     result.operatorAddr = op_addr;
     result.pubkey = pubkey;
-    result.leaveRequestTimestamp = tools::decode_integer_be(leaveRequestTimestamp);
+    result.addedTimestamp = tools::decode_integer_be(added_timestamp);
+    result.leaveRequestTimestamp = tools::decode_integer_be(leave_request_timestamp);
     result.deposit = tools::decode_integer_be(deposit);
 
     auto contrib_data = sn_data.substr(tools::decode_integer_be(contr_offset) * 2);
@@ -384,7 +480,7 @@ ContractServiceNode RewardsContract::serviceNodes(
                         result.pubkey,
                         blockNumber,
                         index));
-        oxen::log::debug(logcat, "{}", log_service_node_blob(result, callResultHex));
+        oxen::log::debug(logcat, "{}", log_service_node_blob(result, call_result_hex));
         return result;
     }
 
@@ -402,35 +498,33 @@ ContractServiceNode RewardsContract::serviceNodes(
                     "Failed to parse contributor/contribution [{}] for service node {} with BLS pubkey {} at height {}: {}",
                     i, index, result.pubkey,
                     blockNumber ? "{}"_format(*blockNumber) : "(latest)", e.what());
-            oxen::log::debug(logcat, "{}", log_service_node_blob(result, callResultHex));
+            oxen::log::debug(logcat, "{}", log_service_node_blob(result, call_result_hex));
             return result;
         }
     }
 
     oxen::log::trace(
-            logcat, "Successfully parsed new SN. {}", log_service_node_blob(result, callResultHex));
+            logcat, "Successfully parsed new SN. {}", log_service_node_blob(result, call_result_hex));
 
     result.good = true;
     return result;
 }
 
-std::vector<uint64_t> RewardsContract::getNonSigners(
+std::vector<uint64_t> RewardsContract::get_non_signers(
         const std::unordered_set<bls_public_key>& bls_public_keys) {
-    const uint64_t service_node_sentinel_id = 0;
-    ContractServiceNode service_node_end = serviceNodes(service_node_sentinel_id);
-    uint64_t service_node_id = service_node_end.next;
-    std::vector<uint64_t> non_signers;
 
-    while (service_node_id != service_node_sentinel_id) {
-        ContractServiceNode service_node = serviceNodes(service_node_id);
-        if (!service_node.good)
-            break;
-        if (!bls_public_keys.count(service_node.pubkey))
-            non_signers.push_back(service_node_id);
-        service_node_id = service_node.next;
+    std::vector<uint64_t> result;
+    ServiceNodeIDs contract_ids = all_service_node_ids();
+    assert(contract_ids.ids.size() == contract_ids.bls_pubkeys.size());
+    for (size_t index = 0; index < contract_ids.ids.size(); index++) {
+        const bls_public_key& key = contract_ids.bls_pubkeys[index];
+        if (!bls_public_keys.count(key)) {
+            uint64_t id = contract_ids.ids[index];
+            result.push_back(id);
+        }
     }
 
-    return non_signers;
+    return result;
 }
 
 std::string NewServiceNodeTx::to_string() const {

@@ -170,11 +170,6 @@ class L2Tracker {
     std::chrono::milliseconds PROVIDERS_CHECK_INTERVAL = cryptonote::ETH_L2_DEFAULT_CHECK_INTERVAL;
     uint64_t PROVIDERS_CHECK_THRESHOLD = cryptonote::ETH_L2_DEFAULT_CHECK_THRESHOLD;
 
-    // How many blocks behind the last known head we use for the "safe" height, i.e. the cutoff
-    // height for state change inclusions when building pulse blocks (so that we don't send things
-    // that are too new that other nodes might not know about yet).  The default is 30s behind.
-    static constexpr uint64_t SAFE_BLOCKS = 30s / 250ms;
-
     // Returns the reward rate for the given L2 height.  Returns nullopt if we don't know/haven't
     // retrieved it yet (and so this should generally be called with a safe height, not the current
     // L2 height).  (Note that L2 reward rates only change on L2 block heights divisible by
@@ -242,6 +237,8 @@ class L2Tracker {
         return get_non_signers(std::unordered_set<bls_public_key>{begin, end});
     }
     std::vector<bls_public_key> get_all_bls_public_keys(uint64_t blockNumber);
+
+    RewardsContract::ServiceNodeIDs get_all_service_node_ids(std::optional<uint64_t> height);
 
     // TODO FIXME: the entire L2Tracker shouldn't be here if there are no clients
     bool provider_has_clients() const { return provider.numClients(); }

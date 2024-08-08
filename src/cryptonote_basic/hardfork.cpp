@@ -155,10 +155,22 @@ static constexpr std::array devnet_hard_forks = {
         hard_fork{hf::hf21_eth, 0, 409, 1716310020},
 };
 
+static constexpr std::array local_devnet_hard_forks = {
+        hard_fork{hf::hf7, 0, 0, 1716310007},
+        hard_fork{hf::hf14_blink, 0, 1, 1716310014},
+        hard_fork{hf::hf16_pulse, 0, 40, 1716310016},
+        hard_fork{hf::hf17, 0, 45, 1716310017},
+        hard_fork{hf::hf18, 0, 46, 1716310018},
+        hard_fork{hf::hf19_reward_batching, 0, 47, 1716310019},
+        hard_fork{hf::hf20_eth_transition, 0, 170, 1716310020},
+        hard_fork{hf::hf21_eth, 0, 171, 1716310020},
+};
+
 static constexpr std::array stagenet_hard_forks = {
         hard_fork{hf::hf7, 0, 0, 1720230000},
         hard_fork{hf::hf14_blink, 0, 1, 1720230014},
         hard_fork{hf::hf21_eth, 0, 250, 1720230021},
+        hard_fork{hf::hf21_eth, 1, 24966, 1723505400}, // 2024-08-12T23:30.000Z UTC (09:30:00 GMT+1000 (AEST))
 };
 
 template <size_t N>
@@ -202,8 +214,8 @@ std::span<const hard_fork> get_hard_forks(network_type type) {
         case network_type::MAINNET: return mainnet_hard_forks;
         case network_type::STAGENET: return stagenet_hard_forks;
         case network_type::TESTNET: return testnet_hard_forks;
-        case network_type::DEVNET:
-        case network_type::LOCALDEV: return devnet_hard_forks;
+        case network_type::DEVNET: return devnet_hard_forks;
+        case network_type::LOCALDEV: return local_devnet_hard_forks;
         case network_type::FAKECHAIN: return fakechain_hardforks;
         case network_type::UNDEFINED:;
     }

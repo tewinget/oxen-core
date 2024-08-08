@@ -939,11 +939,10 @@ class core : public i_miner_handler {
     const std::vector<service_nodes::key_image_blacklist_entry>&
     get_service_node_blacklisted_key_images() const;
 
-    eth::BLSRewardsResponse bls_rewards_request(const eth::address& address);
-    eth::AggregateRemovalResponse aggregate_removal_request(const eth::bls_public_key& bls_pubkey);
-    eth::AggregateRemovalResponse aggregate_liquidation_request(const eth::bls_public_key& bls_pubkey);
-    eth::BLSRegistrationResponse bls_registration(
-            const eth::address& ethereum_address, const uint64_t fee = 0) const;
+    eth::bls_rewards_response bls_rewards_request(const eth::address& address);
+    eth::bls_removal_liquidation_response bls_removal_liquidation_request(
+            const eth::bls_public_key& bls_pubkey, bool liquidate);
+    eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 
     /**
      * @brief get a snapshot of the service node list state at the time of the call.
@@ -1254,7 +1253,7 @@ class core : public i_miner_handler {
     std::unique_ptr<eth::L2Tracker> m_l2_tracker;
 
     std::optional<eth::BLSSigner> m_bls_signer;
-    std::unique_ptr<eth::BLSAggregator> m_bls_aggregator;
+    std::unique_ptr<eth::bls_aggregator> m_bls_aggregator;
 
     i_cryptonote_protocol* m_pprotocol;        //!< cryptonote protocol instance
     cryptonote_protocol_stub m_protocol_stub;  //!< cryptonote protocol stub instance

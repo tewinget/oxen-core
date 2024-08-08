@@ -42,7 +42,6 @@ extern "C" {
 #include "blockchain.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
 #include "bls/bls_signer.h"
-#include "bls/bls_utils.h"
 #include "common/exception.h"
 #include "common/i18n.h"
 #include "common/lock.h"
@@ -56,7 +55,6 @@ extern "C" {
 #include "cryptonote_tx_utils.h"
 #include "epee/int-util.h"
 #include "epee/net/local_ip.h"
-#include "ethereum_transactions.h"
 #include "oxen_economy.h"
 #include "pulse.h"
 #include "ringct/rctSigs.h"
@@ -78,7 +76,7 @@ size_t constexpr STORE_LONG_TERM_STATE_INTERVAL = 10000;
 constexpr auto X25519_MAP_PRUNING_INTERVAL = 5min;
 constexpr auto X25519_MAP_PRUNING_LAG = 24h;
 static_assert(
-        X25519_MAP_PRUNING_LAG > cryptonote::config::mainnet::UPTIME_PROOF_VALIDITY,
+        X25519_MAP_PRUNING_LAG > cryptonote::config::mainnet::config.UPTIME_PROOF_VALIDITY,
         "x25519 map pruning lag is too short!");
 
 static uint64_t short_term_state_cull_height(hf hf_version, uint64_t block_height) {
@@ -2751,7 +2749,7 @@ static void generate_other_quorums(
 // feature::SN_PK_IS_ED25519 (because before that we don't have a guarantee that a
 // crypto::public_key is actually the correct Ed25519 pubkeys that we want to convert to get the
 // X25519 pubkey).
-static crypto::x25519_public_key snpk_to_xpk(const crypto::public_key& snpk) {
+crypto::x25519_public_key snpk_to_xpk(const crypto::public_key& snpk) {
     crypto::x25519_public_key xpk;
     if (0 != crypto_sign_ed25519_pk_to_curve25519(xpk.data(), snpk.data()))
         throw oxen::traced<std::runtime_error>{
@@ -2867,6 +2865,18 @@ void service_node_list::state_t::update_from_block(
     }
 
     //
+    // If our x25519 map is empty then try populating it (which only does something if we're into
+    // the unified-pubkey-and-ed-pubkey hardfork).  In normal operation, this only happens once (for
+    // the first post-unified-keys hard fork state block).
+    //
+    // NOTE: We initialise the XPK map _first_ before processing transactions because if there's a
+    // registration in the block, then that'll seed the XPK map and make the `empty` check fail
+    // hence failing to migrate over all the keys.
+    //
+    if (x25519_map.empty())
+        initialize_xpk_map();
+
+    //
     // Process TXs in the Block
     //
     cryptonote::txtype max_tx_type = cryptonote::transaction::get_max_type_for_hf(hf_version);
@@ -2925,12 +2935,6 @@ void service_node_list::state_t::update_from_block(
         }
     }
     generate_other_quorums(*this, active_snode_list, nettype, hf_version);
-
-    // If our x25519 map is empty then try populating it (which only does something if we're into
-    // the unified-pubkey-and-ed-pubkey hardfork).  In normal operation, this only happens once (for
-    // the first post-unified-keys hard fork state block).
-    if (x25519_map.empty())
-        initialize_xpk_map();
 }
 
 void service_node_list::process_block(

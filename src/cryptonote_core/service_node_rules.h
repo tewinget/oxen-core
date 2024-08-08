@@ -195,7 +195,7 @@ inline constexpr uint64_t STATE_CHANGE_TX_LIFETIME_IN_BLOCKS = VOTE_LIFETIME;
 // blocks out of sync and sending something that it thinks is legit.
 inline constexpr uint64_t VOTE_OR_TX_VERIFY_HEIGHT_BUFFER = 5;
 
-inline constexpr std::array<uint16_t, 3> MIN_STORAGE_SERVER_VERSION{{2, 5, 0}};
+inline constexpr std::array<uint16_t, 3> MIN_STORAGE_SERVER_VERSION{{2, 8, 0}};
 inline constexpr std::array<uint16_t, 3> MIN_LOKINET_VERSION{{0, 9, 11}};
 
 // The minimum accepted version number, broadcasted by Service Nodes via uptime proofs for each
@@ -210,6 +210,7 @@ struct proof_version {
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS = {
         proof_version{{cryptonote::hf::hf19_reward_batching, 3}, {10, 3, 0}, {0, 9, 11}, {2, 5, 0}},
         proof_version{{cryptonote::hf::hf19_reward_batching, 2}, {10, 2, 0}, {0, 9, 9}, {2, 4, 0}},
+        proof_version{{cryptonote::hf::hf21_eth,             1}, {11, 0, 2}, {0, 9, 11}, {2, 8, 0}},
 };
 
 using swarm_id_t = uint64_t;

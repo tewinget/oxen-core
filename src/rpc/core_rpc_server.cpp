@@ -207,7 +207,8 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
     auto& bs = m_core.get_blockchain_storage();
     auto& db = bs.get_db();
     const cryptonote::block top_block = db.get_top_block();
-    auto height = top_block.height + 1;  // turn top block height into blockchain height
+    auto top_height = get_block_height(top_block);
+    auto height = top_height + 1;  // turn top block height into blockchain height
 
     info.response["height"] = height;
     info.response["l2_height"] = top_block.l2_height;
@@ -226,7 +227,7 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
     }
 
     if (cryptonote::checkpoint_t checkpoint;
-        db.get_immutable_checkpoint(&checkpoint, top_block.height)) {
+        db.get_immutable_checkpoint(&checkpoint, top_height)) {
         info.response["immutable_height"] = checkpoint.height;
         info.response_hex["immutable_block_hash"] = checkpoint.block_hash;
     }
@@ -257,11 +258,11 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
     info.response["nettype"] = network_type_to_string(nettype);
 
     try {
-        auto cd = db.get_block_cumulative_difficulty(top_block.height);
+        auto cd = db.get_block_cumulative_difficulty(top_height);
         info.response["cumulative_difficulty"] = cd;
     } catch (std::exception const& e) {
         info.response["status"] = "Error retrieving cumulative difficulty at height " +
-                                  std::to_string(top_block.height);
+                                  std::to_string(top_height);
         return;
     }
 
@@ -2541,7 +2542,7 @@ void core_rpc_server::invoke(
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
     const auto response = m_core.bls_rewards_request(rpc.request.address);
     rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["address"] = response.address;
+    rpc.response_hex["address"] = response.addr;
     rpc.response["amount"] = response.amount;
     rpc.response["height"] = response.height;
     rpc.response_hex["msg_to_sign"] =
@@ -2552,8 +2553,9 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
                     response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_EXIT_REQUEST& rpc, rpc_context) {
-    const auto response = m_core.aggregate_removal_request(rpc.request.bls_pubkey);
+void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) {
+    const auto response =
+            m_core.bls_removal_liquidation_request(rpc.request.bls_pubkey, rpc.request.liquidate);
     rpc.response["status"] = STATUS_OK;
     rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
     rpc.response_hex["msg_to_sign"] =
@@ -2564,22 +2566,10 @@ void core_rpc_server::invoke(BLS_EXIT_REQUEST& rpc, rpc_context) {
                     response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& rpc, rpc_context) {
-    const auto response = m_core.aggregate_liquidation_request(rpc.request.bls_pubkey);
-    rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
-    rpc.response_hex["msg_to_sign"] =
-            oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
-    rpc.response_hex["signature"] = response.signature;
-    rpc.response["non_signer_indices"] =
-            m_core.get_blockchain_storage().l2_tracker().get_non_signers(
-                    response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
-}
-//------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REGISTRATION& rpc, rpc_context) {
+void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {
     const auto response = m_core.bls_registration(rpc.request.address);
     rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["address"] = response.address;
+    rpc.response_hex["address"] = response.addr;
     rpc.response_hex["bls_pubkey"] = response.bls_pubkey;
     rpc.response_hex["proof_of_possession"] = response.proof_of_possession;
     rpc.response_hex["service_node_pubkey"] = response.sn_pubkey;

@@ -76,6 +76,7 @@ struct ContractServiceNode {
     uint64_t prev;
     eth::address operatorAddr;
     bls_public_key pubkey;
+    uint64_t addedTimestamp;
     uint64_t leaveRequestTimestamp;
     uint64_t deposit;
     std::array<Contributor, oxen::MAX_CONTRIBUTORS_HF19> contributors;
@@ -87,15 +88,27 @@ class RewardsContract {
     // Constructor
     RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider);
 
-    std::string_view address() { return contractAddress; }
+    std::string_view address() const { return contract_address; }
 
-    ContractServiceNode serviceNodes(
-            uint64_t index, std::optional<uint64_t> blockNumber = std::nullopt);
-    std::vector<uint64_t> getNonSigners(const std::unordered_set<bls_public_key>& bls_public_keys);
-    std::vector<bls_public_key> getAllBLSPubkeys(uint64_t blockNumber);
+    ContractServiceNode service_nodes(
+            uint64_t index, std::optional<uint64_t> block_number = std::nullopt);
+    std::vector<uint64_t> get_non_signers(
+            const std::unordered_set<bls_public_key>& bls_public_keys);
+
+    std::vector<bls_public_key> get_all_bls_pubkeys(uint64_t block_number);
+
+    struct ServiceNodeIDs
+    {
+        std::vector<uint64_t> ids;
+        std::vector<bls_public_key> bls_pubkeys;
+    };
+
+    // Executes `allServiceNodeIDs` on the smart contract and retrieve all the BLS public keys and
+    // the ID allocated for each key in the contract
+    ServiceNodeIDs all_service_node_ids(std::optional<uint64_t> block_number = std::nullopt);
 
   private:
-    std::string contractAddress;
+    std::string contract_address;
     ethyl::Provider& provider;
 };
 

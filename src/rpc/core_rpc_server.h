@@ -182,10 +182,9 @@ class core_rpc_server {
     void invoke(
             GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES& get_service_node_blacklisted_key_images,
             rpc_context context);
-    void invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_context context);
-    void invoke(BLS_EXIT_REQUEST& bls_withdrawal_request, rpc_context context);
-    void invoke(BLS_LIQUIDATION_REQUEST& bls_withdrawal_request, rpc_context context);
-    void invoke(BLS_REGISTRATION& bls_registration_request, rpc_context context);
+    void invoke(BLS_REWARDS_REQUEST& rpc, rpc_context context);
+    void invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context context);
+    void invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context context);
     void invoke(RELAY_TX& relay_tx, rpc_context context);
     void invoke(GET_BLOCK_HEADERS_RANGE& get_block_headers_range, rpc_context context);
     void invoke(GET_BLOCK_HEADER_BY_HEIGHT& get_block_header_by_height, rpc_context context);

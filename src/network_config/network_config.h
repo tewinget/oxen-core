@@ -123,6 +123,11 @@ struct network_config final {
     // l2_height=12345678 must contain the reward value computed at height 12345000.
     const uint64_t L2_REWARD_POOL_UPDATE_BLOCKS;
 
+    // How many blocks behind the last known head we use for the "safe" height, i.e. the cutoff
+    // height for state change inclusions when building pulse blocks (so that we don't send things
+    // that are too new that other nodes might not know about yet).
+    const uint64_t L2_TRACKER_SAFE_BLOCKS;
+
     constexpr std::string_view governance_wallet_address(hf hard_fork_version) const {
         const auto wallet_switch =
                 (NETWORK_TYPE == network_type::MAINNET || NETWORK_TYPE == network_type::FAKECHAIN)
@@ -130,6 +135,7 @@ struct network_config final {
                         : hf::hf10_bulletproofs;
         return GOVERNANCE_WALLET_ADDRESS[hard_fork_version >= wallet_switch ? 1 : 0];
     }
+
 };
 
 }  // namespace cryptonote

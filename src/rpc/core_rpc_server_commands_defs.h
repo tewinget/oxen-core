@@ -2298,11 +2298,15 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 /// RPC: bls exit request
 ///
 /// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls
-/// pubkey can exit
+/// pubkey can exit. If `liquidate` is true then a liquidation request is generated instead. A
+/// liquidation request will fail if the specified node is not in a valid state to be liquidated.
 ///
 /// Inputs:
 ///
 /// - `bls_pubkey` -- this bls_pubkey will be searched to see if the node can exit
+/// - `liquidate` -- Sets the request into liqudation mode. If false the request is perceived as a
+///    voluntary leave request rather than a liquidation request which allocates a small portion
+///    of the stake to the liquidator.
 ///
 /// Outputs:
 ///
@@ -2311,35 +2315,12 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 /// - `signed_message` -- The message that has been signed by the network
 /// - `signature` -- BLS signature of the message
 /// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
-struct BLS_EXIT_REQUEST : PUBLIC {
-    static constexpr auto names() { return NAMES("bls_exit_request"); }
+struct BLS_REMOVAL_LIQUIDATION_REQUEST : PUBLIC {
+    static constexpr auto names() { return NAMES("bls_removal_liquidation_request"); }
 
     struct request_parameters {
         eth::bls_public_key bls_pubkey;
-    } request;
-};
-
-/// RPC: bls liquidation request
-///
-/// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls
-/// pubkey can be liquidated
-///
-/// Inputs:
-///
-/// - `bls_pubkey` -- this bls_pubkey will be searched to see if the node can be liquidated
-///
-/// Outputs:
-///
-/// - `status` -- generic RPC error code; "OK" means the request was successful.
-/// - `bls_pubkey` -- The bls pubkey of the node requested to be liquidated
-/// - `signed_message` -- The message that has been signed by the network
-/// - `signature` -- BLS signature of the message
-/// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
-struct BLS_LIQUIDATION_REQUEST : PUBLIC {
-    static constexpr auto names() { return NAMES("bls_liquidation_request"); }
-
-    struct request_parameters {
-        eth::bls_public_key bls_pubkey;
+        bool liquidate;
     } request;
 };
 
@@ -2362,7 +2343,7 @@ struct BLS_LIQUIDATION_REQUEST : PUBLIC {
 /// - `service_node_pubkey` -- The oxen nodes service node pubkey
 /// - `service_node_signature` -- A signature over the registration parameters
 ///
-struct BLS_REGISTRATION : RPC_COMMAND {
+struct BLS_REGISTRATION_REQUEST : RPC_COMMAND {
     static constexpr auto names() { return NAMES("bls_registration_request"); }
 
     struct request_parameters {
@@ -2763,9 +2744,8 @@ using core_rpc_types = tools::type_list<
         GET_SERVICE_NODES,
         GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES,
         BLS_REWARDS_REQUEST,
-        BLS_EXIT_REQUEST,
-        BLS_LIQUIDATION_REQUEST,
-        BLS_REGISTRATION,
+        BLS_REMOVAL_LIQUIDATION_REQUEST,
+        BLS_REGISTRATION_REQUEST,
         GET_SERVICE_NODE_REGISTRATION_CMD,
         GET_SERVICE_NODE_REGISTRATION_CMD_RAW,
         GET_SERVICE_NODE_STATUS,

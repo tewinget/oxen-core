@@ -120,26 +120,19 @@ TEST(BLS, signatures) {
     auto sig1b = bls_utils::to_crypto_signature(bls_utils::from_crypto_signature(sig1));
     EXPECT_EQ("{}"_format(sig1), "{}"_format(sig1b));
     EXPECT_EQ(sig1a.getStr(), bls_utils::from_crypto_signature(sig1b).getStr());
-    EXPECT_TRUE(sig1a.verifyHash(signer.getPubkey(), hash1.data(), hash1.size()));
-    EXPECT_TRUE(sig1a.verifyHash(bls_utils::from_crypto_pubkey(pk), hash1.data(), hash1.size()));
-
-    EXPECT_TRUE(bls_utils::from_crypto_signature(sig1).verifyHash(
-            bls_utils::from_crypto_pubkey(pk), hash1.data(), hash1.size()));
+    EXPECT_TRUE(signer.verifyMsg(bls_utils::to_crypto_signature(sig1a), bls_utils::to_crypto_pubkey(signer.getPubkey()), hash1));
+    EXPECT_TRUE(signer.verifyMsg(sig1b, pk, hash1));
 
     EXPECT_EQ(
             "{}"_format(sig1),
-            "054a64cf51abcccf1e3db61b38bd84556834d652b59758d5860e541653eb2e44"
-            "0900de2368d7bdf4a83233d96cb8ab81461ebfe87ea6e73b56864e03e693a2be"
-            "29fcf509fa071fa7d8c569a2f8003ffc386ac07ad787815a5f906c4fd2405bef"
-            "2a84e7afd7fcb6d3299312906d0f56b3ea80603ee8688f05f68cb03a7c0db4f6");
+            "0935f61237111bdf49d7b67232def51e267ff84a9c76503d95aee6ba3a94443c16558636a14f7ab3767cde"
+            "88e5b2021157888ca26908d0d052dfd44b3b8b5c6617a1f756b90523ecc8e9d9744b0e1f6a1ca310533227"
+            "378fd44012cdf44bbaf826559955b29a5fc7a5af1ff0f0318747ce80101abe9ed97ab256977b7c25a7d6");
     EXPECT_TRUE(signer.verifyMsg(sig1, pk, hash1));
 
     auto sig2 = signer.signMsg(hash2);
     EXPECT_EQ(
             "{}"_format(sig2),
-            "3025a58f31717081510467944556989cfb0676e0f135f2cd7151442dd404385e"
-            "2671e7a21c2bee7840c54b839718dd2c665cc0376c6d78cd6d5ab62f3036ea14"
-            "1d86c93f8884a2ca97b893fbea2d1629c237231668fd86ce43b00abf6d8d68fa"
-            "2bc306182916f2d1633c82cd2b78794a049554da9ff68e72fefeb9680590e9fb");
+            "0a6f2c1693aceac3220fb57277d33203022339b21fca05bd2751cfdf50359ad628d633ff8e214bfa1fed2334fd1d7db512fcd43bba173a84d443fe6d333d64540960da53f247c635af26128574190e91f40d899fefdda43b9f2c17fccf97cf062f82c037ba9e20e63e0bc72bc672e35643adad660e4afe60357c26c83bce7a2b");
     EXPECT_TRUE(signer.verifyMsg(sig2, pk, hash2));
 }

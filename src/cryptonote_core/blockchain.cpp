@@ -1810,6 +1810,7 @@ bool Blockchain::create_block_template_internal(
                     "block");
             return false;
         }
+        log::trace(logcat, "L2 reward retrieved {} (L2 height {}) for block {}", *l2_reward, b.l2_height, height);
     }
 
     // Add transactions in mempool to block

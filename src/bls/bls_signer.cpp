@@ -312,6 +312,18 @@ bls_signature BLSSigner::proofOfPossession(
     msg.insert(msg.end(), sender.begin(), sender.end());
     msg.insert(msg.end(), serviceNodePubkey.begin(), serviceNodePubkey.end());
 
+    oxen::log::debug(
+            logcat,
+            "Generating proof-of-possession with parameters\n"
+            "Tag:        {}\n"
+            "BLS Pubkey: {}\n"
+            "Sender:     {}\n"
+            "SN Pubkey:  {}",
+            tag,
+            bls_pkey,
+            sender,
+            serviceNodePubkey);
+
     bls_signature result = signMsg(msg);
     return result;
 }

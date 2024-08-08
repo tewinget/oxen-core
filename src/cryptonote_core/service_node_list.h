@@ -32,7 +32,6 @@
 #include <iterator>
 #include <mutex>
 #include <shared_mutex>
-#include <span>
 #include <string_view>
 
 #include "common/util.h"
@@ -435,6 +434,8 @@ struct payout {
     std::vector<payout_entry> payouts;
 };
 
+crypto::x25519_public_key snpk_to_xpk(const crypto::public_key& snpk);
+
 /// Collection of keys used by a service node
 struct service_node_keys {
     /// The service node key pair used for registration-related data on the chain; is
@@ -594,8 +595,11 @@ class service_node_list {
     /// output iterator.  Service nodes that are active but for which we have not yet
     /// received/accepted a proof containing IP info are not included.
     template <std::output_iterator<service_node_address> OutputIt>
-    void copy_reachable_active_service_node_addresses(OutputIt out) const {
+    void copy_reachable_active_service_node_addresses(OutputIt out, cryptonote::network_type nettype) const {
         std::lock_guard lock{m_sn_mutex};
+        bool sn_pk_is_ed25519_hf = cryptonote::is_hard_fork_at_least(
+                nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height);
+
         for (const auto& pk_info : m_state.service_nodes_infos) {
             if (!pk_info.second->is_active())
                 continue;
@@ -607,12 +611,19 @@ class service_node_list {
             if (!it->second.proof)
                 continue;
             auto& proof = *it->second.proof;
-            assert(it->second
-                           .pubkey_x25519);  // Should always be set to non-null if we have a proof
+
+            crypto::x25519_public_key pubkey_x25519;
+            if (sn_pk_is_ed25519_hf) {
+                pubkey_x25519 = snpk_to_xpk(pk_info.first);
+            } else {
+                assert(it->second.pubkey_x25519);  // Should always be set to non-null if we have a
+                                                   // proof
+                pubkey_x25519 = it->second.pubkey_x25519;
+            }
             *out++ = service_node_address{
                     pk_info.first,
                     pk_info.second->bls_public_key,
-                    it->second.pubkey_x25519,
+                    sn_pk_is_ed25519_hf ? snpk_to_xpk(pk_info.first) : it->second.pubkey_x25519,
                     proof.public_ip,
                     proof.qnet_port};
         }

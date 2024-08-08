@@ -11,83 +11,85 @@ class OxenMq;
 }
 
 namespace eth {
-struct AggregateSigned {
+struct bls_aggregate_signed {
     std::vector<uint8_t> msg_to_sign;
     std::vector<bls_public_key> signers_bls_pubkeys;
     bls_signature signature;
 };
 
-struct AggregateRemovalResponse : AggregateSigned {
+struct bls_removal_liquidation_response : bls_aggregate_signed {
     bls_public_key remove_pubkey;
     uint64_t timestamp;
 };
 
-struct BLSRewardsResponse : AggregateSigned {
-    eth::address address;
+struct bls_rewards_response : bls_aggregate_signed {
+    address addr;
     uint64_t amount;
     uint64_t height;
 };
 
-struct BLSRegistrationResponse {
+struct bls_registration_response {
     bls_public_key bls_pubkey;
     bls_signature proof_of_possession;
-    eth::address address;
+    address addr;
     crypto::public_key sn_pubkey;
     crypto::ed25519_signature ed_signature;
 };
 
-struct BLSRequestResult {
+struct bls_response {
     service_nodes::service_node_address sn;
     bool success;
 };
 
-class BLSAggregator {
-  private:
-    cryptonote::core& core;
-
+class bls_aggregator {
   public:
-    using request_callback = std::function<void(
-            const BLSRequestResult& request_result, const std::vector<std::string>& data)>;
+    using request_callback =
+            std::function<void(const bls_response& response, const std::vector<std::string>& data)>;
 
-    explicit BLSAggregator(cryptonote::core& core);
+    explicit bls_aggregator(cryptonote::core& core);
 
-    /// Request the service node network to sign the requested amount of
-    /// 'rewards' for the given Ethereum 'address' if by consensus they agree
-    /// that the amount is valid. This node (the aggregator) will aggregate the
-    /// signatures into the response.
-    ///
-    /// This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
-    /// amount is `0` or height is greater than the current blockchain height.
-    BLSRewardsResponse rewards_request(const eth::address& address);
+    // Request the service node network to sign the requested amount of
+    // 'rewards' for the given Ethereum 'address' if by consensus they agree
+    // that the amount is valid. This node (the aggregator) will aggregate the
+    // signatures into the response.
+    //
+    // This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
+    // amount is `0` or height is greater than the current blockchain height.
+    bls_rewards_response rewards_request(const address& addr);
 
-    AggregateRemovalResponse aggregateRemoval(const bls_public_key& bls_pubkey);
-    AggregateRemovalResponse aggregateLiquidation(const bls_public_key& bls_pubkey);
-    BLSRegistrationResponse registration(
-            const eth::address& sender, const crypto::public_key& serviceNodePubkey) const;
-
-    enum class RemovalType
-    {
-        Normal,
-        Liquidate,
+    enum class removal_type {
+        normal,
+        liquidate,
     };
+
+    // Request the service node network to sign a request to remove the node specified by
+    // `bls_pubkey` from the network. The nature of this removal is set by `type`. This node (the
+    // aggregator) will aggregate the signatures into the response.
+    bls_removal_liquidation_response removal_liquidation_request(
+            const bls_public_key& bls_pubkey, removal_type type);
+
+    bls_registration_response registration(
+            const address& sender, const crypto::public_key& sn_pubkey) const;
 
   private:
     void get_reward_balance(oxenmq::Message& m);
     void get_removal(oxenmq::Message& m);
     void get_liquidation(oxenmq::Message& m);
 
-    AggregateRemovalResponse aggregateRemovalOrLiquidate(
-            const bls_public_key& bls_pubkey,
-            RemovalType type,
-            std::string_view endpoint,
-            std::string_view pubkey_key);
-
     // Goes out to the nodes on the network and makes oxenmq requests to all of them, when getting
     // the reply `callback` will be called to process their reply
-    void nodesRequest(
+    // Returns the number of nodes that we dispatched a request to
+    uint64_t nodes_request(
             std::string_view request_name,
             std::string_view message,
             const request_callback& callback);
-};
 
+  private:
+    cryptonote::core& core;
+
+    // The BLS aggregator can be called from multiple threads via the RPC server. Since we have a
+    // cache that can be concurrently written to, we guard that around a lock.
+    std::mutex mutex;
+    std::unordered_map<address, bls_rewards_response> rewards_response_cache;
+};
 }  // namespace eth
