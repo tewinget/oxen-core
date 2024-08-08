@@ -819,11 +819,7 @@ class service_node_list {
             version_2_l2_confirmations,
             count,
         };
-        static version_t get_version(cryptonote::hf /*hf_version*/) {
-            return version_t::version_2_l2_confirmations;
-        }
-
-        version_t version;
+        version_t version{version_t::version_2_l2_confirmations};
         uint64_t height;
         std::vector<service_node_pubkey_info> infos;
         std::vector<key_image_blacklist_entry> key_image_blacklist;
@@ -1157,8 +1153,13 @@ class service_node_list {
     state_t m_state;  // NOTE: Not in m_transient due to the non-trivial constructor. We can't
                       // blanket initialise using = {}; needs to be reset in ::reset(...) manually
 
-    // nodes that can't yet be liquidated; the .second value is the expiry block height at which we
-    // remove them (and thus allow liquidation):
+    // Nodes that can't yet be liquidated; The .second value is the expiry block height at which we
+    // remove them (and thus allow liquidation). This provides a reasonable buffer after a node has
+    // exited from the Oxen workchain for the operator to also exit themselves from the smart
+    // contract and avoid a liquidation penalty.
+    //
+    // This list of nodes is only populated with nodes that voluntary exited the network and _not_
+    // deregistrations.
     std::unordered_map<eth::bls_public_key, uint64_t> recently_expired_nodes;
 };
 

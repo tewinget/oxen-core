@@ -3929,7 +3929,6 @@ static service_node_list::state_serialized serialize_service_node_state_object(
         service_node_list::state_t const& state,
         bool only_serialize_quorums = false) {
     service_node_list::state_serialized result = {};
-    result.version = service_node_list::state_serialized::get_version(hf_version);
     result.height = state.height;
     result.unconfirmed_l2_txes = state.unconfirmed_l2_txes;
     result.block_leader = state.block_leader;
@@ -4760,87 +4759,22 @@ bool service_node_list::load(const uint64_t current_height) {
         return false;
     }
 
-    // NOTE: Deserialize long term state history
+    // NOTE: Deserialize long term state history (optional, if it doesn't exist- this node can't
+    // roll-back but this is not considered fatal. It will have to recompute the rollback by jumping
+    // back and processing blocks forward).
     uint64_t bytes_loaded = 0;
     auto& db = blockchain.db();
     cryptonote::db_rtxn_guard txn_guard{db};
     std::string blob;
     if (db.get_service_node_data(blob, true /*long_term*/)) {
         bytes_loaded += blob.size();
-        data_for_serialization data_in = {};
-        bool success = false;
         try {
+            data_for_serialization data_in = {};
             serialization::parse_binary(blob, data_in);
-            success = true;
+            for (state_serialized& entry : data_in.states)
+                m_transient.state_archive.emplace_hint(
+                        m_transient.state_archive.end(), this, std::move(entry));
         } catch (...) {
-        }
-
-        if (success && data_in.states.size()) {
-            // NOTE: Previously the quorum for the next state is derived from the
-            // state that's been updated from the next block. This is fixed in
-            // version_1.
-
-            // So, copy the quorum from (state.height-1) to (state.height), all
-            // states need to have their (height-1) which means we're missing the
-            // 10k-th interval and need to generate it based on the last state.
-
-            if (data_in.states[0].version == state_serialized::version_t::version_0) {
-                if ((data_in.states.back().height % STORE_LONG_TERM_STATE_INTERVAL) != 0) {
-                    log::warning(
-                            logcat,
-                            "Last serialised quorum height: {} in archive is unexpectedly not "
-                            "a "
-                            "multiple of: {}, regenerating state",
-                            data_in.states.back().height,
-                            STORE_LONG_TERM_STATE_INTERVAL);
-                    return false;
-                }
-
-                for (size_t i = data_in.states.size() - 1; i >= 1; i--) {
-                    state_serialized& serialized_entry = data_in.states[i];
-                    state_serialized& prev_serialized_entry = data_in.states[i - 1];
-
-                    if ((prev_serialized_entry.height % STORE_LONG_TERM_STATE_INTERVAL) == 0) {
-                        // NOTE: drop this entry, we have insufficient data to derive
-                        // sadly, do this as a one off and if we ever need this data we
-                        // need to do a full rescan.
-                        continue;
-                    }
-
-                    state_t entry{this, std::move(serialized_entry)};
-                    entry.height--;
-                    entry.quorums = quorum_for_serialization_to_quorum_manager(
-                            prev_serialized_entry.quorums);
-
-                    if ((serialized_entry.height % STORE_LONG_TERM_STATE_INTERVAL) == 0) {
-                        state_t long_term_state = entry;
-                        cryptonote::block const& block =
-                                db.get_block_from_height(long_term_state.height + 1);
-                        std::vector<cryptonote::transaction> txs = db.get_tx_list(block.tx_hashes);
-                        long_term_state.update_from_block(
-                                db,
-                                blockchain.nettype(),
-                                {} /*state_history*/,
-                                {} /*state_archive*/,
-                                {} /*alt_states*/,
-                                block,
-                                txs,
-                                nullptr /*my_keys*/);
-
-                        entry.service_nodes_infos = {};
-                        entry.key_image_blacklist = {};
-                        entry.only_loaded_quorums = true;
-                        m_transient.state_archive.emplace_hint(
-                                m_transient.state_archive.begin(), std::move(long_term_state));
-                    }
-                    m_transient.state_archive.emplace_hint(
-                            m_transient.state_archive.begin(), std::move(entry));
-                }
-            } else {
-                for (state_serialized& entry : data_in.states)
-                    m_transient.state_archive.emplace_hint(
-                            m_transient.state_archive.end(), this, std::move(entry));
-            }
         }
     }
 
@@ -4891,32 +4825,15 @@ bool service_node_list::load(const uint64_t current_height) {
             return false;
         }
 
-        if (data_in.states[0].version == state_serialized::version_t::version_0) {
-            for (size_t i = last_index; i >= 1; i--) {
-                state_serialized& serialized_entry = data_in.states[i];
-                state_serialized& prev_serialized_entry = data_in.states[i - 1];
-                state_t entry{this, std::move(serialized_entry)};
-                entry.quorums =
-                        quorum_for_serialization_to_quorum_manager(prev_serialized_entry.quorums);
-                entry.height--;
-                if (i == last_index)
-                    m_state = std::move(entry);
-                else
-                    m_transient.state_archive.emplace_hint(
-                            m_transient.state_archive.end(), std::move(entry));
-            }
-        } else {
-            size_t const last_index = data_in.states.size() - 1;
-            for (size_t i = 0; i < last_index; i++) {
-                state_serialized& entry = data_in.states[i];
-                if (!entry.block_hash)
-                    entry.block_hash = blockchain.get_block_id_by_height(entry.height);
-                m_transient.state_history.emplace_hint(
-                        m_transient.state_history.end(), this, std::move(entry));
-            }
-
-            m_state = {this, std::move(data_in.states[last_index])};
+        for (size_t i = 0; i < last_index; i++) {
+            state_serialized& entry = data_in.states[i];
+            if (!entry.block_hash)
+                entry.block_hash = blockchain.get_block_id_by_height(entry.height);
+            m_transient.state_history.emplace_hint(
+                    m_transient.state_history.end(), this, std::move(entry));
         }
+
+        m_state = {this, std::move(data_in.states[last_index])};
     }
 
     // NOTE: Load uptime proof data
