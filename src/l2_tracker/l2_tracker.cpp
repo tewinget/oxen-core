@@ -1,24 +1,21 @@
 #include "l2_tracker.h"
 
+#include <common/bigint.h>
+#include <common/guts.h>
+#include <common/lock.h>
+#include <crypto/crypto.h>
+#include <cryptonote_basic/cryptonote_format_utils.h>
+#include <cryptonote_core/cryptonote_core.h>
+#include <fmt/color.h>
+#include <logging/oxen_logger.h>
 #include <oxenmq/oxenmq.h>
 
 #include <chrono>
 #include <concepts>
-#include <thread>
 #include <utility>
 #include <variant>
 
-#include "common/bigint.h"
-#include "common/guts.h"
-#include "common/lock.h"
 #include "contracts.h"
-#include "crypto/crypto.h"
-#include "cryptonote_basic/cryptonote_format_utils.h"
-#include "cryptonote_config.h"
-#include "cryptonote_core/cryptonote_core.h"
-#include "fmt/color.h"
-#include "l2_tracker/events.h"
-#include "logging/oxen_logger.h"
 
 namespace eth {
 

@@ -1,20 +1,17 @@
 #include "rewards_contract.h"
 
+#include <common/bigint.h>
+#include <common/guts.h>
+#include <common/string_util.h>
+#include <crypto/crypto.h>
+#include <cryptonote_config.h>
+#include <logging/oxen_logger.h>
+
+#include <ethyl/provider.hpp>
 #include <ethyl/utils.hpp>
-
-#include "common/bigint.h"
-#include "common/guts.h"
-#include "common/string_util.h"
-#include "contracts.h"
-#include "crypto/crypto.h"
-#include "crypto/hash.h"
-#include "cryptonote_config.h"
-#include "logging/oxen_logger.h"
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast"
 #include <nlohmann/json.hpp>
-#pragma GCC diagnostic pop
+
+#include "contracts.h"
 
 namespace eth {
 

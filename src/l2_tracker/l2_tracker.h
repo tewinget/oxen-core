@@ -1,27 +1,24 @@
 #pragma once
 
+#include <cryptonote_config.h>
 #include <oxenmq/oxenmq.h>
 
-#include <concepts>
+#include <ethyl/provider.hpp>
 #include <forward_list>
 #include <iterator>
 #include <shared_mutex>
 #include <unordered_set>
 
-#include "crypto/crypto.h"
-#include "crypto/hash.h"
-#include "cryptonote_config.h"
-#include "l2_tracker/events.h"
 #include "recent_events.h"
 #include "rewards_contract.h"
-
-namespace oxenmq {
-class OxenMQ;
-}
 
 namespace cryptonote {
 class core;
 }
+
+namespace crypto {
+struct public_key;
+};
 
 namespace eth {
 
@@ -171,5 +168,4 @@ class L2Tracker {
     // Must hold mutex (in exclusive mode) while calling!
     void prune_old_states();
 };
-
 }  // namespace eth
