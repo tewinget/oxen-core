@@ -558,5 +558,4 @@ std::vector<uint64_t> RewardsContract::get_non_signers(
 
     return result;
 }
-
 }  // namespace eth
