@@ -11,19 +11,27 @@ namespace oxen::sent {
 using addrmap_t = std::unordered_map<cryptonote::account_public_address, eth::address>;
 using conv_ratio_t = std::pair<std::uint8_t, std::uint8_t>;
 using bonus_map_t = std::unordered_map<eth::address, std::uint64_t>;
+using proper_ed_keys_t = std::unordered_map<crypto::public_key, crypto::ed25519_public_key>;
+using bls_keys_t = std::unordered_map<crypto::ed25519_public_key, eth::bls_public_key>;
 
 namespace devnet {
     const addrmap_t addresses;
+    const proper_ed_keys_t proper_ed_keys;
+    const bls_keys_t bls_keys;
     const conv_ratio_t conv_ratio;
     const bonus_map_t transition_bonus;
 }  // namespace devnet
 namespace testnet {
     const addrmap_t addresses;
+    const proper_ed_keys_t proper_ed_keys;
+    const bls_keys_t bls_keys;
     const conv_ratio_t conv_ratio;
     const bonus_map_t transition_bonus;
 }  // namespace testnet
 namespace mainnet {
     const addrmap_t addresses;
+    const proper_ed_keys_t proper_ed_keys;
+    const bls_keys_t bls_keys;
     const conv_ratio_t conv_ratio;
     const bonus_map_t transition_bonus;
 }  // namespace mainnet
@@ -46,12 +54,26 @@ const bonus_map_t& transition_bonus(network_type net) {
                                         : mainnet::transition_bonus;
 }
 
+const proper_ed_keys_t proper_ed_keys(network_type net) {
+    return net == network_type::DEVNET  ? devnet::proper_ed_keys
+         : net == network_type::TESTNET ? testnet::proper_ed_keys
+                                        : mainnet::proper_ed_keys;
+}
+
+const bls_keys_t bls_keys(network_type net) {
+    return net == network_type::DEVNET  ? devnet::bls_keys
+         : net == network_type::TESTNET ? testnet::bls_keys
+                                        : mainnet::bls_keys;
+}
+
 void transition(
         service_nodes::service_node_list::state_t& snl_state,
         cryptonote::BlockchainSQLite& sql,
         network_type net) {
     const auto& conv_ratio = conversion_ratio(net);
     const auto& sent_addrs = addresses(net);
+    const auto& remap_ed_keys = proper_ed_keys(net);
+    const auto& node_bls_keys = bls_keys(net);
 
     auto oxen_to_sent = [&conv_ratio](uint64_t oxen) {
         return oxen * conv_ratio.first / conv_ratio.second;
@@ -68,7 +90,7 @@ void transition(
     // converted SENT address).
 
     std::vector<cryptonote::batch_sn_payment> converted_rewards;
-    auto [accrued_addr, accrued_value] = sql.get_all_accrued_earnings();
+    auto [accrued_addr, accrued_value] = sql.get_all_accrued_rewards();
     assert(accrued_addr.size() == accrued_value.size());
     for (size_t i = 0; i < accrued_addr.size(); i++) {
         auto& addr = accrued_addr[i];
@@ -77,9 +99,10 @@ void transition(
         cryptonote::address_parse_info api;
         if (!get_account_address_from_str(api, net, addr) || api.has_payment_id ||
             api.is_subaddress)
-            throw std::runtime_error{
-                    "Unable to perform SENT transition: batching database contains invalid, unparseable, or non-OXEN address '{}'"_format(
-                            addr)};
+            throw std::runtime_error{fmt::format(
+                    "Unable to perform SENT transition: batching database contains invalid, "
+                    "unparseable, or non-OXEN address '{}'",
+                    addr)};
         const auto& oxen_addr = api.address;
 
         auto it = sent_addrs.find(oxen_addr);
@@ -136,21 +159,28 @@ void transition(
     // staking funds), we mark it as a zombie, which means no contributors and a zero stake.  This
     // zombification also immediately releases any OXEN (The testing swarms will take care of
     // ejecting these off the network over the blocks after the fork).
-    //
     std::vector<std::pair<crypto::public_key, const service_nodes::service_node_info*>> sorted_sns;
     sorted_sns.reserve(snl_state.service_nodes_infos.size());
-    for (const auto& [pk, sn] : snl_state.service_nodes_infos)
+    for (const auto& [pk, sn] : snl_state.service_nodes_infos) {
         sorted_sns.emplace_back(pk, sn.get());
+    }
 
     std::sort(sorted_sns.begin(), sorted_sns.end(), [](auto& a, auto& b) {
         return std::tie(a.second->registration_height, a.first) <
                std::tie(b.second->registration_height, b.first);
     });
 
+    // Re-key any nodes which were keyed on an old monero-style "ed" key.  If the key is not
+    // found in the `proper_ed_keys` map, it does not need remapped (i.e. is proper ed already).
+    std::unordered_map<crypto::public_key, crypto::ed25519_public_key> remapped = remap_ed_keys;
+    for (const auto& [key, _ignore] : sorted_sns)
+        if (!remapped.contains(key))
+            remapped[key] = crypto::ed25519_public_key{key};
+
     // This will contain our *new* list of service nodes, with only SENT contributors/stakes
     // converted from `sorted_sns`.
     std::vector<std::pair<crypto::public_key, std::shared_ptr<service_nodes::service_node_info>>>
-            living_sns;
+            post_transition_sns;
 
     std::unordered_set<crypto::public_key> zombies;
 
@@ -255,13 +285,15 @@ void transition(
         auto new_state = std::make_shared<service_nodes::service_node_info>(*sni);
         auto& sn = *new_state;
 
-        // Compress the [0, 18446744073709551612] value into a [0, 10000] value:
-        sn.portions_for_operator = sni->portions_for_operator / 184467440737095;
-
-        auto& stakers =
-                sn.contributors.emplace<std::vector<service_nodes::service_node_info::sent_contribution>>();
 
         if (!zombie) {
+            sn.version = service_nodes::service_node_info::version_t::v8_ethereum_address;
+            // Compress the [0, 18446744073709551612] value into a [0, 10000] value:
+            sn.portions_for_operator = sni->portions_for_operator / 184467440737095;
+
+            auto& stakers =
+                    sn.contributors.emplace<std::vector<service_nodes::service_node_info::sent_contribution>>();
+
             sn.total_contributed = staking_requirement;
             sn.total_reserved = staking_requirement;
             sn.staking_requirement = staking_requirement;
@@ -293,6 +325,9 @@ void transition(
                 }
             }
 
+            sn.bls_public_key = node_bls_keys.at(remapped[pk]); // operator [] and const being weird
+            post_transition_sns.emplace_back(crypto::public_key{remapped[pk]}, new_state);
+
         } else {
             // This SN is a zombie, i.e. its dying and will get deregged shortly after the fork.
             // We're leaving it technically registered, but just a husk: it has no contributors and
@@ -301,24 +336,30 @@ void transition(
             sn.total_contributed = 0;
             sn.total_reserved = 0;
             sn.staking_requirement = 0;
+            post_transition_sns.emplace_back(pk, new_state);
         }
     }
 
-    for (const crypto::key_image& img : permanent_stakes)
-    {
-        // TODO: need a reference to blockchain db
-
-        // TODO: open blockchain db tx
-
-        // db_tx.add_spent_key(img);
-    }
-
-    // TODO: set BLS keys
-    // TODO: replace primary pubkey with ed25519 pubkey if different
-}
-
-// TODO: *permanently* blacklist the key images of all converted stakes (but not
+// First, clear the old key image blacklist so we don't leave unconverted stakes locked
+// any longer than necessary (and can re-use the blacklist for perma-locks)
+//
+// Then *permanently* blacklist the key images of all converted stakes (but not
 // unconverted ones), so that you can't go back to the OXEN wallet and then convert
 // them through the external SENT conversion process.
+    snl_state.key_image_blacklist.clear();
+    for (const crypto::key_image& img : permanent_stakes)
+    {
+        auto& bl_entry = snl_state.key_image_blacklist.emplace_back();
+        bl_entry.key_image = img;
+    }
+
+    if (snl_state.service_nodes_infos.size() != post_transition_sns.size())
+        throw std::runtime_error{"post-transition should have same number of service_node_infos!"};
+
+    snl_state.service_nodes_infos.clear();
+    for (auto& [pk, sni] : post_transition_sns)
+        snl_state.service_nodes_infos[pk] = std::move(sni);
+}
+
 
 }  // namespace oxen::sent
