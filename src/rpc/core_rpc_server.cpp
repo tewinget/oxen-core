@@ -2540,8 +2540,8 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
     rpc.response_hex["address"] = response.addr;
     rpc.response["amount"] = response.amount;
     rpc.response["height"] = response.height;
-    rpc.response_hex["msg_to_sign"] =
-            oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
+    rpc.response_hex["msg_to_sign"] = std::string_view(reinterpret_cast<char const*>(
+            response.msg_to_sign.data(), response.msg_to_sign.size()));
     rpc.response_hex["signature"] = response.signature;
     rpc.response["non_signer_indices"] = m_core.blockchain.l2_tracker().get_non_signers(
             response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
@@ -2553,8 +2553,8 @@ void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) 
     rpc.response["status"] = STATUS_OK;
     rpc.response["timestamp"] = response.timestamp;
     rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
-    rpc.response_hex["msg_to_sign"] =
-            oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
+    rpc.response_hex["msg_to_sign"] = std::string_view(reinterpret_cast<char const*>(
+            response.msg_to_sign.data(), response.msg_to_sign.size()));
     rpc.response_hex["signature"] = response.signature;
     rpc.response["non_signer_indices"] = m_core.blockchain.l2_tracker().get_non_signers(
             response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
