@@ -100,19 +100,20 @@ namespace {
             const bls_public_key& remove_pk,
             uint64_t unix_timestamp) {
         // TODO(doyle): See BLSSigner::proofOfPossession
-        crypto::hash tag{};
         std::vector<uint8_t> result;
         if (type == bls_aggregator::removal_type::normal) {
-            tag = BLSSigner::buildTagHash(BLSSigner::removalTag, nettype);
+            crypto::hash tag = BLSSigner::buildTagHash(BLSSigner::removalTag, nettype);
+            auto unix_timestamp_be = tools::encode_integer_be<32>(unix_timestamp);
             result.reserve(tag.size() + remove_pk.size() + sizeof(unix_timestamp));
             result.insert(result.end(), tag.begin(), tag.end());
             result.insert(result.end(), remove_pk.begin(), remove_pk.end());
-            auto unix_timestamp_it = reinterpret_cast<uint8_t*>(&unix_timestamp);
             result.insert(
-                    result.end(), unix_timestamp_it, unix_timestamp_it + sizeof(unix_timestamp));
+                    result.end(),
+                    reinterpret_cast<uint8_t*>(unix_timestamp_be.begin()),
+                    reinterpret_cast<uint8_t*>(unix_timestamp_be.end()));
         } else {
             assert(type == bls_aggregator::removal_type::liquidate);
-            tag = BLSSigner::buildTagHash(BLSSigner::liquidateTag, nettype);
+            crypto::hash tag = BLSSigner::buildTagHash(BLSSigner::liquidateTag, nettype);
             result.reserve(tag.size() + remove_pk.size());
             result.insert(result.end(), tag.begin(), tag.end());
             result.insert(result.end(), remove_pk.begin(), remove_pk.end());
