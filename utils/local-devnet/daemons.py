@@ -276,9 +276,6 @@ class Daemon(RPCDaemon):
     def get_removal_liquidation_request(self, bls_key, liquidate = False):
         return self.json_rpc("bls_removal_liquidation_request", {"bls_pubkey": bls_key, "liquidate": liquidate}).json()
 
-    def get_liquidation_request(self, bls_key):
-        return self.json_rpc("bls_liquidation_request", {"bls_pubkey": bls_key}).json()
-
     def get_service_nodes(self):
         return self.json_rpc("get_service_nodes").json()
 
