@@ -3405,6 +3405,57 @@ void Blockchain::flush_invalid_blocks() {
     m_invalid_blocks.clear();
 }
 //------------------------------------------------------------------
+std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
+{
+    // TODO: Just calculate an acceleration structure on block receive.
+    std::vector<eth::bls_public_key> bls_pubkeys_in_snl;
+    std::vector<eth::bls_public_key> bls_pubkeys_in_smart_contract;
+    {
+        // NOTE: Extract all the service nodes from the Oxen work-chain _excluding_ those that have
+        // expired (removal request, e.g. voluntarily exited). Expired nodes are removable and can
+        // be removed by aggregating a signature (or without if the wait time has elapsed) from the
+        // network to be removed from the smart contract (which gets witnessed by Oxen thereby
+        // removing it from the workchain).
+        const cryptonote::block top_block = m_db->get_top_block();
+        const uint64_t top_height = top_block.get_height();
+
+        auto sns = service_node_list.get_service_node_list_state();
+        bls_pubkeys_in_snl.reserve(sns.size());
+        for (const auto& sni : sns) {
+            if (!sni.info->is_expired(top_height))
+                bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
+        }
+
+        // NOTE: Extract all service nodes from the smart contract
+        // TODO: This is still using the slow linked-list walk.
+        bls_pubkeys_in_smart_contract = m_l2_tracker->get_all_bls_public_keys(top_block.l2_height);
+    }
+
+    std::vector<eth::bls_public_key> result;
+
+    // NOTE: Find BLS keys that are in the smart contract but not in the service node list generated
+    // from Oxen (note that the Oxen list _excludes_ expired nodes, e.g. these nodes exist on the
+    // smart contract but not in the `bls_pbukeys_in_snl` list that we apply the
+    // set_difference against).
+    //
+    // In summary, generate a list with:
+    //
+    //   1. Nodes in the smart contract but not the oxen service node list
+    //   2. Include expired nodes from the oxen service node list that are also in the smart
+    //   contract. In practice _all_ expired nodes are guaranteed to be in the smart contract lest
+    //   there is a critical consensus error. TODO: Verify the 'guaranteed' claims.
+    //
+    std::sort(bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end());
+    std::sort(bls_pubkeys_in_smart_contract.begin(), bls_pubkeys_in_smart_contract.end());
+    std::set_difference(
+            bls_pubkeys_in_smart_contract.begin(),
+            bls_pubkeys_in_smart_contract.end(),
+            bls_pubkeys_in_snl.begin(),
+            bls_pubkeys_in_snl.end(),
+            std::back_inserter(result));
+    return result;
+}
+//------------------------------------------------------------------
 bool Blockchain::have_block(const crypto::hash& id) const {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};

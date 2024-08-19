@@ -305,10 +305,20 @@ struct service_node_info  // registration information
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
     bool is_decommissioned() const { return active_since_height < 0; }
-    bool is_active() const { return is_fully_funded() && !is_decommissioned(); }
+
+    // This function calculates a valid expiry value when HF >= 11
+    //
+    // 'block_height' should be the block number of the latest block in the chain (not the height of
+    // the blockchain, e.g. blockchain.get_current_blockchain_height() - 1)
+    bool is_expired(uint64_t block_height) const { return requested_unlock_height != 0 && block_height > requested_unlock_height; }
+
+    bool is_active(uint64_t block_height) const {
+        return is_fully_funded() && !is_decommissioned() && !is_expired(block_height);
+    }
+
     bool is_payable(uint64_t at_height, cryptonote::network_type nettype) const {
         auto& netconf = get_config(nettype);
-        return is_active() &&
+        return is_active(at_height) &&
                at_height >= active_since_height + netconf.SERVICE_NODE_PAYABLE_AFTER_BLOCKS;
     }
 
@@ -609,7 +619,7 @@ class service_node_list {
                 nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height);
 
         for (const auto& pk_info : m_state.service_nodes_infos) {
-            if (!pk_info.second->is_active())
+            if (!pk_info.second->is_active(m_state.height))
                 continue;
             auto it = proofs.find(pk_info.first);
             if (it == proofs.end())
@@ -1060,8 +1070,6 @@ class service_node_list {
         return m_state.is_premature_unlock(nettype, hf_version, block_height, tx);
     }
 
-    bool is_recently_expired(const eth::bls_public_key& node_bls_pubkey) const;
-
     /**
      * @brief gets the L2 votes (confirm or deny) for all current pending unconfirmed L2 state
      * changes.
@@ -1152,15 +1160,6 @@ class service_node_list {
 
     state_t m_state;  // NOTE: Not in m_transient due to the non-trivial constructor. We can't
                       // blanket initialise using = {}; needs to be reset in ::reset(...) manually
-
-    // Nodes that can't yet be liquidated; The .second value is the expiry block height at which we
-    // remove them (and thus allow liquidation). This provides a reasonable buffer after a node has
-    // exited from the Oxen workchain for the operator to also exit themselves from the smart
-    // contract and avoid a liquidation penalty.
-    //
-    // This list of nodes is only populated with nodes that voluntary exited the network and _not_
-    // deregistrations.
-    std::unordered_map<eth::bls_public_key, uint64_t> recently_expired_nodes;
 };
 
 struct staking_components {

@@ -613,15 +613,8 @@ class core final {
     eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 
     bool is_node_removable(const eth::bls_public_key& node_bls_pubkey);
-    bool is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey);
 
-    /**
-     * @brief get a snapshot of the service node list state and compares to the smart contract
-     * state, returns any in the smart contract that are not in the service node list
-     *
-     * @return all the service nodes bls keys that should be removed from the smart contract
-     */
-    std::vector<eth::bls_public_key> get_removable_nodes();
+    bool is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey);
 
     /**
      * @brief Add a service node vote

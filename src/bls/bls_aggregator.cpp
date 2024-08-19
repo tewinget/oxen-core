@@ -99,25 +99,25 @@ namespace {
             bls_aggregator::removal_type type,
             const bls_public_key& remove_pk,
             uint64_t unix_timestamp) {
-        // TODO(doyle): See BLSSigner::proofOfPossession
-        std::vector<uint8_t> result;
+        auto unix_timestamp_be = tools::encode_integer_be<32>(unix_timestamp);
+        crypto::hash tag{};
+
         if (type == bls_aggregator::removal_type::normal) {
-            crypto::hash tag = BLSSigner::buildTagHash(BLSSigner::removalTag, nettype);
-            auto unix_timestamp_be = tools::encode_integer_be<32>(unix_timestamp);
-            result.reserve(tag.size() + remove_pk.size() + sizeof(unix_timestamp));
-            result.insert(result.end(), tag.begin(), tag.end());
-            result.insert(result.end(), remove_pk.begin(), remove_pk.end());
-            result.insert(
-                    result.end(),
-                    reinterpret_cast<uint8_t*>(unix_timestamp_be.begin()),
-                    reinterpret_cast<uint8_t*>(unix_timestamp_be.end()));
+            tag = BLSSigner::buildTagHash(BLSSigner::removalTag, nettype);
         } else {
             assert(type == bls_aggregator::removal_type::liquidate);
-            crypto::hash tag = BLSSigner::buildTagHash(BLSSigner::liquidateTag, nettype);
-            result.reserve(tag.size() + remove_pk.size());
-            result.insert(result.end(), tag.begin(), tag.end());
-            result.insert(result.end(), remove_pk.begin(), remove_pk.end());
+            tag = BLSSigner::buildTagHash(BLSSigner::liquidateTag, nettype);
         }
+
+        // TODO(doyle): See BLSSigner::proofOfPossession
+        std::vector<uint8_t> result;
+        result.reserve(tag.size() + remove_pk.size() + unix_timestamp_be.size());
+        result.insert(result.end(), tag.begin(), tag.end());
+        result.insert(result.end(), remove_pk.begin(), remove_pk.end());
+        result.insert(
+                result.end(),
+                reinterpret_cast<uint8_t*>(unix_timestamp_be.begin()),
+                reinterpret_cast<uint8_t*>(unix_timestamp_be.end()));
         return result;
     }
 
@@ -626,16 +626,25 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
 
 void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type type) const {
     oxen::log::trace(logcat, "Received omq {} signature request", type == removal_type::normal ? "removal" : "liquidation");
-    bls_removal_request removal_request = extract_removal_request(m);
-    if (!removal_request.good)
+    bls_removal_request request = extract_removal_request(m);
+    if (!request.good)
         return;
 
-    // right not its approving everything
-    if (!core.is_node_removable(removal_request.remove_pk)) {
+    bool removable = true;
+    switch (type) {
+        case removal_type::normal: {
+            removable = core.is_node_removable(request.remove_pk);
+        } break;
+        case removal_type::liquidate: {
+             removable = core.is_node_liquidatable(request.remove_pk);
+        } break;
+    }
+
+    if (!removable) {
         m.send_reply(
                 "403",
                 "Forbidden: The BLS pubkey {} is not currently {}."_format(
-                        removal_request.remove_pk,
+                        request.remove_pk,
                         type == removal_type::normal ? "removable" : "liquidatable"));
         return;
     }
@@ -645,12 +654,12 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
     std::vector<uint8_t> msg = get_removal_msg_to_sign(
             core.get_nettype(),
             type,
-            removal_request.remove_pk,
-            removal_request.timestamp.count());
+            request.remove_pk,
+            request.timestamp.count());
     bls_signature sig = signer.signMsg(msg);
 
     oxenc::bt_dict_producer d;
-    d.append("remove", tools::view_guts(removal_request.remove_pk));  // BLS pubkey to remove
+    d.append("remove", tools::view_guts(request.remove_pk));  // BLS pubkey to remove
     d.append("signature", tools::view_guts(sig));  // Signs over the removal key and timestamp
     m.send_reply("200", std::move(d).str());
 }
@@ -659,7 +668,8 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
 // - the endpoint they go to;
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
-bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(const bls_public_key& bls_pubkey, removal_type type) {
+bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
+        const bls_public_key& bls_pubkey, removal_type type) {
 
     // NOTE: Validate the arguments
     if (!bls_pubkey) {
@@ -669,26 +679,26 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(con
     }
 
     // NOTE: The OMQ endpoint to hit
+    bool removable = false;
     std::string_view endpoint = "";
     switch (type) {
         case removal_type::normal: {
-            endpoint = OMQ_BLS_REMOVAL_ENDPOINT;
-            if (!core.is_node_removable(bls_pubkey)) {
-                throw oxen::traced<std::invalid_argument>(
-                        "Remove request for {} at height {} is valid. Node cannot "
-                        "be liquidated yet. Request rejected"_format(
-                                bls_pubkey, core.blockchain.get_current_blockchain_height()));
-            }
+            endpoint  = OMQ_BLS_REMOVAL_ENDPOINT;
+            removable = core.is_node_removable(bls_pubkey);
         } break;
         case removal_type::liquidate: {
-            endpoint = OMQ_BLS_LIQUIDATE_ENDPOINT;
-            if (!core.is_node_liquidatable(bls_pubkey)) {
-                throw oxen::traced<std::invalid_argument>(
-                        "Liquidation request for {} at height {} is valid. Node cannot "
-                        "be liquidated yet. Request rejected"_format(
-                                bls_pubkey, core.blockchain.get_current_blockchain_height()));
-            }
+            endpoint  = OMQ_BLS_LIQUIDATE_ENDPOINT;
+            removable = core.is_node_liquidatable(bls_pubkey);
         } break;
+    }
+
+    if (!removable) {
+        throw oxen::traced<std::invalid_argument>(
+                "{} request for {} at height {} is valid. Node cannot "
+                "be removed yet. Request rejected"_format(
+                        type == removal_type::normal ? "Exit" : "Liquidation",
+                        bls_pubkey,
+                        core.blockchain.get_current_blockchain_height()));
     }
 
     bls_removal_liquidation_response result;

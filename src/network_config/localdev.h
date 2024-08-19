@@ -57,7 +57,10 @@ inline constexpr network_config config{
                 mainnet::config.HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,
         .STORE_RECENT_REWARDS = mainnet::config.STORE_RECENT_REWARDS,
-        .ETH_REMOVAL_BUFFER = testnet::config.ETH_REMOVAL_BUFFER,
+        // Only permit 1 block because we're running an integration test
+        // locally and pulse quorums take time to create blocks which bloat the
+        // test duration.
+        .ETH_REMOVAL_BUFFER = 1,
         .ETHEREUM_CHAIN_ID = 31337,
         .ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv,
         .ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv,

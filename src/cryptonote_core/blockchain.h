@@ -1165,6 +1165,24 @@ class Blockchain {
      */
     void flush_invalid_blocks();
 
+    /**
+     * @brief Get the list of nodes that are removable from the network by creating a diff comparing
+     * the nodes that are present in the smart contract but _not_ in the Oxen service node list.
+     *
+     * @return all the service nodes bls keys that should be removed from the smart contract
+     *
+     * TODO: This API is awkward right now because we generate a full-diff of nodes to remove but we
+     * only use this in an RPC call that selects 1 BLS public key at a time to aggregate a signature
+     * for removal. However we were interested in providing a batch API where the network aggregates
+     * a signature over a batch of nodes to liquidate. This would reduce churn but this also makes
+     * this function in its current form more appropriate for the problem we're trying to solve
+     * sensible to call for that purpose.
+     *
+     * This TODO is a reminder that we should utilise the full output of this function instead of
+     * using it in a single-object-at-a-time mindset.
+     */
+    std::vector<eth::bls_public_key> get_removable_nodes() const;
+
     tx_memory_pool& tx_pool;
 
 #ifndef IN_UNIT_TESTS

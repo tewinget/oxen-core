@@ -174,6 +174,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
             candidates.insert((*it)->validators.begin(), (*it)->validators.end());
 
         log::debug(logcat, "Have {} SN candidates", candidates.size());
+        uint64_t top_height = core.blockchain.get_current_blockchain_height() - 1;
 
         // {x25519 pubkey, connect string, version}
         std::vector<std::tuple<std::string, std::string, decltype(proof_info{}.proof->version)>>
@@ -182,8 +183,8 @@ E get_enum(const bt_dict &d, const std::string &key) {
         core.service_node_list.for_each_service_node_info_and_proof(
                 candidates.begin(),
                 candidates.end(),
-                [&remotes](const auto& pubkey, const auto& info, const auto& proof) {
-                    if (!info.is_active()) {
+                [&remotes, top_height](const auto& pubkey, const auto& info, const auto& proof) {
+                    if (!info.is_active(top_height)) {
                         log::trace(logcat, "Not include inactive node {}", pubkey);
                         return;
                     }
@@ -343,11 +344,12 @@ E get_enum(const bt_dict &d, const std::string &key) {
             }
 
             // Lookup the x25519 and ZMQ connection string for all peers
+            uint64_t top_height = qnet.core.blockchain.get_current_blockchain_height() - 1;
             qnet.core.service_node_list.for_each_service_node_info_and_proof(
                     need_remotes.begin(),
                     need_remotes.end(),
-                    [this](const auto& pubkey, const auto& info, const auto& proof) {
-                        if (info.is_active() && proof.pubkey_x25519 && proof.proof->qnet_port &&
+                    [this, top_height](const auto& pubkey, const auto& info, const auto& proof) {
+                        if (info.is_active(top_height) && proof.pubkey_x25519 && proof.proof->qnet_port &&
                             proof.proof->public_ip)
                             remotes.emplace(
                                     pubkey,

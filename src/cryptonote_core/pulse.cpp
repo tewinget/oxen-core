@@ -1280,10 +1280,14 @@ namespace {
         if (!service_nodes::verify_pulse_quorum_sizes(context.prepare_for_round.quorum)) {
             log::info(
                     logcat,
-                    "{}Insufficient Service Nodes to execute Pulse on height {}, we require a PoW "
-                    "miner block. Sleeping until next block.",
+                    "{}There are not enough nodes to execute Pulse for height {}. PoW block is "
+                    "required. Sleeping until next block.\n  Workers: {} (required 1)\n  "
+                    "Validators: {} (required {})",
                     log_prefix(context),
-                    context.wait_for_next_block.height);
+                    context.wait_for_next_block.height,
+                    context.prepare_for_round.quorum.workers.size(),
+                    context.prepare_for_round.quorum.validators.size(),
+                    service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
             return goto_wait_for_next_block_and_clear_round_data(context);
         }
 
@@ -1586,7 +1590,11 @@ namespace {
         }
 
         std::shared_ptr<const service_nodes::service_node_info> info = list_state[0].info;
-        if (!info->is_active()) {
+
+        // NOTE: We check if the node at 'key' will be active in the next height (e.g. they are
+        // still going to be active to be able to generate the next pulse block).
+        uint64_t next_height = blockchain.get_current_blockchain_height();
+        if (!info->is_active(next_height)) {
             log::warning(
                     logcat,
                     "{}Block producer (us) is not an active service node, waiting until next round",

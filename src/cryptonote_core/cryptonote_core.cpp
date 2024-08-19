@@ -451,7 +451,8 @@ static std::string time_ago_str(time_t now, time_t then) {
 // Returns a bool on whether the service node is currently active
 bool core::is_active_sn() const {
     auto info = get_my_sn_info();
-    return (info && info->is_active());
+    uint64_t top_height = blockchain.get_current_blockchain_height() - 1;
+    return (info && info->is_active(top_height));
 }
 
 // Returns the service nodes info
@@ -468,12 +469,13 @@ std::shared_ptr<const service_nodes::service_node_info> core::get_my_sn_info() c
 // Returns a string for systemd status notifications such as:
 // Height: 1234567, SN: active, proof: 55m12s, storage: 4m48s, lokinet: 47s
 std::string core::get_status_string() const {
+    uint64_t top_height = blockchain.get_current_blockchain_height() - 1;
     std::string s;
     s.reserve(128);
     s += 'v';
     s += OXEN_VERSION_STR;
     s += "; Height: ";
-    s += std::to_string(blockchain.get_current_blockchain_height());
+    s += std::to_string(top_height + 1);
     s += ", SN: ";
     if (!service_node())
         s += "no";
@@ -486,7 +488,7 @@ std::string core::get_status_string() const {
             auto& info = *states[0].info;
             if (!info.is_fully_funded())
                 s += "awaiting contr.";
-            else if (info.is_active())
+            else if (info.is_active(top_height))
                 s += "active";
             else if (info.is_decommissioned())
                 s += "decomm.";
@@ -1166,57 +1168,52 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     quorumnet_init(*this, m_quorumnet_state);
 }
 
-std::vector<eth::bls_public_key> core::get_removable_nodes() {
-    // FIXME: this feels out of place here; move to blockchain.h/cpp!
-    std::vector<eth::bls_public_key> bls_pubkeys_in_snl;
-    uint64_t l2_height;
-
-    {
-        std::lock_guard lock{blockchain};
-
-        auto sns = service_node_list.get_service_node_list_state();
-        auto oxen_height = blockchain.get_current_blockchain_height() - 1;
-
-        bls_pubkeys_in_snl.reserve(sns.size());
-        for (const auto& sni : sns)
-            bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
-
-        std::vector<cryptonote::block> blocks;
-        if (!blockchain.get_blocks(oxen_height, 1, blocks)) {
-            std::string msg =
-                    "Failed to get the latest block at {} to determine the removable Service Nodes"_format(
-                            oxen_height);
-            log::error(logcat, "{}", msg);
-            throw oxen::traced<std::runtime_error>{std::move(msg)};
-        }
-        l2_height = blocks[0].l2_height;
-    }
-
-    auto bls_pubkeys_in_smart_contract = blockchain.l2_tracker().get_all_bls_public_keys(l2_height);
-
-    std::vector<eth::bls_public_key> removable_nodes;
-
-    // Find BLS keys that are in the smart contract but not in the service node list
-    std::sort(bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end());
-    std::sort(bls_pubkeys_in_smart_contract.begin(), bls_pubkeys_in_smart_contract.end());
-    std::set_difference(
-            bls_pubkeys_in_smart_contract.begin(),
-            bls_pubkeys_in_smart_contract.end(),
-            bls_pubkeys_in_snl.begin(),
-            bls_pubkeys_in_snl.end(),
-            std::back_inserter(removable_nodes));
-    return removable_nodes;
-}
-
 bool core::is_node_removable(const eth::bls_public_key& node_bls_pubkey) {
-    auto removable_nodes = get_removable_nodes();
+    auto removable_nodes = blockchain.get_removable_nodes();
     return std::find(removable_nodes.begin(), removable_nodes.end(), node_bls_pubkey) !=
            removable_nodes.end();
 }
 
 bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
-    return is_node_removable(node_bls_pubkey) &&
-           !service_node_list.is_recently_expired(node_bls_pubkey);
+    bool result = false;
+    if (!is_node_removable(node_bls_pubkey))
+        return result;
+
+    // NOTE: Node exists in the smart contract but not the oxen service node
+    // list, it's been deregistered _OR_ it's expired (voluntarily exited, but hasn't removed
+    // themselves from the list).
+
+    // TODO: Just calculate an acceleration structure on block receive.
+    // NOTE: Lookup SN info for the bls key
+    crypto::public_key snode_key = service_node_list.public_key_lookup(node_bls_pubkey);
+    std::vector<service_nodes::service_node_pubkey_info> sn_info_list = service_node_list.get_service_node_list_state({snode_key});
+    if (sn_info_list.empty()) {
+        // NOTE: This service node does _not_ exist in the SNL, but it's in the smart contract. We
+        // can liquidate.
+        // TODO: Were we supposed to give the user some buffer on dereg to remove themselves from
+        // the list before getting penalised?
+        result = true;
+        return result;
+    }
+
+    // NOTE: Request unlock height is 0 when no voluntary exit has been requested yet
+    const service_nodes::service_node_pubkey_info &sn_info = sn_info_list[0];
+    if (sn_info.info->requested_unlock_height == 0)
+        return result;
+
+    // TODO: Return a reason why a node is _not_ liquidatable.
+    // ETH_REMOVAL_BUFFER Provides a reasonable span of time after a node has exited from the
+    // Oxen workchain for the operator to also exit themselves from the smart contract and avoid
+    // a liquidation penalty.
+    //
+    // These nodes will only have `requested_unlock_height` set if they submitted a voluntarily exit
+    // (aka removal request) from the network.
+    const auto& netconf = get_net_config();
+    uint64_t liquidatable_height = sn_info.info->requested_unlock_height + netconf.ETH_REMOVAL_BUFFER;
+    uint64_t height = blockchain.get_current_blockchain_height();
+
+    result = height > liquidatable_height;
+    return result;
 }
 
 void core::start_oxenmq() {
@@ -2639,8 +2636,8 @@ eth::bls_rewards_response core::bls_rewards_request(const eth::address& address,
 eth::bls_removal_liquidation_response core::bls_removal_liquidation_request(
         const eth::bls_public_key& bls_pubkey, bool liquidate) {
     eth::bls_aggregator::removal_type type = liquidate
-                                                   ? eth::bls_aggregator::removal_type::normal
-                                                   : eth::bls_aggregator::removal_type::liquidate;
+                                                   ? eth::bls_aggregator::removal_type::liquidate
+                                                   : eth::bls_aggregator::removal_type::normal;
     return m_bls_aggregator->removal_liquidation_request(bls_pubkey, type);
 }
 //-----------------------------------------------------------------------------------------------
