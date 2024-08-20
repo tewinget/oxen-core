@@ -2668,6 +2668,8 @@ void core_rpc_server::fill_sn_response_entry(
             info.is_active(top_height),
             "expired",
             info.is_expired(top_height),
+            "payable",
+            info.is_payable(top_height, nettype()),
             "funded",
             info.is_fully_funded(),
             "state_height",
