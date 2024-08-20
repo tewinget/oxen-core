@@ -282,8 +282,6 @@ class SNNetwork:
             wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
         vprint(timestamp=False)
 
-        self.sync_nodes(self.mine(1), timeout=120) # Height 171
-
         # Pull out some useful keys to local variables
         hardhat_account       = self.sn_contract.hardhatAccountAddress()
         hardhat_account_no_0x = hardhat_account[2:42]
@@ -354,14 +352,15 @@ class SNNetwork:
         vprint("Added node via Eth. Contract has {} SNs\n{}".format(contract_sn_count, contract_sn_dump))
         assert contract_sn_count == expected_contract_sn_count, f"Expected {contract_sn_count} service nodes, received {expected_contract_sn_count}"
 
+        # Submit block to enter the BLS hardfork ###################################################
+        self.sync_nodes(self.mine(1), timeout=120) # Height 171
+
         # Sleep and let pulse quorum do work
-        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks, blockchain height is {self.ethsns[0].height()}");
+        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks (& rewards for node), blockchain height is {self.ethsns[0].height()}");
 
         total_sleep_time = 0
         sleep_time       = 8
-        target_height    = self.ethsns[0].height() + 3;
-
-        while self.ethsns[0].height() < target_height:
+        while self.ethsns[0].sn_is_payable() == False:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
 

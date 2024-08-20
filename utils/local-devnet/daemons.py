@@ -267,6 +267,16 @@ class Daemon(RPCDaemon):
     def sn_status(self):
         return self.json_rpc("get_service_node_status").json()["result"]
 
+    def sn_is_payable(self):
+        json   = self.json_rpc("get_service_nodes", {"service_node_pubkeys": [self.get_service_keys().pubkey]}).json()
+        sn_info_array = json['result']['service_node_states']
+        print(sn_info_array)
+        result = False
+        if len(sn_info_array) >= 1:
+            sn_info = sn_info_array[0]
+            result  = 'payable' in sn_info and sn_info['payable']
+        return result
+
     def get_ethereum_registration_args(self, address):
         return self.json_rpc("bls_registration_request", {"address": address}).json()["result"]
 
