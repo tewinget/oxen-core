@@ -527,25 +527,9 @@ bool core::init(
     /// during deinitialization... TODO: fix that
     CHECK_AND_ASSERT_MES(r, false, "Failed to apply command line options.");
 
-    std::string db_sync_mode = command_line::get_arg(vm, cryptonote::arg_db_sync_mode);
-    bool db_salvage = command_line::get_arg(vm, cryptonote::arg_db_salvage) != 0;
-    bool fast_sync = command_line::get_arg(vm, arg_fast_block_sync) != 0;
-    uint64_t blocks_threads = command_line::get_arg(vm, arg_prep_blocks_threads);
     size_t max_txpool_weight = command_line::get_arg(vm, arg_max_txpool_weight);
     bool const prune_blockchain = false; /* command_line::get_arg(vm, arg_prune_blockchain); */
     bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
-    bool keep_fakechain = command_line::get_arg(vm, arg_keep_fakechain);
-
-    auto folder = m_config_folder;
-    if (m_nettype == network_type::FAKECHAIN)
-        folder /= "fake";
-
-    // make sure the data directory exists, and try to lock it
-    if (std::error_code ec;
-        !fs::is_directory(folder, ec) && !fs::create_directories(folder, ec) && ec) {
-        log::error(logcat, "Failed to create directory {}: {}", folder, ec.message());
-        return false;
-    }
 
     r = init_service_keys();
     CHECK_AND_ASSERT_MES(r, false, "Failed to create or load service keys");
@@ -554,111 +538,54 @@ bool core::init(
         service_node_list.set_my_service_node_keys(&m_service_keys);
     }
 
-    auto db = new_db();
-    if (!db) {
-        log::error(logcat, "Failed to initialize a database");
+    auto folder = m_config_folder;
+    if (m_nettype == network_type::FAKECHAIN)
+        folder /= "fake";
+
+    auto db = init_blockchain_db(folder, vm);
+    if (!db)
         return false;
-    }
 
     auto ons_db_file_path = folder / "ons.db";
     if (fs::exists(folder / "lns.db"))
         ons_db_file_path = folder / "lns.db";
 
+    if (m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain))
+        fs::remove(ons_db_file_path);
+
     auto sqlite_db_file_path = folder / "sqlite.db";
     if (m_nettype == network_type::FAKECHAIN) {
         sqlite_db_file_path = ":memory:";
     }
-    auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
 
-    folder /= db->get_db_name();
-    log::info(globallogcat, "Loading blockchain from folder {} ...", folder);
+    if (m_nettype == network_type::STAGENET && db->height() > 1) {
+        // Hack to handle stagenet reboot by seeing if we have the old stagenet block at height 1:
+        // if we do, we need to delete the blockchain database files and reinitialize the database.
+        // (We can't properly pop blocks in such a case because the reboot changed the serialized
+        // blockchain format, and even if we could, it's not worth the time because it'll pop all
+        // the way back to empty anyway).
+        auto block1_hash = get_block_hash(db->get_block_from_height(1));
+        constexpr auto STAGENET_V1_BLOCK1_HASH =
+                "13633f8335998fe174f12752ea86d25636c9f777f441e9fa205ae4b8868e1f03"sv;
+        if (tools::hex_guts(block1_hash) == STAGENET_V1_BLOCK1_HASH) {
+            log::warning(globallogcat, "Detected old stagenet data; resetting databases...");
 
-    // default to fast:async:1 if overridden
-    blockchain_db_sync_mode sync_mode = db_defaultsync;
-    bool sync_on_blocks = true;
-    uint64_t sync_threshold = 1;
+            db->close();
+            log::warning(globallogcat, "Removing blockchain database");
+            db->remove_data_file(folder / db->get_db_name());
+            db.reset();
+            log::warning(globallogcat, "Removing sqlite.db");
+            fs::remove(sqlite_db_file_path);
+            log::warning(globallogcat, "Removing ons.db");
+            fs::remove(ons_db_file_path);
 
-    if (m_nettype == network_type::FAKECHAIN && !keep_fakechain) {
-        // reset the db by removing the database file before opening it
-        if (!db->remove_data_file(folder)) {
-            log::error(logcat, "Failed to remove data file in {}", folder);
-            return false;
-        }
-        fs::remove(ons_db_file_path);
-    }
-
-    try {
-        uint64_t db_flags = 0;
-
-        std::vector<std::string> options;
-        boost::trim(db_sync_mode);
-        boost::split(options, db_sync_mode, boost::is_any_of(" :"));
-        const bool db_sync_mode_is_default =
-                command_line::is_arg_defaulted(vm, cryptonote::arg_db_sync_mode);
-
-        for (const auto& option : options)
-            log::debug(logcat, "option: {}", option);
-
-        // default to fast:async:1
-        uint64_t DEFAULT_FLAGS = DBF_FAST;
-
-        if (options.size() == 0) {
-            // default to fast:async:1
-            db_flags = DEFAULT_FLAGS;
-        }
-
-        bool safemode = false;
-        if (options.size() >= 1) {
-            if (options[0] == "safe") {
-                safemode = true;
-                db_flags = DBF_SAFE;
-                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_nosync;
-            } else if (options[0] == "fast") {
-                db_flags = DBF_FAST;
-                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_async;
-            } else if (options[0] == "fastest") {
-                db_flags = DBF_FASTEST;
-                sync_threshold = 1000;  // default to fastest:async:1000
-                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_async;
-            } else
-                db_flags = DEFAULT_FLAGS;
-        }
-
-        if (options.size() >= 2 && !safemode) {
-            if (options[1] == "sync")
-                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_sync;
-            else if (options[1] == "async")
-                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_async;
-        }
-
-        if (options.size() >= 3 && !safemode) {
-            char* endptr;
-            uint64_t threshold = strtoull(options[2].c_str(), &endptr, 0);
-            if (*endptr == '\0' || !strcmp(endptr, "blocks")) {
-                sync_on_blocks = true;
-                sync_threshold = threshold;
-            } else if (!strcmp(endptr, "bytes")) {
-                sync_on_blocks = false;
-                sync_threshold = threshold;
-            } else {
-                log::error(logcat, "Invalid db sync mode: {}", options[2]);
+            db = init_blockchain_db(folder, vm);
+            if (!db)
                 return false;
-            }
         }
-
-        if (db_salvage)
-            db_flags |= DBF_SALVAGE;
-
-        db->open(folder, m_nettype, db_flags);
-        if (!db->m_open)
-            return false;
-    } catch (const DB_ERROR& e) {
-        log::error(logcat, "Error opening database: {}", e.what());
-        return false;
     }
 
-    blockchain.set_user_options(
-            blocks_threads, sync_on_blocks, sync_threshold, sync_mode, fast_sync);
+    auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
 
     // We need this hook to get added before the block hook below, so that it fires first and
     // catches the start of a reorg before the block hook fires for the block in the reorg.
@@ -819,6 +746,119 @@ bool core::init(
     }
 
     return true;
+}
+
+std::unique_ptr<BlockchainDB> core::init_blockchain_db(
+        fs::path folder, const boost::program_options::variables_map& vm) {
+
+    std::string db_sync_mode = command_line::get_arg(vm, cryptonote::arg_db_sync_mode);
+    bool fast_sync = command_line::get_arg(vm, arg_fast_block_sync) != 0;
+    uint64_t blocks_threads = command_line::get_arg(vm, arg_prep_blocks_threads);
+    bool db_salvage = command_line::get_arg(vm, cryptonote::arg_db_salvage) != 0;
+
+    // make sure the data directory exists, and try to lock it
+    if (std::error_code ec;
+        !fs::is_directory(folder, ec) && !fs::create_directories(folder, ec) && ec) {
+        log::error(logcat, "Failed to create directory {}: {}", folder, ec.message());
+        return nullptr;
+    }
+
+    auto db = new_db();
+    if (!db) {
+        log::error(logcat, "Failed to initialize a database");
+        return nullptr;
+    }
+
+    folder /= db->get_db_name();
+    log::info(globallogcat, "Loading blockchain from folder {} ...", folder);
+
+    if (m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain)) {
+        // reset the db by removing the database file before opening it
+        if (!db->remove_data_file(folder)) {
+            log::error(logcat, "Failed to remove data file in {}", folder);
+            return nullptr;
+        }
+    }
+
+    // default to fast:async:1 if overridden
+    blockchain_db_sync_mode sync_mode = db_defaultsync;
+    bool sync_on_blocks = true;
+    uint64_t sync_threshold = 1;
+
+    try {
+        uint64_t db_flags = 0;
+
+        std::vector<std::string> options;
+        boost::trim(db_sync_mode);
+        boost::split(options, db_sync_mode, boost::is_any_of(" :"));
+        const bool db_sync_mode_is_default =
+                command_line::is_arg_defaulted(vm, cryptonote::arg_db_sync_mode);
+
+        for (const auto& option : options)
+            log::debug(logcat, "option: {}", option);
+
+        // default to fast:async:1
+        uint64_t DEFAULT_FLAGS = DBF_FAST;
+
+        if (options.size() == 0) {
+            // default to fast:async:1
+            db_flags = DEFAULT_FLAGS;
+        }
+
+        bool safemode = false;
+        if (options.size() >= 1) {
+            if (options[0] == "safe") {
+                safemode = true;
+                db_flags = DBF_SAFE;
+                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_nosync;
+            } else if (options[0] == "fast") {
+                db_flags = DBF_FAST;
+                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_async;
+            } else if (options[0] == "fastest") {
+                db_flags = DBF_FASTEST;
+                sync_threshold = 1000;  // default to fastest:async:1000
+                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_async;
+            } else
+                db_flags = DEFAULT_FLAGS;
+        }
+
+        if (options.size() >= 2 && !safemode) {
+            if (options[1] == "sync")
+                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_sync;
+            else if (options[1] == "async")
+                sync_mode = db_sync_mode_is_default ? db_defaultsync : db_async;
+        }
+
+        if (options.size() >= 3 && !safemode) {
+            char* endptr;
+            uint64_t threshold = strtoull(options[2].c_str(), &endptr, 0);
+            if (*endptr == '\0' || !strcmp(endptr, "blocks")) {
+                sync_on_blocks = true;
+                sync_threshold = threshold;
+            } else if (!strcmp(endptr, "bytes")) {
+                sync_on_blocks = false;
+                sync_threshold = threshold;
+            } else {
+                log::error(logcat, "Invalid db sync mode: {}", options[2]);
+                return nullptr;
+            }
+        }
+
+        if (db_salvage)
+            db_flags |= DBF_SALVAGE;
+
+        db->open(folder, m_nettype, db_flags);
+        if (!db->m_open)
+            return nullptr;
+    } catch (const DB_ERROR& e) {
+        log::error(logcat, "Error opening database: {}", e.what());
+        return nullptr;
+    }
+
+    blockchain.set_user_options(
+            blocks_threads, sync_on_blocks, sync_threshold, sync_mode, fast_sync);
+
+    return db;
 }
 
 /// Loads a key from disk, if it exists, otherwise generates a new key pair and saves it to disk.
