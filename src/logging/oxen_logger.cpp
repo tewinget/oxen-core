@@ -29,6 +29,7 @@ void set_additional_log_categories(log::Level& log_level) {
             log::set_level("serialization", log::Level::err);
             log::set_level("msgwriter", log::Level::info);
             log::set_level("daemon", log::Level::info);
+            log::set_level("miner", log::Level::info);
             break;
         case log::Level::info:
             log::set_level("net", log::Level::err);

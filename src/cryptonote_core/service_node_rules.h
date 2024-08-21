@@ -194,6 +194,7 @@ inline constexpr uint64_t STATE_CHANGE_TX_LIFETIME_IN_BLOCKS = VOTE_LIFETIME;
 // blocks out of sync and sending something that it thinks is legit.
 inline constexpr uint64_t VOTE_OR_TX_VERIFY_HEIGHT_BUFFER = 5;
 
+// The minimum versions that we accept for local oxend pings from our *own* companion services:
 inline constexpr std::array<uint16_t, 3> MIN_STORAGE_SERVER_VERSION{{2, 8, 0}};
 inline constexpr std::array<uint16_t, 3> MIN_LOKINET_VERSION{{0, 9, 11}};
 
@@ -228,6 +229,8 @@ constexpr quorum_type max_quorum_type_for_hf(cryptonote::hf version) {
                                                          : quorum_type::pulse;
 }
 
+// The number of blocks a stake lasts for, for pre-HF11 infinite staking when stakes were fixed
+// length.
 uint64_t staking_num_lock_blocks(cryptonote::network_type nettype);
 
 // If a nodes timestamp varies by this amount of seconds they will be considered out of sync
@@ -302,8 +305,6 @@ bool check_service_node_stakes(
         const std::vector<uint64_t>& stakes);
 
 crypto::hash generate_request_stake_unlock_hash(uint32_t nonce);
-uint64_t get_unlock_height(
-        cryptonote::network_type nettype, uint64_t node_register_height, uint64_t curr_height);
 
 // Returns lowest x such that (staking_requirement * x/STAKING_PORTIONS) >= amount
 uint64_t get_portions_to_make_amount(
