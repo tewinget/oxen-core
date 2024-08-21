@@ -119,11 +119,21 @@ void node_server<t_payload_net_handler>::init_options(
     command_line::add_arg(desc, arg_limit_rate_down);
     command_line::add_arg(desc, arg_limit_rate);
 }
+
+template <class t_payload_net_handler>
+fs::path node_server<t_payload_net_handler>::get_peerlist_file() const {
+    fs::path p2p_filename = cryptonote::P2P_NET_DATA_FILENAME;
+    if (m_nettype == cryptonote::network_type::STAGENET)
+        // Kludge for stagenet reboot
+        p2p_filename += u8".v2";
+    return m_config_folder / p2p_filename;
+}
+
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::init_config() {
     TRY_ENTRY();
-    auto storage = peerlist_storage::open(m_config_folder / cryptonote::P2P_NET_DATA_FILENAME);
+    auto storage = peerlist_storage::open(get_peerlist_file());
     if (storage)
         m_peerlist_storage = std::move(*storage);
 
@@ -816,7 +826,7 @@ bool node_server<t_payload_net_handler>::store_config() {
     for (auto& zone : m_network_zones)
         zone.second.m_peerlist.get_peerlist(active);
 
-    const auto state_file_path = m_config_folder / cryptonote::P2P_NET_DATA_FILENAME;
+    const auto state_file_path = get_peerlist_file();
     if (!m_peerlist_storage.store(state_file_path, active)) {
         log::warning(logcat, "Failed to save config to file {}", state_file_path);
         return false;

@@ -281,6 +281,8 @@ class node_server
     bool islimitup = false;
     bool islimitdown = false;
 
+    fs::path get_peerlist_file() const;
+
     CHAIN_LEVIN_INVOKE_MAP2(p2p_connection_context);  // move levin_commands_handler interface
                                                       // invoke(...) callbacks into invoke map
     CHAIN_LEVIN_NOTIFY_MAP2(p2p_connection_context);  // move levin_commands_handler interface
