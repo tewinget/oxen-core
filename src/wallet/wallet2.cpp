@@ -3469,8 +3469,7 @@ void wallet2::process_parsed_blocks(
             continue;
         }
 
-        if (m_refresh_type != RefreshType::RefreshNoCoinbase &&
-                parsed_blocks[i].block.miner_tx &&
+        if (m_refresh_type != RefreshType::RefreshNoCoinbase && parsed_blocks[i].block.miner_tx &&
             parsed_blocks[i].block.miner_tx->vout.size() > 0) {
             THROW_WALLET_EXCEPTION_IF(
                     txidx >= tx_cache_data.size(),
@@ -3655,8 +3654,7 @@ void wallet2::pull_and_parse_next_blocks(
             }
         }
         waiter.wait(&tpool);
-        last = !blocks.empty() &&
-               parsed_blocks.back().block.get_height() + 1 == current_height;
+        last = !blocks.empty() && parsed_blocks.back().block.get_height() + 1 == current_height;
     } catch (...) {
         error = true;
     }
@@ -9578,6 +9576,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
     request_stake_unlock_result result = {};
     result.ptx.tx.version = cryptonote::txversion::v4_tx_types;
     result.ptx.tx.type = cryptonote::txtype::key_image_unlock;
+    auto& netconf = get_config(nettype());
 
     std::string const sn_key_as_str = tools::hex_guts(sn_key);
     {
@@ -9645,7 +9644,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
                 result.msg.append(" (about ");
                 result.msg.append(tools::get_human_readable_timespan(std::chrono::seconds(
                         (node_info["requested_unlock_height"].get<uint64_t>() - curr_height) *
-                        get_config(nettype()).TARGET_BLOCK_TIME)));
+                        netconf.TARGET_BLOCK_TIME)));
                 result.msg.append(")");
                 return result;
             }
@@ -9655,7 +9654,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
                     service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::num,
                     service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::den);
             uint64_t small_contributor_unlock_blocks =
-                    get_config(nettype()).BLOCKS_IN(service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER);
+                    netconf.BLOCKS_IN(service_nodes::SMALL_CONTRIBUTOR_UNLOCK_TIMER);
             if (contribution["amount"] < small_contributor_amount_threshold &&
                 (curr_height - node_info["registration_height"].get<uint64_t>()) <
                         small_contributor_unlock_blocks) {
@@ -9687,15 +9686,14 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
             }
             result.msg.append("\n\n");
 
-            uint64_t unlock_height = service_nodes::get_unlock_height(
-                    nettype(), node_info["registration_height"], curr_height);
+            uint64_t unlock_height = curr_height + netconf.BLOCKS_IN(netconf.UNLOCK_DURATION);
             result.msg.append(
                     "You will continue receiving rewards until the service node expires at the "
                     "estimated height: ");
             result.msg.append(std::to_string(unlock_height));
             result.msg.append(" (about ");
             result.msg.append(tools::get_human_readable_timespan(
-                    (unlock_height - curr_height) * get_config(nettype()).TARGET_BLOCK_TIME));
+                    (unlock_height - curr_height) * netconf.TARGET_BLOCK_TIME));
             result.msg.append(")");
 
             if (!tools::try_load_from_hex_guts(
@@ -15272,9 +15270,7 @@ void wallet2::refresh_batching_cache() {
     THROW_WALLET_EXCEPTION_IF(
             res["status"] == rpc::STATUS_BUSY, error::daemon_busy, "get_output_histogram");
     THROW_WALLET_EXCEPTION_IF(
-            res["status"] != rpc::STATUS_OK,
-            error::get_accrued_rewards_error,
-            res["status"]);
+            res["status"] != rpc::STATUS_OK, error::get_accrued_rewards_error, res["status"]);
 
     auto records = res["balances"].get<std::unordered_map<std::string, uint64_t>>();
     batching_records_cache.clear();

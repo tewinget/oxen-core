@@ -291,19 +291,13 @@ crypto::hash generate_request_stake_unlock_hash(uint32_t nonce) {
     return result;
 }
 
+// pre-HF11
 uint64_t staking_num_lock_blocks(cryptonote::network_type nettype) {
     switch (nettype) {
         case cryptonote::network_type::FAKECHAIN: return 30;
         case cryptonote::network_type::TESTNET: return get_config(nettype).BLOCKS_IN(48h);
         default: return get_config(nettype).BLOCKS_IN(30 * 24h);
     }
-}
-
-uint64_t get_unlock_height(
-        cryptonote::network_type nettype, uint64_t node_register_height, uint64_t curr_height) {
-    uint64_t blocks_to_lock = staking_num_lock_blocks(nettype);
-    uint64_t result = curr_height + (blocks_to_lock / 2);
-    return result;
 }
 
 static uint64_t get_min_node_contribution_pre_v11(

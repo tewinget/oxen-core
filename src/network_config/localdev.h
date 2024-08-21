@@ -16,6 +16,9 @@
 // A local-devnet can be deployed by running
 // `utils/local-devnet/service_node_network.py`
 namespace cryptonote::config::localdev {
+
+inline constexpr auto TARGET_BLOCK_TIME = 5s;
+
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::LOCALDEV,
         .DEFAULT_CONFIG_SUBDIR = "localdev"sv,
@@ -39,7 +42,7 @@ inline constexpr network_config config{
         .UPTIME_PROOF_FREQUENCY = testnet::config.UPTIME_PROOF_FREQUENCY,
         .UPTIME_PROOF_VALIDITY = testnet::config.UPTIME_PROOF_VALIDITY,
         .HAVE_STORAGE_AND_LOKINET = false,
-        .TARGET_BLOCK_TIME = 5s,
+        .TARGET_BLOCK_TIME = TARGET_BLOCK_TIME,
         .PULSE_STAGE_TIMEOUT = 3s,
         .PULSE_ROUND_TIMEOUT = 4s,
         .PULSE_MAX_START_ADJUSTMENT = 4s,
@@ -48,6 +51,8 @@ inline constexpr network_config config{
         .MIN_BATCH_PAYMENT_AMOUNT = mainnet::config.MIN_BATCH_PAYMENT_AMOUNT,
         .LIMIT_BATCH_OUTPUTS = mainnet::config.LIMIT_BATCH_OUTPUTS,
         .SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 1,
+        .DEREGISTRATION_LOCK_DURATION = 10 * TARGET_BLOCK_TIME,
+        .UNLOCK_DURATION = 5 * TARGET_BLOCK_TIME,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD =
                 mainnet::config.HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,

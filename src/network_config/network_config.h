@@ -103,6 +103,13 @@ struct network_config final {
     // reward.
     const uint64_t SERVICE_NODE_PAYABLE_AFTER_BLOCKS;
 
+    // Amount of time a stake remains locked after a deregistration:
+    const std::chrono::seconds DEREGISTRATION_LOCK_DURATION;
+
+    // Amount of time after initiating a SN unlock before the node expires (during which it must
+    // stay registered or else will face the DEREGISTRATION_LOCK_DURATION penalty).
+    const std::chrono::seconds UNLOCK_DURATION;
+
     // After a hardfork we will decommission sns but won't dereg, allowing time to update
     const uint64_t HARDFORK_DEREGISTRATION_GRACE_PERIOD;
 

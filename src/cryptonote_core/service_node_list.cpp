@@ -975,13 +975,16 @@ bool service_node_list::state_t::process_state_change_tx(
                         fmt::join(reasons, ","));
 
             if (hf_version >= hf::hf11_infinite_staking) {
+                auto& netconf = get_config(nettype);
                 for (const auto& contributor : info.contributors) {
                     for (const auto& contribution : contributor.locked_contributions) {
                         key_image_blacklist.emplace_back();  // NOTE: Use default value for version
                                                              // in key_image_blacklist_entry
                         key_image_blacklist_entry& entry = key_image_blacklist.back();
                         entry.key_image = contribution.key_image;
-                        entry.unlock_height = block_height + staking_num_lock_blocks(nettype);
+                        entry.unlock_height =
+                                block_height +
+                                netconf.BLOCKS_IN(netconf.DEREGISTRATION_LOCK_DURATION);
                         entry.amount = contribution.amount;
                     }
                 }
@@ -1178,15 +1181,8 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
         return false;
     }
 
-    uint64_t small_contributor_unlock_blocks =
-            get_config(nettype).BLOCKS_IN(SMALL_CONTRIBUTOR_UNLOCK_TIMER);
-
-    uint64_t unlock_height =
-            get_unlock_height(nettype, node_info.registration_height, block_height);
-    uint64_t small_contributor_amount_threshold = mul128_div64(
-            service_nodes::get_staking_requirement(nettype, unlock_height),
-            service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::num,
-            service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::den);
+    auto& netconf = get_config(nettype);
+    uint64_t unlock_height = block_height + netconf.BLOCKS_IN(netconf.UNLOCK_DURATION);
     for (const auto& contributor : node_info.contributors) {
         auto cit = std::find_if(
                 contributor.locked_contributions.begin(),
@@ -1196,6 +1192,8 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
                 });
         if (cit != contributor.locked_contributions.end()) {
             if (hf_version == hf::hf19_reward_batching) {
+                uint64_t small_contributor_unlock_blocks =
+                        netconf.BLOCKS_IN(SMALL_CONTRIBUTOR_UNLOCK_TIMER);
                 // NB: this 3749 value is wrong (it should have been < 3749000000000), but it made
                 // it into the HF19 release before the problem was noticed.  In HF20 (eth transition
                 // fork) we don't apply the limit at all, and in HF21 we don't get here at all (the
@@ -1763,8 +1761,8 @@ bool service_node_list::state_t::process_confirmed_event(
         return false;
     }
 
-    const uint64_t unlock_height =
-            get_unlock_height(nettype, node_info.registration_height, height);
+    auto& netconf = get_config(nettype);
+    const uint64_t unlock_height = height + netconf.BLOCKS_IN(netconf.UNLOCK_DURATION);
     if (my_keys && my_keys->pub == snode_pk)
         log::info(
                 globallogcat,
@@ -1817,7 +1815,8 @@ bool service_node_list::state_t::process_confirmed_event(
     uint64_t block_delay = 0;
     uint64_t stake_reduction = 0;
     if (removal.returned_amount < staking_requirement) {
-        block_delay = staking_num_lock_blocks(nettype);
+        auto& netconf = get_config(nettype);
+        block_delay = netconf.BLOCKS_IN(netconf.DEREGISTRATION_LOCK_DURATION);
         stake_reduction = staking_requirement - removal.returned_amount;
     }
 
