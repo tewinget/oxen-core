@@ -66,8 +66,8 @@ inline constexpr network_config config{
         // Much shorter than mainnet so that you can test this more easily.
         .ETH_REMOVAL_BUFFER = 2h / mainnet::config.TARGET_BLOCK_TIME,
         .ETHEREUM_CHAIN_ID = 421614,
-        .ETHEREUM_REWARDS_CONTRACT = "0xEF43cd64528eA89966E251d4FE17c660222D2c9d"sv,
-        .ETHEREUM_POOL_CONTRACT = "0x408bCc6C9b942ECc4F289C080d2A1a2a3617Aff8"sv,
+        .ETHEREUM_REWARDS_CONTRACT = "0xb691e7C159369475D0a3d4694639ae0144c7bAB2"sv,
+        .ETHEREUM_POOL_CONTRACT = "0x84a648F74Eaf037dD9558987F6179E692d5F2566"sv,
         .L2_REWARD_POOL_UPDATE_BLOCKS = testnet::config.L2_REWARD_POOL_UPDATE_BLOCKS,
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
 };
