@@ -714,6 +714,9 @@ class core final {
     const fs::path& get_config_directory() const { return m_config_folder; }
 
   private:
+    std::unique_ptr<BlockchainDB> init_blockchain_db(
+            fs::path datadir, const boost::program_options::variables_map& vm);
+
     /**
      * @copydoc Blockchain::add_new_block
      *
@@ -844,8 +847,8 @@ class core final {
     std::array<uint16_t, 3> ss_version;
     std::array<uint16_t, 3> lokinet_version;
 
-    tx_memory_pool mempool;         //!< transaction pool instance
-    Blockchain blockchain;  //!< Blockchain instance
+    tx_memory_pool mempool;  //!< transaction pool instance
+    Blockchain blockchain;   //!< Blockchain instance
 
     service_nodes::service_node_list service_node_list;
 
