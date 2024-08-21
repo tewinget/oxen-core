@@ -571,7 +571,7 @@ std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes(
     } else if (nettype == cryptonote::network_type::DEVNET) {
         full_addrs.insert("144.76.164.202:38856");
     } else if (nettype == cryptonote::network_type::STAGENET) {
-        full_addrs.insert("104.243.40.38:11022");  // angus.oxen.io
+        full_addrs.insert("104.243.40.38:11218");  // angus.oxen.io
     } else if (nettype == cryptonote::network_type::MAINNET) {
         full_addrs.insert("116.203.196.12:22022");  // Hetzner seed node
         full_addrs.insert("185.150.191.32:22022");  // Jason's seed node
