@@ -313,15 +313,6 @@ class core final {
      */
     bool cleanup_handle_incoming_blocks(bool force_sync = false);
 
-    /**
-     * @brief check the size of a block against the current maximum
-     *
-     * @param block_blob the block to check
-     *
-     * @return whether or not the block is too big
-     */
-    bool check_incoming_block_size(const std::string& block_blob) const;
-
     /// Called (from service_node_quorum_cop) to tell quorumnet that it need to refresh its list of
     /// active SNs.
     void update_omq_sns();

@@ -2327,7 +2327,16 @@ bool core::handle_incoming_block(
     TRY_ENTRY();
     bvc = {};
 
-    if (!check_incoming_block_size(block_blob)) {
+    // note: we assume block weight is always >= block blob size, so we check incoming
+    // blob size against the block weight limit, which acts as a sanity check without
+    // having to parse/weigh first; in fact, since the block blob is the block header
+    // plus the tx hashes, the weight will typically be much larger than the blob size
+    if (block_blob.size() >
+        blockchain.get_current_cumulative_block_weight_limit() + BLOCK_SIZE_SANITY_LEEWAY) {
+        log::info(
+                logcat,
+                "WRONG BLOCK BLOB, sanity check failed on size {}, rejected",
+                block_blob.size());
         bvc.m_verifivation_failed = true;
         return false;
     }
@@ -2359,24 +2368,6 @@ bool core::handle_incoming_block(
 
     CATCH_ENTRY("core::handle_incoming_block()", false);
 }
-//-----------------------------------------------------------------------------------------------
-// Used by the RPC server to check the size of an incoming
-// block_blob
-bool core::check_incoming_block_size(const std::string& block_blob) const {
-    // note: we assume block weight is always >= block blob size, so we check incoming
-    // blob size against the block weight limit, which acts as a sanity check without
-    // having to parse/weigh first; in fact, since the block blob is the block header
-    // plus the tx hashes, the weight will typically be much larger than the blob size
-    if (block_blob.size() >
-        blockchain.get_current_cumulative_block_weight_limit() + BLOCK_SIZE_SANITY_LEEWAY) {
-        log::info(
-                logcat,
-                "WRONG BLOCK BLOB, sanity check failed on size {}, rejected",
-                block_blob.size());
-        return false;
-    }
-    return true;
-}
 
 void core::update_omq_sns() {
     // TODO: let callers (e.g. lokinet, ss) subscribe to callbacks when this fires
@@ -2384,7 +2375,7 @@ void core::update_omq_sns() {
     service_node_list.copy_x25519_pubkeys(std::inserter(active_sns, active_sns.end()), m_nettype);
     m_omq->set_active_sns(std::move(active_sns));
 }
-//-----------------------------------------------------------------------------------------------
+
 static bool check_external_ping(
         time_t last_ping, std::chrono::seconds lifetime, std::string_view what) {
     const std::chrono::seconds elapsed{std::time(nullptr) - last_ping};
