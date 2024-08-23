@@ -2571,32 +2571,6 @@ bool core::check_disk_space() {
     return true;
 }
 //-----------------------------------------------------------------------------------------------
-double factorial(unsigned int n) {
-    if (n <= 1)
-        return 1.0;
-    double f = n;
-    while (n-- > 1)
-        f *= n;
-    return f;
-}
-//-----------------------------------------------------------------------------------------------
-static double probability1(unsigned int blocks, unsigned int expected) {
-    // https://www.umass.edu/wsp/resources/poisson/#computing
-    return pow(expected, blocks) / (factorial(blocks) * exp(expected));
-}
-//-----------------------------------------------------------------------------------------------
-static double probability(unsigned int blocks, unsigned int expected) {
-    double p = 0.0;
-    if (blocks <= expected) {
-        for (unsigned int b = 0; b <= blocks; ++b)
-            p += probability1(b, expected);
-    } else if (blocks > expected) {
-        for (unsigned int b = blocks; b <= expected * 3 /* close enough */; ++b)
-            p += probability1(b, expected);
-    }
-    return p;
-}
-//-----------------------------------------------------------------------------------------------
 void core::flush_bad_txs_cache() {
     bad_semantics_txes_lock.lock();
     for (int idx = 0; idx < 2; ++idx)
