@@ -1817,11 +1817,14 @@ struct GET_SERVICE_NODE_REGISTRATION_CMD : RPC_COMMAND {
 /// Outputs:
 ///
 /// - `status` -- General RPC status string. `"OK"` means everything looks good.
-/// - `service_node_pubkey` -- The queried daemon's service node public key.  Will be empty if not
+/// - `service_node_pubkey` -- The queried daemon's service node public key.  Will be omitted if not
 ///   running as a service node.
 /// - `service_node_ed25519_pubkey` -- The daemon's ed25519 auxiliary public key.
 /// - `service_node_x25519_pubkey` -- The daemon's x25519 auxiliary public key.
-/// - `service_node_bls_pubkey` -- The daemon's BLS auxiliary public key.
+/// - `service_node_bls_pubkey` -- The daemon's BLS auxiliary public key.  Will be omitted if not
+///   running as a service node.
+/// - `is_service_node` -- true/false indicating whether this daemon is configured and running in
+///   service node mode.
 struct GET_SERVICE_KEYS : NO_ARGS {
     static constexpr auto names() { return NAMES("get_service_keys", "get_service_node_key"); }
 };
