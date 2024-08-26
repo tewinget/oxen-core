@@ -1763,6 +1763,7 @@ void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_BANS& get_bans, rpc_context) {
+    get_bans.response["bans"] = nlohmann::json::array();
     auto now = time(nullptr);
     std::map<std::string, time_t> blocked_hosts = m_p2p.get_blocked_hosts();
     for (std::map<std::string, time_t>::const_iterator i = blocked_hosts.begin();
