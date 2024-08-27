@@ -264,7 +264,8 @@ json rpc_command_executor::invoke(
         m_omq->request(
                 conn,
                 endpoint,
-                [&result_p](bool success, auto data) {
+                [endpoint, &result_p](bool success, const std::vector<std::string>& data) {
+                    oxen::log::trace(oxen::log::Cat("rpc"), "{} RPC response ({}) {}", endpoint, data.size(), tools::join(" ", data));
                     try {
                         if (!success)
                             throw oxen::traced<std::runtime_error>{"Request timed out"};
@@ -1299,17 +1300,20 @@ bool rpc_command_executor::print_bans() {
             try_running([this] { return invoke<GET_BANS>(); }, "Failed to retrieve ban list");
     if (!maybe_bans)
         return false;
-
-    if (auto it = maybe_bans->find("bans"); it != maybe_bans->end() && !it->empty()) {
-        for (const auto& ban : *it) {
-            tools::msg_writer(
-                    "{} banned for {} seconds",
-                    ban["host"].get<std::string_view>(),
-                    ban["seconds"].get<int64_t>());
-        }
-    } else
+    auto bans = *maybe_bans;
+    auto ban_array = bans.at("bans");
+    assert(ban_array.is_array() && "Internal error, RPC API has changed");
+    if (ban_array.empty()) {
         tools::msg_writer("No IPs are banned");
+        return true;
+    }
 
+    for (const auto& ban : ban_array) {
+        tools::msg_writer(
+                "{} banned for {} seconds",
+                ban["host"].get<std::string_view>(),
+                ban["seconds"].get<int64_t>());
+    }
     return true;
 }
 
