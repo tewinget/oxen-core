@@ -304,8 +304,8 @@ or "default" to return the limit to its default value.)");
     m_command_lookup.set_handler(
             "claim_rewards",
             [this](const auto& x) { return m_parser.claim_rewards(x); },
-            "claim_rewards",
-            "Provides a link to the website that allows claiming of ERC-20 rewards");
+            "claim_rewards ETH_ADDRESS",
+            "Generates a network reward signature that allows claiming of SENT rewards");
     m_command_lookup.set_handler(
             "test_trigger_uptime_proof",
             [this](const auto&) {

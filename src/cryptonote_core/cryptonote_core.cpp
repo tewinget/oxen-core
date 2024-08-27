@@ -1053,6 +1053,8 @@ bool core::init_service_keys() {
     } else {
         keys.key.zero();
         keys.pub.zero();
+        keys.key_bls.zero();
+        keys.pub_bls.zero();
     }
 
     auto style = fg(fmt::terminal_color::yellow) | fmt::emphasis::bold;

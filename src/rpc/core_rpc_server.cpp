@@ -312,8 +312,8 @@ void core_rpc_server::invoke(GET_NET_STATS& get_net_stats, rpc_context) {
                 epee::net_utils::network_throttle_manager::m_lock_get_global_throttle_out};
         auto [packets, bytes] =
                 epee::net_utils::network_throttle_manager::get_global_throttle_out().get_stats();
-        get_net_stats.response["total_packets_in"] = packets;
-        get_net_stats.response["total_bytes_in"] = bytes;
+        get_net_stats.response["total_packets_out"] = packets;
+        get_net_stats.response["total_bytes_out"] = bytes;
     }
     get_net_stats.response["status"] = STATUS_OK;
 }
@@ -1763,6 +1763,7 @@ void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_BANS& get_bans, rpc_context) {
+    get_bans.response["bans"] = nlohmann::json::array();
     auto now = time(nullptr);
     std::map<std::string, time_t> blocked_hosts = m_p2p.get_blocked_hosts();
     for (std::map<std::string, time_t>::const_iterator i = blocked_hosts.begin();
@@ -2036,12 +2037,14 @@ void core_rpc_server::invoke(SET_LIMIT& limit, rpc_context) {
 void core_rpc_server::invoke(OUT_PEERS& out_peers, rpc_context) {
     if (out_peers.request.set)
         m_p2p.change_max_out_public_peers(out_peers.request.out_peers);
+    out_peers.response["out_peers"] = m_p2p.get_max_out_public_peers();
     out_peers.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(IN_PEERS& in_peers, rpc_context) {
     if (in_peers.request.set)
         m_p2p.change_max_in_public_peers(in_peers.request.in_peers);
+    in_peers.response["in_peers"] = m_p2p.get_max_in_public_peers();
     in_peers.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2568,7 +2571,9 @@ void core_rpc_server::invoke(GET_SERVICE_KEYS& get_service_keys, rpc_context) {
         get_service_keys.response_hex["service_node_pubkey"] = keys.pub;
     get_service_keys.response_hex["service_node_ed25519_pubkey"] = keys.pub_ed25519;
     get_service_keys.response_hex["service_node_x25519_pubkey"] = keys.pub_x25519;
-    get_service_keys.response_hex["service_node_bls_pubkey"] = keys.pub_bls;
+    if (keys.pub_bls)
+        get_service_keys.response_hex["service_node_bls_pubkey"] = keys.pub_bls;
+    get_service_keys.response["is_service_node"] = m_core.service_node();
     get_service_keys.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------

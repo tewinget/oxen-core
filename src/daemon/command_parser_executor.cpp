@@ -107,6 +107,7 @@ bool command_parser_executor::print_sn_state_changes(const std::vector<std::stri
         std::cout << "start_height should be a number" << std::endl;
         return false;
     }
+    args_list.pop_front();
 
     if (!parse_if_present(args_list, end_height, "end height"))
         return false;
@@ -806,6 +807,11 @@ show_list:
 }
 
 bool command_parser_executor::claim_rewards(const std::vector<std::string>& args) {
+    if (args.size() != 1) {
+        tools::fail_msg_writer("Invalid arguments.  Expected: claim_rewards <eth_address>\n");
+        return false;
+    }
+
     return m_executor.claim_rewards(args[0]);
 }
 

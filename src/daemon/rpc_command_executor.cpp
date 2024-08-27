@@ -42,6 +42,7 @@
 #include <ctime>
 #include <exception>
 #include <iterator>
+#include <limits>
 #include <numeric>
 #include <stack>
 #include <string>
@@ -263,7 +264,8 @@ json rpc_command_executor::invoke(
         m_omq->request(
                 conn,
                 endpoint,
-                [&result_p](bool success, auto data) {
+                [endpoint, &result_p](bool success, const std::vector<std::string>& data) {
+                    oxen::log::trace(oxen::log::Cat("rpc"), "{} RPC response ({}) {}", endpoint, data.size(), tools::join(" ", data));
                     try {
                         if (!success)
                             throw oxen::traced<std::runtime_error>{"Request timed out"};
@@ -317,25 +319,25 @@ bool rpc_command_executor::print_checkpoints(
     if (!maybe_checkpoints)
         return false;
 
-    auto checkpoints = *maybe_checkpoints;
+    auto& checkpoints = maybe_checkpoints->at("checkpoints");
 
     std::string entry;
-    auto entry_append = std::back_inserter(entry);
     if (print_json)
-        entry.append(checkpoints.dump());
+        entry = checkpoints.dump();
     else {
         for (size_t i = 0; i < checkpoints.size(); i++) {
             auto& cp = checkpoints[i];
+            int type = cp["type"].get<int>();
             fmt::format_to(
-                    entry_append,
-                    "[{}] Type: {} Height: {} Hash: {}\n",
+                    std::back_inserter(entry),
+                    "[{}] Type: {}, Height: {}, Hash: {}\n",
                     i,
-                    cp["type"].get<std::string_view>(),
+                    type == 0 ? "hard-coded" : "Service Node",
                     cp["height"].get<int64_t>(),
                     cp["block_hash"].get<std::string_view>());
         }
         if (entry.empty())
-            entry.append("No Checkpoints");
+            entry = "No Checkpoints";
     }
 
     tools::success_msg_writer() + entry;
@@ -355,28 +357,22 @@ bool rpc_command_executor::print_sn_state_changes(
     if (!maybe_sn_state)
         return false;
 
-    auto sn_state_changes = *maybe_sn_state;
+    auto changes = *maybe_sn_state;
 
-    auto writer = tools::success_msg_writer();
-
-    writer.append(
-            "Service Node State Changes (blocks {}-{})\n",
-            sn_state_changes["start_height"].get<std::string_view>(),
-            sn_state_changes["end_height"].get<std::string_view>());
-    writer.append(
-            " Recommissions:       {}",
-            sn_state_changes["total_recommission"].get<std::string_view>());
-    writer.append(
-            " Unlocks:             {}", sn_state_changes["total_unlock"].get<std::string_view>());
-    writer.append(
-            " Decommissions:       {}",
-            sn_state_changes["total_decommission"].get<std::string_view>());
-    writer.append(
-            " Deregistrations:     {}",
-            sn_state_changes["total_deregister"].get<std::string_view>());
-    writer.append(
+    tools::success_msg_writer(
+            "Service Node State Changes (blocks {}-{})\n"
+            " Recommissions:       {}\n"
+            " Unlocks:             {}\n"
+            " Decommissions:       {}\n"
+            " Deregistrations:     {}\n"
             " IP change penalties: {}",
-            sn_state_changes["total_ip_change_penalty"].get<std::string_view>());
+            changes["start_height"].get<int>(),
+            changes["end_height"].get<int>(),
+            changes["total_recommission"].get<int>(),
+            changes["total_unlock"].get<int>(),
+            changes["total_decommission"].get<int>(),
+            changes["total_deregister"].get<int>(),
+            changes["total_ip_change_penalty"].get<int>());
 
     return true;
 }
@@ -677,20 +673,19 @@ bool rpc_command_executor::mining_status() {
 
     bool mining_busy = false;
     auto& mres = *maybe_mining_info;
-    if (mres["status"] == STATUS_BUSY)
+    if (mres["status"].get<std::string_view>() == STATUS_BUSY)
         mining_busy = true;
-    else if (mres["status"] != STATUS_OK) {
+    else if (mres["status"].get<std::string_view>() != STATUS_OK) {
         tools::fail_msg_writer("Failed to retrieve mining info");
         return false;
     }
     bool active = mres["active"].get<bool>();
-    long speed = mres["speed"].get<long>();
     if (mining_busy || !active)
         tools::msg_writer("Not currently mining");
     else {
         tools::msg_writer(
                 "Mining at {} with {} threads",
-                get_mining_speed(speed),
+                get_mining_speed(mres["speed"].get<long>()),
                 mres["threads_count"].get<int>());
         tools::msg_writer("Mining address: {}", mres["address"].get<std::string_view>());
     }
@@ -733,7 +728,7 @@ bool rpc_command_executor::print_connections() {
             "Up (kB/s)",
             "Up(now)");
 
-    for (auto& info : conns) {
+    for (auto& info : conns["connections"]) {
         tools::msg_writer(
                 row_fmt,
                 "{} {}:{}"_format(
@@ -960,7 +955,7 @@ bool rpc_command_executor::print_transaction(
     auto prunable_hex = tx.value<std::string_view>("prunable", ""sv);
     bool pruned = !prunable_hash.empty() && prunable_hex.empty();
 
-    bool in_pool = tx["in_pool"].get<bool>();
+    bool in_pool = tx.value("in_pool", false);
     if (in_pool)
         tools::success_msg_writer("Found in pool");
     else
@@ -1211,10 +1206,7 @@ bool rpc_command_executor::print_transaction_pool_stats() {
     return true;
 }
 
-bool rpc_command_executor::start_mining(
-        std::string address,
-        int num_threads,
-        int num_blocks) {
+bool rpc_command_executor::start_mining(std::string address, int num_threads, int num_blocks) {
     json args{
             {"num_blocks", num_blocks},
             {"threads_count", num_threads},
@@ -1277,10 +1269,10 @@ bool rpc_command_executor::out_peers(bool set, uint32_t limit) {
         return false;
     auto& out_peers = *maybe_out_peers;
 
-    const std::string s = out_peers["out_peers"] == (uint32_t)-1
-                                ? "unlimited"
-                                : out_peers["out_peers"].get<std::string>();
-    tools::msg_writer().append("Max number of out peers set to {}\n", s);
+    auto peers = out_peers["out_peers"].get<uint32_t>();
+    tools::msg_writer().append(
+            "Max number of outgoing peers set to {}\n",
+            peers == std::numeric_limits<uint32_t>::max() ? "unlimited" : "{}"_format(peers));
 
     return true;
 }
@@ -1295,10 +1287,10 @@ bool rpc_command_executor::in_peers(bool set, uint32_t limit) {
         return false;
     auto& in_peers = *maybe_in_peers;
 
-    const std::string s = in_peers["in_peers"] == (uint32_t)-1
-                                ? "unlimited"
-                                : in_peers["in_peers"].get<std::string>();
-    tools::msg_writer().append("Max number of in peers set to {}\n", s);
+    auto peers = in_peers["in_peers"].get<uint32_t>();
+    tools::msg_writer().append(
+            "Max number of incoming peers set to {}\n",
+            peers == std::numeric_limits<uint32_t>::max() ? "unlimited" : "{}"_format(peers));
 
     return true;
 }
@@ -1309,17 +1301,19 @@ bool rpc_command_executor::print_bans() {
     if (!maybe_bans)
         return false;
     auto bans = *maybe_bans;
-
-    if (!bans.empty()) {
-        for (auto i = bans.begin(); i != bans.end(); ++i) {
-            tools::msg_writer(
-                    "{} banned for {} seconds",
-                    (*i)["host"].get<std::string_view>(),
-                    (*i)["seconds"].get<int64_t>());
-        }
-    } else
+    auto ban_array = bans.at("bans");
+    assert(ban_array.is_array() && "Internal error, RPC API has changed");
+    if (ban_array.empty()) {
         tools::msg_writer("No IPs are banned");
+        return true;
+    }
 
+    for (const auto& ban : ban_array) {
+        tools::msg_writer(
+                "{} banned for {} seconds",
+                ban["host"].get<std::string_view>(),
+                ban["seconds"].get<int64_t>());
+    }
     return true;
 }
 
@@ -1355,9 +1349,7 @@ bool rpc_command_executor::banned(const std::string& address) {
 
     if (banned_response["banned"].get<bool>())
         tools::msg_writer(
-                "{} is banned for {} seconds",
-                address,
-                banned_response["seconds"].get<std::string_view>());
+                "{} is banned for {} seconds", address, banned_response["seconds"].get<int64_t>());
     else
         tools::msg_writer("{} is not banned", address);
 
@@ -1848,7 +1840,8 @@ static void append_printable_service_node_list_entry(
                     entry["storage_lmq_port"].get<uint16_t>());
 
         // NOTE: Quorumnet port is omitted if we haven't received a uptime proof yet
-        if (auto quorumnet_port_it = entry.find("quorumnet_port"); quorumnet_port_it != entry.end()) {
+        if (auto quorumnet_port_it = entry.find("quorumnet_port");
+            quorumnet_port_it != entry.end()) {
             uint16_t quorumnet_port = *quorumnet_port_it;
             stream << ": {} (oxen quorums)"_format(quorumnet_port);
         } else {
@@ -2164,7 +2157,9 @@ bool rpc_command_executor::flush_cache(bool bad_txs, bool bad_blocks) {
     return true;
 }
 
-bool rpc_command_executor::claim_rewards(const std::string& address) {
+bool rpc_command_executor::claim_rewards(std::string_view address) {
+    if (address.starts_with("0x"))
+        address.remove_prefix(2);
     auto maybe_withdrawal_response = try_running(
             [this, address] {
                 return invoke<BLS_REWARDS_REQUEST>(json{{"address", address}});
@@ -2175,10 +2170,7 @@ bool rpc_command_executor::claim_rewards(const std::string& address) {
     auto& withdrawal_response = *maybe_withdrawal_response;
 
     tools::msg_writer(
-            "Address: {0:s}\n Amount: {1:d}\n Height: {2:d}\n Signature: {3:s}\n"
-            " Link to claim rewards: "
-            "https://oxen-eth-webpage.vercel.app/"
-            "?amount={1:d}&address={0:s}&height={2:d}&sig={3:s}\n",
+            "Address: {}\nAmount: {}\nHeight: {}\nSignature: {}\n",
             withdrawal_response["address"].get<std::string_view>(),
             withdrawal_response["amount"].get<uint64_t>(),
             withdrawal_response["height"].get<uint64_t>(),
@@ -2230,13 +2222,28 @@ bool rpc_command_executor::print_sn_key() {
 
     auto my_sn_keys = *maybe_service_keys;
 
+    std::string_view snpk = my_sn_keys.value("service_node_pubkey", ""sv);
+    std::string_view edpk = my_sn_keys["service_node_ed25519_pubkey"].get<std::string_view>();
+    std::string maybe_sn_pubkey, maybe_bls;
+    if (!snpk.empty() && snpk != edpk)
+        maybe_sn_pubkey = " Legacy Public Key: {}\n"_format(snpk);
+    if (std::string_view blspk = my_sn_keys.value("service_node_bls_pubkey", ""sv); !blspk.empty())
+        maybe_bls = "    BLS Public Key: {}\n"_format(blspk);
+
     tools::success_msg_writer(
-            "Service Node Public Key: {}\n"
-            "     Ed25519 Public Key: {}\n"
-            "      X25519 Public Key: {}",
-            my_sn_keys["service_node_pubkey"].get<std::string_view>(),
-            my_sn_keys["service_node_ed25519_pubkey"].get<std::string_view>(),
-            my_sn_keys["service_node_x25519_pubkey"].get<std::string_view>());
+            "{}"
+            "Ed25519 Public Key: {}\n"
+            " X25519 Public Key: {}\n"
+            "{}"
+            "{}",
+            maybe_sn_pubkey,
+            edpk,
+            my_sn_keys["service_node_x25519_pubkey"].get<std::string_view>(),
+            maybe_bls,
+            my_sn_keys.value("is_service_node", false) ? ""
+                                                       : "Note: this oxend is NOT configured as a "
+                                                         "service node");
+
     return true;
 }
 
@@ -2816,7 +2823,8 @@ bool rpc_command_executor::check_blockchain_pruning() {
         return false;
     auto& pruning = *maybe_pruning;
 
-    tools::success_msg_writer("Blockchain {} pruned", pruning["pruning_seed"] ? "is" : "is not");
+    tools::success_msg_writer(
+            "Blockchain {} pruned", pruning["pruning_seed"].get<uint64_t>() > 0 ? "is" : "is not");
     return true;
 }
 
@@ -2831,7 +2839,10 @@ bool rpc_command_executor::version() {
 }
 
 bool rpc_command_executor::test_trigger_uptime_proof() {
-    return invoke<TEST_TRIGGER_UPTIME_PROOF>(json{{}}, "Failed to trigger uptime proof");
+    tools::success_msg_writer(
+            "{}",
+            invoke<TEST_TRIGGER_UPTIME_PROOF>(json{{}}, "Failed to trigger uptime proof").dump());
+    return true;
 }
 
 }  // namespace daemonize
