@@ -310,7 +310,7 @@ struct service_node_info  // registration information
     //
     // 'block_height' should be the block number of the latest block in the chain (not the height of
     // the blockchain, e.g. blockchain.get_current_blockchain_height() - 1)
-    bool is_expired(uint64_t block_height) const { return requested_unlock_height != 0 && block_height > requested_unlock_height; }
+    bool is_expired(uint64_t block_height) const { return requested_unlock_height != 0 && block_height >= requested_unlock_height; }
 
     bool is_active(uint64_t block_height) const {
         return is_fully_funded() && !is_decommissioned() && !is_expired(block_height);

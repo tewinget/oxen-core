@@ -3427,8 +3427,9 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
         }
 
         // NOTE: Extract all service nodes from the smart contract
-        // TODO: This is still using the slow linked-list walk.
-        bls_pubkeys_in_smart_contract = m_l2_tracker->get_all_bls_public_keys(top_block.l2_height);
+        eth::RewardsContract::ServiceNodeIDs smart_contract_ids =
+                m_l2_tracker->get_all_service_node_ids(std::nullopt);
+        bls_pubkeys_in_smart_contract = std::move(smart_contract_ids.bls_pubkeys);
     }
 
     std::vector<eth::bls_public_key> result;
@@ -3453,6 +3454,34 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
             bls_pubkeys_in_snl.begin(),
             bls_pubkeys_in_snl.end(),
             std::back_inserter(result));
+
+    oxen::log::debug(logcat, "Found {} nodes that are removable", result.size());
+    #if !defined(NDEBUG)
+    if (oxen::log::get_level(logcat) == oxen::log::Level::debug) {
+        for (size_t index = 0; index < result.size(); index++) {
+            const eth::bls_public_key& it = result[index];
+            std::optional<uint64_t> requested_unlock_height = {};
+            try {
+                crypto::public_key pubkey = service_node_list.public_key_lookup(it);
+                auto sns = service_node_list.get_service_node_list_state({pubkey});
+                if (sns.size()) {
+                    const service_nodes::service_node_info& sn_info = *sns[0].info;
+                    requested_unlock_height = sn_info.requested_unlock_height;
+                }
+            } catch (...) {
+            }
+
+            oxen::log::debug(
+                    logcat,
+                    " {:04d} {} ({})",
+                    index,
+                    it,
+                    requested_unlock_height
+                            ? "node expired; height {}"_format(*requested_unlock_height)
+                            : "node exists only in contract");
+        }
+    }
+    #endif
     return result;
 }
 //------------------------------------------------------------------

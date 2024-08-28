@@ -2931,7 +2931,6 @@ void service_node_list::state_t::update_from_block(
     assert(block.get_height() == height + 1);
     quorums = {};
     auto hf_version = block.major_version;
-    const auto& netconf = get_config(nettype);
 
     //
     // Generate Pulse Quorum and winner before we make any changes to the state because changing the

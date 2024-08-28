@@ -52,7 +52,10 @@ inline constexpr network_config config{
         .LIMIT_BATCH_OUTPUTS = mainnet::config.LIMIT_BATCH_OUTPUTS,
         .SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 1,
         .DEREGISTRATION_LOCK_DURATION = 10 * TARGET_BLOCK_TIME,
-        .UNLOCK_DURATION = 5 * TARGET_BLOCK_TIME,
+        // There's no unlock duration in localdev tests. This means when the
+        // unlock is confirmed by the nodes, the node can immediately exit the
+        // network.
+        .UNLOCK_DURATION = 0 * TARGET_BLOCK_TIME,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD =
                 mainnet::config.HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,

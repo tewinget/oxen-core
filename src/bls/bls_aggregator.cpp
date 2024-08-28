@@ -671,6 +671,14 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
 bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
         const bls_public_key& bls_pubkey, removal_type type) {
 
+    std::string_view label = "";
+    switch (type) {
+        case removal_type::normal: label = "remove"; break;
+        case removal_type::liquidate: label = "liquidation"; break;
+    }
+
+    oxen::log::trace(logcat, "Initiating {} request for BLS pkey {}", label, bls_pubkey);
+
     // NOTE: Validate the arguments
     if (!bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
@@ -694,7 +702,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
 
     if (!removable) {
         throw oxen::traced<std::invalid_argument>(
-                "{} request for {} at height {} is valid. Node cannot "
+                "{} request for {} at height {} is invalid. Node cannot "
                 "be removed yet. Request rejected"_format(
                         type == removal_type::normal ? "Exit" : "Liquidation",
                         bls_pubkey,

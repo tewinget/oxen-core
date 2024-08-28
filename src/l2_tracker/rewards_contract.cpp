@@ -108,6 +108,64 @@ static std::string log_new_service_node_tx(
     return result;
 }
 
+static std::string log_new_service_node_removal_request_tx(
+        const event::ServiceNodeRemovalRequest& item, std::string_view hex) {
+    fmt::memory_buffer buffer{};
+    fmt::format_to(
+            std::back_inserter(buffer),
+            "New service removal request components were:\n"
+            "  - Chain ID:   {}\n"
+            "  - BLS Pubkey: {}\n"
+            "  - L2 Height:  {}\n",
+            item.chain_id,
+            item.bls_pubkey,
+            item.l2_height);
+
+    fmt::format_to(std::back_inserter(buffer), "\nThe raw blob was (32 byte chunks/line):\n\n");
+    std::string_view it = hex;
+    if (it.starts_with("0x") || it.starts_with("0X"))
+        it.remove_prefix(2);
+
+    while (it.size()) {
+        std::string_view chunk = tools::string_safe_substr(it, 0, 64);  // Grab 32 byte chunk
+        fmt::format_to(std::back_inserter(buffer), "  {}\n", chunk);    // Output the chunk
+        it = tools::string_safe_substr(it, 64, it.size());              // Advance the it
+    }
+
+    std::string result = fmt::to_string(buffer);
+    return result;
+}
+
+static std::string log_new_service_node_removal_tx(
+        const event::ServiceNodeRemoval& item, std::string_view hex) {
+    fmt::memory_buffer buffer{};
+    fmt::format_to(
+            std::back_inserter(buffer),
+            "New service removal components were:\n"
+            "  - Chain ID:          {}\n"
+            "  - BLS Pubkey:        {}\n"
+            "  - L2 Height:         {}\n"
+            "  - Returned Amount:   {}\n",
+            item.chain_id,
+            item.bls_pubkey,
+            item.l2_height,
+            item.returned_amount);
+
+    fmt::format_to(std::back_inserter(buffer), "\nThe raw blob was (32 byte chunks/line):\n\n");
+    std::string_view it = hex;
+    if (it.starts_with("0x") || it.starts_with("0X"))
+        it.remove_prefix(2);
+
+    while (it.size()) {
+        std::string_view chunk = tools::string_safe_substr(it, 0, 64);  // Grab 32 byte chunk
+        fmt::format_to(std::back_inserter(buffer), "  {}\n", chunk);    // Output the chunk
+        it = tools::string_safe_substr(it, 64, it.size());              // Advance the it
+    }
+
+    std::string result = fmt::to_string(buffer);
+    return result;
+}
+
 static std::string log_service_node_blob(const ContractServiceNode& blob, std::string_view hex) {
     fmt::memory_buffer buffer{};
     fmt::format_to(
@@ -277,6 +335,8 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             auto& item = result.emplace<event::ServiceNodeRemovalRequest>(chain_id, l2_height);
             std::tie(item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
+
+            oxen::log::debug(logcat, "{}", log_new_service_node_removal_request_tx(item, log.data));
             break;
         }
         case EventType::ServiceNodeRemoval: {
@@ -293,6 +353,8 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             std::tie(amt256, item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, u256, bls_public_key>(log.data);
             item.returned_amount = tools::decode_integer_be(amt256);
+
+            oxen::log::debug(logcat, "{}", log_new_service_node_removal_tx(item, log.data));
             break;
         }
         case EventType::Other: break;
