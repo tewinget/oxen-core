@@ -148,9 +148,7 @@ static std::vector<service_nodes::pubkey_and_sninfo> sort_and_filter(
 std::vector<pubkey_and_sninfo> service_node_list::state_t::active_service_nodes_infos() const {
     return sort_and_filter(
             service_nodes_infos,
-            [block_height = height](const service_node_info& info) {
-                return info.is_active(block_height);
-            },
+            [](const service_node_info& info) { return info.is_active(); },
             /*reserve=*/true);
 }
 
@@ -311,7 +309,7 @@ bool service_node_list::is_service_node(
         const crypto::public_key& pubkey, bool require_active) const {
     std::lock_guard lock(m_sn_mutex);
     auto it = m_state.service_nodes_infos.find(pubkey);
-    return it != m_state.service_nodes_infos.end() && (!require_active || it->second->is_active(m_state.height));
+    return it != m_state.service_nodes_infos.end() && (!require_active || it->second->is_active());
 }
 
 bool service_node_list::is_key_image_locked(
@@ -992,6 +990,12 @@ bool service_node_list::state_t::process_state_change_tx(
                 }
             }
 
+            recently_removed_nodes.emplace_back(recently_removed_node{
+                    .pubkey = crypto::ed25519_public_key(iter->first),
+                    .bls_pubkey = iter->second->bls_public_key,
+                    .height = block_height,
+                    .type = recently_removed_node::type_t::deregister,
+                    .returned_amount = 0});
             erase_info(iter);
             return true;
 
@@ -2968,31 +2972,40 @@ void service_node_list::state_t::update_from_block(
     }
 
     //
-    // Expire Nodes
-    // In >=HF21 nodes expire but remain in the list. They must be removed via ethereum removal TX
-    // (e.g. liquidated or exited via the smart contract). We keep them in the list so that remember
-    // the list of contributors. Once the removal TX arrives, the contributors can be refunded their
-    // $SENT.
+    // Erase older entries in the recently expired nodes list
     //
-    if (hf_version < hf::hf21_eth) {
-        for (const crypto::public_key& pubkey :
-             get_expired_nodes(db, nettype, block.major_version, height)) {
-            auto i = service_nodes_infos.find(pubkey);
-            if (i == service_nodes_infos.end())
-                continue;
-            if (my_keys && my_keys->pub == pubkey)
-                log::info(
-                        globallogcat,
-                        fg(fmt::terminal_color::green),
-                        "Service node expired (yours): {} at block height: {}",
-                        pubkey,
-                        height);
-            else
-                log::info(logcat, "Service node expired: {} at block height: {}", pubkey, height);
+    auto& netconf = get_config(nettype);
+    for (auto it = recently_removed_nodes.begin(); it != recently_removed_nodes.end(); ) {
+        uint64_t end_height = it->height + netconf.ETH_REMOVAL_BUFFER;
+        it = height >= end_height ? recently_removed_nodes.erase(it) : it++;
+    }
 
-            need_swarm_update += i->second->is_active(height);
-            erase_info(i);
-        }
+    //
+    // Expire Nodes
+    //
+    for (const crypto::public_key& pubkey :
+         get_expired_nodes(db, nettype, block.major_version, height)) {
+        auto i = service_nodes_infos.find(pubkey);
+        if (i == service_nodes_infos.end())
+            continue;
+        if (my_keys && my_keys->pub == pubkey)
+            log::info(
+                    globallogcat,
+                    fg(fmt::terminal_color::green),
+                    "Service node expired (yours): {} at block height: {}",
+                    pubkey,
+                    height);
+        else
+            log::info(logcat, "Service node expired: {} at block height: {}", pubkey, height);
+
+        need_swarm_update += i->second->is_active();
+        recently_removed_nodes.emplace_back(recently_removed_node{
+                .pubkey = crypto::ed25519_public_key(i->first),
+                .bls_pubkey = i->second->bls_public_key,
+                .height = height,
+                .type = recently_removed_node::type_t::voluntary_exit,
+                .returned_amount = 0});
+        erase_info(i);
     }
 
     //
@@ -3123,9 +3136,7 @@ void service_node_list::state_t::update_from_block(
     // Filtered pubkey-sorted vector of service nodes that are active (fully funded and *not*
     // decommissioned).
     std::vector<pubkey_and_sninfo> active_snode_list = sort_and_filter(
-            service_nodes_infos, [block_height = height](const service_node_info& info) {
-                return info.is_active(block_height);
-            });
+            service_nodes_infos, [](const service_node_info& info) { return info.is_active(); });
     if (need_swarm_update) {
         crypto::hash const block_hash = cryptonote::get_block_hash(block);
         uint64_t seed = 0;
@@ -3325,7 +3336,7 @@ std::vector<crypto::public_key> service_node_list::state_t::get_expired_nodes(
             crypto::public_key const& snode_key = it->first;
             const service_node_info& info = *it->second;
             if (info.registration_hf_version >= hf::hf11_infinite_staking) {
-                if (info.requested_unlock_height && info.is_expired(block_height))
+                if (info.requested_unlock_height && block_height > info.requested_unlock_height)
                     expired_nodes.push_back(snode_key);
             } else  // Version 10 Bulletproofs
             {
@@ -3355,7 +3366,7 @@ service_nodes::payout service_node_list::state_t::get_next_block_leader() const 
                 crypto::null<crypto::public_key>);
         for (const auto& info_it : service_nodes_infos) {
             const auto& sninfo = *info_it.second;
-            if (sninfo.is_active(height)) {
+            if (sninfo.is_active()) {
                 auto waiting_since = std::make_tuple(
                         sninfo.last_reward_block_height,
                         sninfo.last_reward_transaction_index,
@@ -5110,7 +5121,7 @@ bool service_node_info::can_be_voted_on(uint64_t height) const {
                 height,
                 last_decommission_height);
         return false;
-    } else if (is_active(height)) {
+    } else if (is_active()) {
         assert(active_since_height >= 0);  // should be satisfied whenever is_active() is true
         if (height <= static_cast<uint64_t>(active_since_height)) {
             log::debug(

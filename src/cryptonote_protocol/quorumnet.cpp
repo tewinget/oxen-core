@@ -184,7 +184,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
                 candidates.begin(),
                 candidates.end(),
                 [&remotes, top_height](const auto& pubkey, const auto& info, const auto& proof) {
-                    if (!info.is_active(top_height)) {
+                    if (!info.is_active()) {
                         log::trace(logcat, "Not include inactive node {}", pubkey);
                         return;
                     }
@@ -349,7 +349,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
                     need_remotes.begin(),
                     need_remotes.end(),
                     [this, top_height](const auto& pubkey, const auto& info, const auto& proof) {
-                        if (info.is_active(top_height) && proof.pubkey_x25519 && proof.proof->qnet_port &&
+                        if (info.is_active() && proof.pubkey_x25519 && proof.proof->qnet_port &&
                             proof.proof->public_ip)
                             remotes.emplace(
                                     pubkey,

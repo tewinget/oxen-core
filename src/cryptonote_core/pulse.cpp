@@ -1594,7 +1594,7 @@ namespace {
         // NOTE: We check if the node at 'key' will be active in the next height (e.g. they are
         // still going to be active to be able to generate the next pulse block).
         uint64_t next_height = blockchain.get_current_blockchain_height();
-        if (!info->is_active(next_height)) {
+        if (!info->is_active()) {
             log::warning(
                     logcat,
                     "{}Block producer (us) is not an active service node, waiting until next round",

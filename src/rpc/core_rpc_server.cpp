@@ -2665,9 +2665,7 @@ void core_rpc_server::fill_sn_response_entry(
             "last_reward_transaction_index",
             info.last_reward_transaction_index,
             "active",
-            info.is_active(top_height),
-            "expired",
-            info.is_expired(top_height),
+            info.is_active(),
             "payable",
             info.is_payable(top_height, nettype()),
             "funded",
@@ -2929,7 +2927,7 @@ void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
                         sn_infos.begin(),
                         sn_infos.end(),
                         [top_height](const service_nodes::service_node_pubkey_info& snpk_info) {
-                            return !snpk_info.info->is_active(top_height);
+                            return !snpk_info.info->is_active();
                         }),
                 sn_infos.end());
 

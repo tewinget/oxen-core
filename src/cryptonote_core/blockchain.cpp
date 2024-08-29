@@ -3416,15 +3416,10 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
         // be removed by aggregating a signature (or without if the wait time has elapsed) from the
         // network to be removed from the smart contract (which gets witnessed by Oxen thereby
         // removing it from the workchain).
-        const cryptonote::block top_block = m_db->get_top_block();
-        const uint64_t top_height = top_block.get_height();
-
         auto sns = service_node_list.get_service_node_list_state();
         bls_pubkeys_in_snl.reserve(sns.size());
-        for (const auto& sni : sns) {
-            if (!sni.info->is_expired(top_height))
-                bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
-        }
+        for (const auto& sni : sns)
+            bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
 
         // NOTE: Extract all service nodes from the smart contract
         eth::RewardsContract::ServiceNodeIDs smart_contract_ids =

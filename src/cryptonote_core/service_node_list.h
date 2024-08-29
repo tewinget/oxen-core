@@ -306,19 +306,11 @@ struct service_node_info  // registration information
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
     bool is_decommissioned() const { return active_since_height < 0; }
 
-    // This function calculates a valid expiry value when HF >= 11
-    //
-    // 'block_height' should be the block number of the latest block in the chain (not the height of
-    // the blockchain, e.g. blockchain.get_current_blockchain_height() - 1)
-    bool is_expired(uint64_t block_height) const { return requested_unlock_height != 0 && block_height >= requested_unlock_height; }
-
-    bool is_active(uint64_t block_height) const {
-        return is_fully_funded() && !is_decommissioned() && !is_expired(block_height);
-    }
+    bool is_active() const { return is_fully_funded() && !is_decommissioned(); }
 
     bool is_payable(uint64_t at_height, cryptonote::network_type nettype) const {
         auto& netconf = get_config(nettype);
-        return is_active(at_height) &&
+        return is_active() &&
                at_height >= active_since_height + netconf.SERVICE_NODE_PAYABLE_AFTER_BLOCKS;
     }
 
@@ -619,7 +611,7 @@ class service_node_list {
                 nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height);
 
         for (const auto& pk_info : m_state.service_nodes_infos) {
-            if (!pk_info.second->is_active(m_state.height))
+            if (!pk_info.second->is_active())
                 continue;
             auto it = proofs.find(pk_info.first);
             if (it == proofs.end())
@@ -723,6 +715,23 @@ class service_node_list {
     // 1h5min)).
     bool set_storage_server_peer_reachable(crypto::public_key const& pubkey, bool value);
     bool set_lokinet_peer_reachable(crypto::public_key const& pubkey, bool value);
+
+    struct recently_removed_node {
+        enum struct type_t : uint8_t {
+            voluntary_exit,
+            deregister,
+        };
+
+        crypto::ed25519_public_key pubkey;  // The node's primary ed25519 key
+        eth::bls_public_key bls_pubkey;     // The node's primary bls key
+        uint64_t height;                    // Height at which the node exited/deregistered
+        type_t type;                        // The event that occurred to remove this node
+        uint64_t returned_amount;           // If 'deregister' this is the amount of oxen to be returned
+    };
+
+    std::span<const recently_removed_node> recently_removed_nodes() const {
+        return m_state.recently_removed_nodes;
+    }
 
   private:
     bool set_peer_reachable(bool storage_server, crypto::public_key const& pubkey, bool value);
@@ -903,6 +912,8 @@ class service_node_list {
         // changes.  This is an *ordered* map because confirmation votes in a pulse block depend on
         // the order of txes in here.
         std::map<crypto::hash, unconfirmed_l2_tx> unconfirmed_l2_txes;
+
+        std::vector<recently_removed_node> recently_removed_nodes;
 
         service_node_list* sn_list;
 

@@ -452,7 +452,7 @@ static std::string time_ago_str(time_t now, time_t then) {
 bool core::is_active_sn() const {
     auto info = get_my_sn_info();
     uint64_t top_height = blockchain.get_current_blockchain_height() - 1;
-    return (info && info->is_active(top_height));
+    return (info && info->is_active());
 }
 
 // Returns the service nodes info
@@ -488,7 +488,7 @@ std::string core::get_status_string() const {
             auto& info = *states[0].info;
             if (!info.is_fully_funded())
                 s += "awaiting contr.";
-            else if (info.is_active(top_height))
+            else if (info.is_active())
                 s += "active";
             else if (info.is_decommissioned())
                 s += "decomm.";
@@ -1175,45 +1175,19 @@ bool core::is_node_removable(const eth::bls_public_key& node_bls_pubkey) {
 }
 
 bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
-    bool result = false;
     if (!is_node_removable(node_bls_pubkey))
-        return result;
+        return false;
 
     // NOTE: Node exists in the smart contract but not the oxen service node
     // list, it's been deregistered _OR_ it's expired (voluntarily exited, but hasn't removed
     // themselves from the list).
-
-    // TODO: Just calculate an acceleration structure on block receive.
-    // NOTE: Lookup SN info for the bls key
-    crypto::public_key snode_key = service_node_list.public_key_lookup(node_bls_pubkey);
-    std::vector<service_nodes::service_node_pubkey_info> sn_info_list = service_node_list.get_service_node_list_state({snode_key});
-    if (sn_info_list.empty()) {
-        // NOTE: This service node does _not_ exist in the SNL, but it's in the smart contract. We
-        // can liquidate.
-        // TODO: Were we supposed to give the user some buffer on dereg to remove themselves from
-        // the list before getting penalised?
-        result = true;
-        return result;
+    for (const service_nodes::service_node_list::recently_removed_node& it : service_node_list.recently_removed_nodes()) {
+        assert(it.bls_pubkey && "Invalid null key got inserted into the recently removed list");
+        if (it.bls_pubkey == node_bls_pubkey)
+            return false;
     }
 
-    // NOTE: Request unlock height is 0 when no voluntary exit has been requested yet
-    const service_nodes::service_node_pubkey_info &sn_info = sn_info_list[0];
-    if (sn_info.info->requested_unlock_height == 0)
-        return result;
-
-    // TODO: Return a reason why a node is _not_ liquidatable.
-    // ETH_REMOVAL_BUFFER Provides a reasonable span of time after a node has exited from the
-    // Oxen workchain for the operator to also exit themselves from the smart contract and avoid
-    // a liquidation penalty.
-    //
-    // These nodes will only have `requested_unlock_height` set if they submitted a voluntarily exit
-    // (aka removal request) from the network.
-    const auto& netconf = get_net_config();
-    uint64_t liquidatable_height = sn_info.info->requested_unlock_height + netconf.ETH_REMOVAL_BUFFER;
-    uint64_t height = blockchain.get_current_blockchain_height();
-
-    result = height > liquidatable_height;
-    return result;
+    return true;
 }
 
 void core::start_oxenmq() {

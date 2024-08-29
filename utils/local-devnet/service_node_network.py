@@ -447,9 +447,10 @@ class SNNetwork:
             unlocks_confirmed.append(False)
 
         vprint(f"Sleeping now, waiting for confirmation of voluntary exit on Oxen, blockchain height is {self.ethsns[0].height()}")
-        total_sleep_time = 0
-        sleep_time       = 8
-        current_height   = 0
+        total_sleep_time            = 0
+        sleep_time                  = 8
+        current_height              = 0
+        max_requested_unlock_height = 0
         while True:
             height = self.ethsns[0].height()
             if current_height != height:
@@ -460,6 +461,7 @@ class SNNetwork:
                     if unlocks_confirmed[index.value] == False:
                         json = self.sns[sn_to_remove_indexes[index.value]].sn_status()
                         if json['service_node_state']['requested_unlock_height'] != 0:
+                            max_requested_unlock_height = max(max_requested_unlock_height, json['service_node_state']['requested_unlock_height'])
                             unlocks_confirmed[index.value] = True
 
                     if unlocks_confirmed[index.value] == True:
@@ -471,7 +473,15 @@ class SNNetwork:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
 
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}")
+        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}, the latest requested unlock height is {max_requested_unlock_height}")
+
+        vprint(f"Sleeping again until height {max_requested_unlock_height + 1} where all nodes are unlocked")
+        total_sleep_time = 0
+        while current_height <= max_requested_unlock_height + 1:
+            current_height = self.ethsns[0].height()
+            total_sleep_time += sleep_time
+            time.sleep(sleep_time)
+        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}, the latest requested unlock height is {max_requested_unlock_height}")
 
         # Do removal via signature and liquidation, aggregate signature from network and apply it on
         # the smart contract

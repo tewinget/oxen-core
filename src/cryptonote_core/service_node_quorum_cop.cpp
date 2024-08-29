@@ -524,7 +524,7 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                         obligations_height_hf_version, my_keys.pub, info);
                                 const bool print_failings =
                                         info.is_decommissioned() ||
-                                        (info.is_active(height) && !my_test_results.passed() &&
+                                        (info.is_active() && !my_test_results.passed() &&
                                          // Don't warn uptime proofs if the daemon is just recently
                                          // started and is candidate for testing (i.e. restarting
                                          // the daemon)
