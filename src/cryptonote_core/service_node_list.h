@@ -726,7 +726,9 @@ class service_node_list {
         eth::bls_public_key bls_pubkey;     // The node's primary bls key
         uint64_t height;                    // Height at which the node exited/deregistered
         type_t type;                        // The event that occurred to remove this node
-        uint64_t returned_amount;           // If 'deregister' this is the amount of oxen to be returned
+        uint64_t staking_requirement;       // The staking requirement this node had to fulfill
+        std::vector<service_node_info::contributor_t>
+                contributors;  // The contributors for the node
     };
 
     std::span<const recently_removed_node> recently_removed_nodes() const {

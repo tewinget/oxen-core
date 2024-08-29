@@ -481,11 +481,12 @@ class SNNetwork:
             current_height = self.ethsns[0].height()
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}, the latest requested unlock height is {max_requested_unlock_height}")
+        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}, unlocks are complete")
 
         # Do removal via signature and liquidation, aggregate signature from network and apply it on
         # the smart contract
         for mode in SNExitMode:
+            sn_to_remove_pubkey      = self.sns[sn_to_remove_indexes[mode.value]].get_service_keys().pubkey
             sn_to_remove_bls_pubkey  = self.sns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
             sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 
@@ -546,6 +547,32 @@ class SNNetwork:
             # behind the tip for safety! In localdev this is configured to 1 block of lag).
             ethereum.evm_mine(self.sn_contract.web3);
 
+        # Verify that deregistration stake is unlocked and claimable
+        vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.ethsns[0].height()}")
+        total_sleep_time = 0
+        balance_before = self.ethsns[0].get_accrued_rewards([hardhat_account_no_0x])[0].balance
+        while True:
+            total_sleep_time += sleep_time
+            time.sleep(sleep_time)
+
+            # TODO: Crappy heuristic to detect the stake unlock. A node
+            # registered prior to the HF staked 100 $OXEN. A node after stakes
+            # 120 $SENT. A deregistration (liquidation) does a tiny slash on the
+            # funds so we don't exactly get the same stake back. 
+            #
+            # For now we just try and detect a good chunk of the funds being
+            # credited by sleeping and check each height.
+            balance_after     = self.ethsns[0].get_accrued_rewards([hardhat_account_no_0x])[0].balance
+            change_in_balance = balance_after - balance_before
+            balance_before    = balance_after
+            if change_in_balance > 95:
+                vprint("Stake-like change in balance {}, after {}", balance_before, balance_after)
+                break
+            else:
+                vprint("Balance before {}, after {}", balance_before, balance_after)
+
+        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}")
+
         # Do remove 'after wait time' ##############################################################
         # IMPORTANT: This test must be run last because it advances the L2 blockchain by 31 days.
         # This method of removal does _not_ require a signature. The other methods require a
@@ -559,9 +586,11 @@ class SNNetwork:
         ethereum.evm_increaseTime(self.sn_contract.web3, days_30_in_seconds)
         ethereum.evm_mine(self.sn_contract.web3)
 
+
         # Remove the node from the smart contract (after 31 days has elapsed)
         for mode in SNExitMode:
             if mode == SNExitMode.AfterWaitTime:
+                sn_to_remove_pubkey      = self.sns[sn_to_remove_indexes[mode.value]].get_service_keys().pubkey
                 sn_to_remove_bls_pubkey  = self.sns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
                 sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 

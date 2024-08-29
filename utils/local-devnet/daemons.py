@@ -40,6 +40,11 @@ class RPCFailed(RuntimeError):
         self.json = json
         super().__init__(self.message)
 
+class AccruedRewards:
+    def __init__(self):
+        self.address = ""
+        self.balance = 0
+
 class RPCDaemon:
     def __init__(self, name):
         self.name = name
@@ -282,8 +287,20 @@ class Daemon(RPCDaemon):
     def get_bls_rewards(self, address):
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
 
-    def get_removal_liquidation_request(self, bls_key, liquidate = False):
-        return self.json_rpc("bls_removal_liquidation_request", {"bls_pubkey": bls_key, "liquidate": liquidate}).json()
+    def get_removal_liquidation_request(self, bls_pubkey, liquidate=False):
+        return self.json_rpc("bls_removal_liquidation_request", {"bls_pubkey": bls_pubkey, "liquidate": liquidate}).json()
+
+    def get_accrued_rewards(self, ed25519_keys) -> list[AccruedRewards]:
+        json                         = self.json_rpc("get_accrued_rewards", {"addresses": ed25519_keys}).json()
+        balance_array                = json['result']['balances']
+        result: list[AccruedRewards] = []
+        for address, balance in balance_array.items():
+            item = AccruedRewards()
+            item.address = address
+            item.balance = balance
+            result.append(item)
+        return result
+
 
     def get_service_nodes(self):
         return self.json_rpc("get_service_nodes").json()

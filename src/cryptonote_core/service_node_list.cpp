@@ -995,7 +995,8 @@ bool service_node_list::state_t::process_state_change_tx(
                     .bls_pubkey = iter->second->bls_public_key,
                     .height = block_height,
                     .type = recently_removed_node::type_t::deregister,
-                    .returned_amount = 0});
+                    .staking_requirement = iter->second->staking_requirement,
+                    .contributors = iter->second->contributors});
             erase_info(iter);
             return true;
 
@@ -1796,54 +1797,90 @@ bool service_node_list::state_t::process_confirmed_event(
         uint32_t,
         const service_node_keys*) {
 
+    // NOTE: Retrieve node from the staging area
     auto node = std::find_if(
-            service_nodes_infos.begin(), service_nodes_infos.end(), [&removal](const auto& pair) {
-                const auto& [key, info] = pair;
-                return info->bls_public_key == removal.bls_pubkey;
+            recently_removed_nodes.begin(), recently_removed_nodes.end(), [&removal](const auto& item) {
+                bool result = item.bls_pubkey == removal.bls_pubkey;
+                return result;
             });
 
-    if (node == service_nodes_infos.end()) {
-        // TODO FIXME: this seems broken: we should *always* be hitting this case because the SN
-        // network wouldn't have signed off on it if it is still in `service_nodes_infos`, i.e.
-        // still active, and so we're erroring out here before we can process the removal (and apply
-        // the returned funds to the accounts).
+    if (node == recently_removed_nodes.end()) {
         log::warning(
                 logcat,
-                "Unable to process ETH removal event: BLS pubkey {} is not registered",
+                "ETH removal event for BLS pubkey {}: Node has already been removed or did not exist, skipping",
                 removal.bls_pubkey);
         return false;
     }
 
-    const auto& [snpk, info] = *node;
-    uint64_t staking_requirement = info->staking_requirement;
-
-    uint64_t block_delay = 0;
-    uint64_t stake_reduction = 0;
-    if (removal.returned_amount < staking_requirement) {
-        auto& netconf = get_config(nettype);
-        block_delay = netconf.BLOCKS_IN(netconf.DEREGISTRATION_LOCK_DURATION);
-        stake_reduction = staking_requirement - removal.returned_amount;
+    // NOTE: Check that the amount to be refunded is well-formed
+    if (removal.returned_amount > node->staking_requirement) {
+        log::warning(
+                logcat,
+                "ETH removal event for BLS pubkey {}: Is requesting to return more funds ({}) than it staked ({}). Fixing up value",
+                removal.bls_pubkey,
+                removal.returned_amount,
+                node->staking_requirement);
     }
 
-    std::vector<cryptonote::batch_sn_payment> returned_stakes;
-    for (const auto& contributor : info->contributors)
-        returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
+    uint64_t const returned_amount = std::min(node->staking_requirement, removal.returned_amount);
+    uint64_t const slash_amount = node->staking_requirement - returned_amount;
 
-    if (stake_reduction > returned_stakes[0].amount) {
-        log::error(
+    // NOTE: Check if they're allowed to be slashed
+    if (slash_amount > 0 && node->type != recently_removed_node::type_t::deregister) {
+        log::warning(
                 logcat,
-                "ETH removal of {} rejected: returned amount is less than the non-operator "
-                "contributions",
-                snpk);
+                "ETH removal event for BLS pubkey {}: Has a slash amount defined but the node was not a deregistration, skipping",
+                removal.bls_pubkey,
+                removal.returned_amount,
+                node->staking_requirement);
         return false;
     }
-    returned_stakes[0].amount -= stake_reduction;
 
-    // TODO FIXME: this doesn't seem like the right place to add the block delay: if a node gets
-    // deregged then we want the block delay to start from the point of deregistration, *not* the
-    // time when someone submitted a removal request on the ethereum side.
-    return sn_list->blockchain.sqlite_db().return_staked_amount_to_user(
-            returned_stakes, block_delay);
+    // NOTE: Calculate how many blocks from now the funds are still to be locked for
+    uint64_t block_delay = 0;
+    if (slash_amount > 0) {
+        // NOTE: Calculate the height at which funds are unlocked
+        auto& netconf = get_config(nettype);
+        uint64_t dereg_height = node->height;
+        uint64_t dereg_penalty = netconf.BLOCKS_IN(netconf.DEREGISTRATION_LOCK_DURATION);
+        uint64_t funds_unlocked_at_height = dereg_height + dereg_penalty;
+
+        // NOTE: Calculate how long in blocks from now the funds still need to be locked
+        if (height <= funds_unlocked_at_height)
+            block_delay = funds_unlocked_at_height - height;
+    }
+
+    // NOTE: Enumerate the contributors to refund to
+    std::vector<cryptonote::batch_sn_payment> returned_stakes;
+    for (const auto& contributor : node->contributors)
+        returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
+
+    if (returned_stakes.empty()) {
+        log::warning(
+                logcat,
+                "ETH removal event for BLS pubkey {}: Node has 0 contributors detected, null data encountered, skipping",
+                node->bls_pubkey);
+        return false;
+    }
+
+    // NOTE: Apply the slash penalty to the operator
+    if (slash_amount > returned_stakes[0].amount) {
+        log::error(logcat, "ETH removal of BLS pubkey {} rejected: Returned amount {} is less than the operator contribution {}, skipping", node->bls_pubkey, slash_amount, returned_stakes[0].amount);
+        return false;
+    }
+    returned_stakes[0].amount -= slash_amount;
+
+    // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation when
+    // fully unlocked..
+    sn_list->blockchain.sqlite_db().return_staked_amount_to_user(returned_stakes, block_delay);
+
+    // NOTE: Remove the node from the staging area (successfully liquidated/exited)
+    recently_removed_nodes.erase(node);
+
+    // A removal event does not trigger a swarm update because the node is not in the SNL, it's in a
+    // staging area where they're awaiting to get removed (e.g. at this point they've already exited
+    // the list and the swarm has reconfigured.
+    return false;
 }
 
 bool service_node_list::state_t::process_contribution_tx(
@@ -3004,7 +3041,8 @@ void service_node_list::state_t::update_from_block(
                 .bls_pubkey = i->second->bls_public_key,
                 .height = height,
                 .type = recently_removed_node::type_t::voluntary_exit,
-                .returned_amount = 0});
+                .staking_requirement = i->second->staking_requirement,
+                .contributors = i->second->contributors });
         erase_info(i);
     }
 
