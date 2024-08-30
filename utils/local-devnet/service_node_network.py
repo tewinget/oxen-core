@@ -564,12 +564,12 @@ class SNNetwork:
             # credited by sleeping and check each height.
             balance_after     = self.ethsns[0].get_accrued_rewards([hardhat_account_no_0x])[0].balance
             change_in_balance = balance_after - balance_before
-            balance_before    = balance_after
             if change_in_balance > 95:
-                vprint("Stake-like change in balance {}, after {}", balance_before, balance_after)
+                vprint("Stake-like change in balance {}, after {} (change {})".format(balance_before, balance_after, change_in_balance))
                 break
             else:
-                vprint("Balance before {}, after {}", balance_before, balance_after)
+                vprint("Balance before {}, after {} (change {})".format(balance_before, balance_after, change_in_balance))
+            balance_before = balance_after
 
         vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}")
 
