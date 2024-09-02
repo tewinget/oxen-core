@@ -599,20 +599,18 @@ class service_node_list {
         }
     }
 
-    /// Copies `service_node_address`es (pubkeys, ip, port) of all currently active SNs with
-    /// potentially reachable, known addresses (via a recently received valid proof) into the given
-    /// output iterator.  Service nodes that are active but for which we have not yet
-    /// received/accepted a proof containing IP info are not included.
+    /// Copies `service_node_address`es (pubkeys, ip, port) of all current and expired (yet to be
+    /// removed from smart contract) SNs with potentially reachable, known addresses (via a recently
+    /// received valid proof) into the given output iterator.  Service nodes that for which we have
+    /// not yet received/accepted a proof containing IP info are not included.
     template <std::output_iterator<service_node_address> OutputIt>
-    void copy_reachable_active_service_node_addresses(
+    void copy_reachable_service_node_addresses(
             OutputIt out, cryptonote::network_type nettype) const {
         std::lock_guard lock{m_sn_mutex};
         bool sn_pk_is_ed25519_hf = cryptonote::is_hard_fork_at_least(
                 nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height);
 
         for (const auto& pk_info : m_state.service_nodes_infos) {
-            if (!pk_info.second->is_active())
-                continue;
             auto it = proofs.find(pk_info.first);
             if (it == proofs.end())
                 continue;
@@ -636,6 +634,32 @@ class service_node_list {
                     sn_pk_is_ed25519_hf ? snpk_to_xpk(pk_info.first) : it->second.pubkey_x25519,
                     proof.public_ip,
                     proof.qnet_port};
+        }
+
+        if (sn_pk_is_ed25519_hf) {
+            for (const auto& recently_removed_it : m_state.recently_removed_nodes) {
+                auto it = proofs.find(recently_removed_it.pubkey);
+                if (it != proofs.end() && it->second.proof) {
+                    auto& proof = *it->second.proof;
+                    *out++ = service_node_address{
+                            recently_removed_it.pubkey,
+                            recently_removed_it.bls_pubkey,
+                            it->second.pubkey_x25519,
+                            proof.public_ip,
+                            proof.qnet_port};
+                    continue;
+                }
+
+                // NOTE: We don't have a proof, we defer to what we last stored for the node.
+                if (recently_removed_it.public_ip == 0 || recently_removed_it.qnet_port == 0)
+                    continue;
+                *out++ = service_node_address{
+                        recently_removed_it.pubkey,
+                        recently_removed_it.bls_pubkey,
+                        snpk_to_xpk(recently_removed_it.pubkey),
+                        recently_removed_it.public_ip,
+                        recently_removed_it.qnet_port};
+            }
         }
     }
 
@@ -722,13 +746,15 @@ class service_node_list {
             deregister,
         };
 
-        crypto::ed25519_public_key pubkey;  // The node's primary ed25519 key
-        eth::bls_public_key bls_pubkey;     // The node's primary bls key
-        uint64_t height;                    // Height at which the node exited/deregistered
-        type_t type;                        // The event that occurred to remove this node
-        uint64_t staking_requirement;       // The staking requirement this node had to fulfill
+        crypto::public_key pubkey;       // The node's primary ed25519 key
+        eth::bls_public_key bls_pubkey;  // The node's primary bls key
+        uint64_t height;                 // Height at which the node exited/deregistered
+        type_t type;                     // The event that occurred to remove this node
+        uint64_t staking_requirement;    // The staking requirement this node had to fulfill
         std::vector<service_node_info::contributor_t>
-                contributors;  // The contributors for the node
+                contributors;            // The contributors for the node
+        uint32_t public_ip;              // The last known public IP of this node, may be outdated
+        uint16_t qnet_port;              // The last known quorumnet port of this node, may be outdated
     };
 
     std::span<const recently_removed_node> recently_removed_nodes() const {

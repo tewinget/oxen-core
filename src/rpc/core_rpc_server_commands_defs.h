@@ -2351,7 +2351,7 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
     } request;
 };
 
-/// RPC: bls exit request
+/// RPC: bls removal liquidation request
 ///
 /// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls
 /// pubkey can exit. If `liquidate` is true then a liquidation request is generated instead. A
@@ -2359,7 +2359,7 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 ///
 /// Inputs:
 ///
-/// - `bls_pubkey` -- this bls_pubkey will be searched to see if the node can exit
+/// - `pubkey` -- this ed25519 pubkey to request a removal/liquidation on
 /// - `liquidate` -- Sets the request into liqudation mode. If false the request is perceived as a
 ///    voluntary leave request rather than a liquidation request which allocates a small portion
 ///    of the stake to the liquidator.
@@ -2375,7 +2375,7 @@ struct BLS_REMOVAL_LIQUIDATION_REQUEST : PUBLIC {
     static constexpr auto names() { return NAMES("bls_removal_liquidation_request"); }
 
     struct request_parameters {
-        eth::bls_public_key bls_pubkey;
+        crypto::public_key pubkey;
         bool liquidate;
     } request;
 };

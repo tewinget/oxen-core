@@ -109,14 +109,14 @@ class RPCDaemon:
         return requests.post('http://{}:{}/json_rpc'.format(self.listen_ip, self.rpc_port), json=json, timeout=timeout)
 
 
-    def rpc(self, path, params=None, *, timeout=10):
+    def rpc(self, path, params=None, *, timeout=30):
         """Sends a non-json_rpc rpc request to the rpc port at path `path`, e.g. /get_info.  Returns the response object."""
         if not self.proc:
             raise RuntimeError("Cannot make rpc request before calling start()")
         return requests.post('http://{}:{}{}'.format(self.listen_ip, self.rpc_port, path), json=params, timeout=timeout)
 
 
-    def wait_for_json_rpc(self, method, params=None, *, timeout=10):
+    def wait_for_json_rpc(self, method, params=None, *, timeout=30):
         """Calls `json_rpc', sleeping if it fails for up time `timeout' seconds.  Returns the
         response if it succeeds, raises the last exception if timeout is reached.  If the process
         exit, raises a RuntimeError"""
@@ -287,8 +287,8 @@ class Daemon(RPCDaemon):
     def get_bls_rewards(self, address):
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
 
-    def get_removal_liquidation_request(self, bls_pubkey, liquidate=False):
-        return self.json_rpc("bls_removal_liquidation_request", {"bls_pubkey": bls_pubkey, "liquidate": liquidate}).json()
+    def get_removal_liquidation_request(self, ed25519_pubkey, liquidate=False):
+        return self.json_rpc("bls_removal_liquidation_request", {"pubkey": ed25519_pubkey, "liquidate": liquidate}, timeout=1000).json()
 
     def get_accrued_rewards(self, ed25519_keys) -> list[AccruedRewards]:
         json                         = self.json_rpc("get_accrued_rewards", {"addresses": ed25519_keys}).json()

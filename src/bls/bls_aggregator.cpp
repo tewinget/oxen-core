@@ -81,7 +81,7 @@ namespace {
 
     std::string dump_bls_removal_liquidation_response(const bls_removal_liquidation_response& item) {
         std::string result =
-                "BLS rewards response was:\n"
+                "BLS removal response was:\n"
                 "\n"
                 "  - remove_pubkey: {}\n"
                 "  - timestamp:     {}\n"
@@ -321,39 +321,71 @@ uint64_t bls_aggregator::nodes_request(
     const size_t MAX_CONNECTIONS = 900;
 
     // FIXME: make this function async rather than blocking
-
     std::vector<service_nodes::service_node_address> snodes;
-    core.service_node_list.copy_reachable_active_service_node_addresses(
+    core.service_node_list.copy_reachable_service_node_addresses(
             std::back_inserter(snodes), core.get_nettype());
 
     auto& omq = core.omq();
     for (size_t i = 0; i < snodes.size(); i++) {
         auto& snode = snodes[i];
-        if (1) {
-            std::lock_guard connection_lock(connection_mutex);
-            ++active_connections;
+        if (core.service_node_list.is_service_node(snode.sn_pubkey, /*require_active*/ false)) {
+            if (1) {
+                std::lock_guard connection_lock(connection_mutex);
+                ++active_connections;
+            } else {
+                // TODO(doyle): Rate limit
+                std::unique_lock connection_lock(connection_mutex);
+                cv.wait(connection_lock,
+                        [&active_connections] { return active_connections < MAX_CONNECTIONS; });
+            }
+
+            omq.request(
+                    tools::view_guts(snode.x_pubkey),
+                    request_name,
+                    [i, &snodes, &connection_mutex, &active_connections, &cv, &callback](
+                            bool success, std::vector<std::string> data) {
+                        callback(bls_response{snodes[i], success}, data);
+                        std::lock_guard connection_lock{connection_mutex};
+                        assert(active_connections);
+                        if (--active_connections == 0)
+                            cv.notify_all();
+                    },
+                    message);
         } else {
-            // TODO(doyle): Rate limit
-            std::unique_lock connection_lock(connection_mutex);
-            cv.wait(connection_lock,
-                    [&active_connections] { return active_connections < MAX_CONNECTIONS; });
+            // TODO: I'm unable to get this to work
+            #if 0
+            if (1) {
+                std::lock_guard connection_lock(connection_mutex);
+                ++active_connections;
+            } else {
+                // TODO(doyle): Rate limit
+                std::unique_lock connection_lock(connection_mutex);
+                cv.wait(connection_lock,
+                        [&active_connections] { return active_connections < MAX_CONNECTIONS; });
+            }
+
+            auto addr = oxenmq::address{"tcp://{}:{}"_format(
+                    epee::string_tools::get_ip_string_from_int32(snode.ip), snode.port, tools::view_guts(snode.x_pubkey))};
+            auto conn = omq.connect_remote(
+                    addr,
+                    [](oxenmq::ConnectionID) { /* Successfully connected */ },
+                    [](oxenmq::ConnectionID, std::string_view) { /* Failed to connect */ });
+
+            omq.request(
+                    conn,
+                    request_name,
+                    [i, &snodes, &connection_mutex, &active_connections, &cv, &callback](
+                            bool success, std::vector<std::string> data) {
+                        callback(bls_response{snodes[i], success}, data);
+                        std::lock_guard connection_lock{connection_mutex};
+                        assert(active_connections);
+                        if (--active_connections == 0)
+                            cv.notify_all();
+                    },
+                    message);
+            #endif
         }
 
-        // NOTE:  Connect to the SN. Note that we do a request directly to the public key, this
-        // should allow OMQ to re-use a connection (for potential subsequent calls) but also
-        // automatically kill connections on our behalf.
-        omq.request(
-                tools::view_guts(snode.x_pubkey),
-                request_name,
-                [i, &snodes, &connection_mutex, &active_connections, &cv, &callback](
-                        bool success, std::vector<std::string> data) {
-                    callback(bls_response{snodes[i], success}, data);
-                    std::lock_guard connection_lock{connection_mutex};
-                    assert(active_connections);
-                    if (--active_connections == 0)
-                        cv.notify_all();
-                },
-                message);
     }
 
     std::unique_lock connection_lock{connection_mutex};
@@ -559,7 +591,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                             response.sn.sn_pubkey,
                             response.sn.bls_pubkey,
                             response.sn.x_pubkey,
-                            response.sn.ip,
+                            epee::string_tools::get_ip_string_from_int32(response.sn.ip),
                             response.sn.port,
                             dump_bls_rewards_response(result),
                             dump_bls_rewards_response(rewards_response));
@@ -669,7 +701,7 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
 bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
-        const bls_public_key& bls_pubkey, removal_type type) {
+        const crypto::public_key& pubkey, removal_type type) {
 
     std::string_view label = "";
     switch (type) {
@@ -677,9 +709,25 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
         case removal_type::liquidate: label = "liquidation"; break;
     }
 
-    oxen::log::trace(logcat, "Initiating {} request for BLS pkey {}", label, bls_pubkey);
+    oxen::log::trace(logcat, "Initiating {} request for SN {}", label, pubkey);
+
+    std::optional<eth::bls_public_key> maybe_bls_pubkey{};
+    auto removed_sn_array = core.service_node_list.recently_removed_nodes();
+    for (auto it : removed_sn_array) {
+        if (it.pubkey == pubkey) {
+            maybe_bls_pubkey = it.bls_pubkey;
+            break;
+        }
+    }
+
+    if (!maybe_bls_pubkey) {
+        throw oxen::traced<std::invalid_argument>(
+                "Removal/liquidation request for {} at height {} is invalid, this node is not in the list of recently exited nodes. Request rejected"_format(
+                        pubkey, core.blockchain.get_current_blockchain_height()));
+    }
 
     // NOTE: Validate the arguments
+    const bls_public_key& bls_pubkey = *maybe_bls_pubkey;
     if (!bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
                 "Removal/liquidation request for the zero address at height {} is invalid. Request "
@@ -786,7 +834,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
                             response.sn.sn_pubkey,
                             response.sn.bls_pubkey,
                             response.sn.x_pubkey,
-                            response.sn.ip,
+                            epee::string_tools::get_ip_string_from_int32(response.sn.ip),
                             response.sn.port,
                             dump_bls_removal_liquidation_response(result),
                             dump_bls_removal_liquidation_response(removal_liquidation_response));

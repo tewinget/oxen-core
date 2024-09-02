@@ -2534,8 +2534,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
     if (rpc.request.height <= 0) {
         rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
     }
-    const auto response = m_core.bls_rewards_request(
-            rpc.request.address, static_cast<uint64_t>(rpc.request.height));
+    const auto response = m_core.bls_rewards_request(rpc.request.address, static_cast<uint64_t>(rpc.request.height));
     rpc.response["status"] = STATUS_OK;
     rpc.response_hex["address"] = response.addr;
     rpc.response["amount"] = response.amount;
@@ -2550,7 +2549,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) {
     const auto response =
-            m_core.bls_removal_liquidation_request(rpc.request.bls_pubkey, rpc.request.liquidate);
+            m_core.bls_removal_liquidation_request(rpc.request.pubkey, rpc.request.liquidate);
     rpc.response["status"] = STATUS_OK;
     rpc.response["timestamp"] = response.timestamp;
     rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
@@ -2986,7 +2985,7 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
                           info.confirmations) /
                                  (double)info.FULL_SCORE}};
 
-                if constexpr (std::is_same_v<Event, eth::event::NewServiceNode>) {
+                if constexpr  (std::is_same_v<Event, eth::event::NewServiceNode>) {
                     sns.response["registrations"].push_back(std::move(entry));
                     auto& res = sns.response["registrations"].back();
                     auto res_hex = sns.response_hex["registrations"].back();

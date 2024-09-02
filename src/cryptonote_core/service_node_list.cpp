@@ -959,7 +959,7 @@ bool service_node_list::state_t::process_state_change_tx(
     }
 
     switch (state_change.state) {
-        case new_state::deregister:
+        case new_state::deregister: {
             if (is_me)
                 log::warning(
                         globallogcat,
@@ -990,15 +990,31 @@ bool service_node_list::state_t::process_state_change_tx(
                 }
             }
 
-            recently_removed_nodes.emplace_back(recently_removed_node{
-                    .pubkey = crypto::ed25519_public_key(iter->first),
-                    .bls_pubkey = iter->second->bls_public_key,
-                    .height = block_height,
-                    .type = recently_removed_node::type_t::deregister,
-                    .staking_requirement = iter->second->staking_requirement,
-                    .contributors = iter->second->contributors});
+            if (block.major_version >= feature::ETH_BLS) {
+                uint32_t public_ip = 0;
+                uint16_t qnet_port = 0;
+                auto proof_it = sn_list->proofs.find(iter->first);
+                if (proof_it != sn_list->proofs.end()) {
+                    const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
+                    if (proof) {
+                        public_ip = proof->public_ip;
+                        qnet_port = proof->qnet_port;
+                    }
+                }
+
+                recently_removed_nodes.emplace_back(recently_removed_node{
+                        .pubkey = iter->first,
+                        .bls_pubkey = iter->second->bls_public_key,
+                        .height = block_height,
+                        .type = recently_removed_node::type_t::deregister,
+                        .staking_requirement = iter->second->staking_requirement,
+                        .contributors = iter->second->contributors,
+                        .public_ip = public_ip,
+                        .qnet_port = qnet_port});
+            }
             erase_info(iter);
             return true;
+        }
 
         case new_state::decommission:
             if (hf_version < hf::hf12_checkpointing) {
@@ -1852,8 +1868,18 @@ bool service_node_list::state_t::process_confirmed_event(
 
     // NOTE: Enumerate the contributors to refund to
     std::vector<cryptonote::batch_sn_payment> returned_stakes;
-    for (const auto& contributor : node->contributors)
-        returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
+    for (const auto& contributor : node->contributors) {
+        // TODO: Once merge code is in this can be re-evaluated. Right now in the localdev tests
+        // we don't have migration code so we're putting in bad data into the DB. The DB checks if
+        // the payment has an eth address defined, if it does it stores the delayed payment as an
+        // eth address otherwise it uses the cryptonote address.
+        //
+        // This leads us to storing a cryptonote address in the delayed payments which causes the
+        // network to stall as code tries to deserialise that address into an eth address and fails.
+        if (contributor.ethereum_address) {
+            returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
+        }
+    }
 
     if (returned_stakes.empty()) {
         log::warning(
@@ -3009,15 +3035,6 @@ void service_node_list::state_t::update_from_block(
     }
 
     //
-    // Erase older entries in the recently expired nodes list
-    //
-    auto& netconf = get_config(nettype);
-    for (auto it = recently_removed_nodes.begin(); it != recently_removed_nodes.end(); ) {
-        uint64_t end_height = it->height + netconf.ETH_REMOVAL_BUFFER;
-        it = height >= end_height ? recently_removed_nodes.erase(it) : it++;
-    }
-
-    //
     // Expire Nodes
     //
     for (const crypto::public_key& pubkey :
@@ -3036,13 +3053,29 @@ void service_node_list::state_t::update_from_block(
             log::info(logcat, "Service node expired: {} at block height: {}", pubkey, height);
 
         need_swarm_update += i->second->is_active();
-        recently_removed_nodes.emplace_back(recently_removed_node{
-                .pubkey = crypto::ed25519_public_key(i->first),
-                .bls_pubkey = i->second->bls_public_key,
-                .height = height,
-                .type = recently_removed_node::type_t::voluntary_exit,
-                .staking_requirement = i->second->staking_requirement,
-                .contributors = i->second->contributors });
+
+        if (block.major_version >= feature::ETH_BLS) {
+            uint32_t public_ip = 0;
+            uint16_t qnet_port = 0;
+            auto proof_it = sn_list->proofs.find(pubkey);
+            if (proof_it != sn_list->proofs.end()) {
+                const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
+                if (proof) {
+                    public_ip = proof->public_ip;
+                    qnet_port = proof->qnet_port;
+                }
+            }
+
+            recently_removed_nodes.emplace_back(recently_removed_node{
+                    .pubkey = i->first,
+                    .bls_pubkey = i->second->bls_public_key,
+                    .height = height,
+                    .type = recently_removed_node::type_t::voluntary_exit,
+                    .staking_requirement = i->second->staking_requirement,
+                    .contributors = i->second->contributors,
+                    .public_ip = public_ip,
+                    .qnet_port = qnet_port});
+        }
         erase_info(i);
     }
 
@@ -4347,6 +4380,15 @@ bool service_node_list::handle_uptime_proof(
         return false;
     }
 
+    // TODO: I think we still want to accept proofs for nodes in the recently_removed_nodes list
+    // so that those nodes can still participate in BLS aggregation because those nodes are still in
+    // the smart contract (and hence still have their BLS key contributing to the master
+    // aggregate public key in the contract).
+    //
+    // By keeping the proofs around, we will get their IP address and port kept up to date
+    // such that they partake in aggregating a signature to remove themselves from the list. This
+    // isn't a problem with just 1 node that exits, but if there were a mass exit of 30% of the
+    // network this may cause problems if they don't participate in the BLS aggregation step.
     auto locks = tools::unique_locks(blockchain, m_sn_mutex, m_x25519_map_mutex);
     auto it = m_state.service_nodes_infos.find(proof->pubkey);
     if (it == m_state.service_nodes_infos.end()) {
@@ -4465,10 +4507,24 @@ void service_node_list::cleanup_proofs() {
     for (auto it = proofs.begin(); it != proofs.end();) {
         auto& pubkey = it->first;
         auto& proof = it->second;
+
+        bool still_storing_sn_info = false;
+        if (m_state.service_nodes_infos.count(pubkey))
+            still_storing_sn_info = true;
+
+        if (!still_storing_sn_info) {
+            for (const auto& recently_removed_it : m_state.recently_removed_nodes) {
+                if (recently_removed_it.pubkey == pubkey) {
+                    still_storing_sn_info = true;
+                    break;
+                }
+            }
+        }
+
         // 6h here because there's no harm in leaving proofs around a bit longer (they aren't big,
         // and we only store one per SN), and it's possible that we could reorg a few blocks and
         // resurrect a service node but don't want to prematurely expire the proof.
-        if (!m_state.service_nodes_infos.count(pubkey) && proof.timestamp + 6 * 60 * 60 < now) {
+        if (!still_storing_sn_info && proof.timestamp + 6 * 60 * 60 < now) {
             db.remove_service_node_proof(pubkey);
             it = proofs.erase(it);
         } else
@@ -4486,6 +4542,14 @@ crypto::public_key service_node_list::get_pubkey_from_x25519(
         auto it = m_state.x25519_map.find(x25519);
         if (it != m_state.x25519_map.end())
             return it->second;
+
+        // NOTE: Try the recently removed list (linear scan but this list will
+        // always be relatively tiny).
+        for (const auto& it : m_state.recently_removed_nodes) {
+            crypto::x25519_public_key rederived_x25519 = snpk_to_xpk(it.pubkey);
+            if (rederived_x25519 == x25519)
+                return it.pubkey;
+        }
     } else {
         std::shared_lock lock{m_x25519_map_mutex};
         auto it = x25519_to_pub.find(x25519);
@@ -4566,9 +4630,7 @@ crypto::public_key service_node_list::public_key_lookup(
             if (info->bls_public_key == bls_pubkey)
                 return snpk;
     }
-
-    log::error(logcat, "Could not find bls pubkey: {}", bls_pubkey);
-    throw oxen::traced<std::runtime_error>("Could not find bls key");
+    throw oxen::traced<std::runtime_error>("Could not find SN for BLS key: {}"_format(bls_pubkey));
 }
 
 void service_node_list::record_checkpoint_participation(

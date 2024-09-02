@@ -453,13 +453,13 @@ class SNNetwork:
         for i in range(len(SNExitMode)):
             unlocks_confirmed.append(False)
 
-        vprint(f"Sleeping now, waiting for confirmation of voluntary exit on Oxen, blockchain height is {self.ethsns[0].height()}")
+        vprint(f"Sleeping now, waiting for confirmation of voluntary exit on Oxen, blockchain height is {self.sns[0].height()}")
         total_sleep_time            = 0
         sleep_time                  = 8
         current_height              = 0
         max_requested_unlock_height = 0
         while True:
-            height = self.ethsns[0].height()
+            height = self.sns[0].height()
             if current_height != height:
                 current_height = height
 
@@ -480,15 +480,15 @@ class SNNetwork:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
 
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}, the latest requested unlock height is {max_requested_unlock_height}")
+        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}, the latest requested unlock height is {max_requested_unlock_height}")
 
         vprint(f"Sleeping again until height {max_requested_unlock_height + 1} where all nodes are unlocked")
         total_sleep_time = 0
         while current_height <= max_requested_unlock_height + 1:
-            current_height = self.ethsns[0].height()
+            current_height = self.sns[0].height()
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}, unlocks are complete")
+        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}, unlocks are complete")
 
         # Do removal via signature and liquidation, aggregate signature from network and apply it on
         # the smart contract
@@ -498,7 +498,7 @@ class SNNetwork:
             sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 
             if mode == SNExitMode.WithSignature:
-                exit_request = self.ethsns[0].get_removal_liquidation_request(sn_to_remove_bls_pubkey, liquidate=False)
+                exit_request = self.sns[0].get_removal_liquidation_request(sn_to_remove_pubkey, liquidate=False)
                 vprint("Exit request aggregated: {}".format(exit_request))
                 vprint("Exit request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
@@ -523,17 +523,17 @@ class SNNetwork:
                 #
                 # Hence we penalise stragglers that they should not be in the list longer than
                 # necessary.
-                vprint(f"Sleeping now, waiting for exit buffer to elapse to qualify node for liqudation, blockchain height is {self.ethsns[0].height()}")
+                vprint(f"Sleeping now, waiting for exit buffer to elapse to qualify node for liqudation, blockchain height is {self.sns[0].height()}")
                 target_height = self.all_nodes[0].height() + 5;
                 total_sleep_time = 0
                 sleep_time       = 8
-                while self.ethsns[0].height() < target_height:
+                while self.sns[0].height() < target_height:
                     total_sleep_time += sleep_time
                     time.sleep(sleep_time)
-                vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}")
+                vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
 
                 # Now node was supposed to exit but hasn't in a timely fashion, it can be liquidated
-                exit_request = self.ethsns[0].get_removal_liquidation_request(sn_to_remove_bls_pubkey, liquidate=True)
+                exit_request = self.sns[0].get_removal_liquidation_request(sn_to_remove_pubkey, liquidate=True)
                 vprint("Liquidate request aggregated: {}".format(exit_request))
                 vprint("Liquidate request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
@@ -555,9 +555,9 @@ class SNNetwork:
             ethereum.evm_mine(self.sn_contract.web3);
 
         # Verify that deregistration stake is unlocked and claimable
-        vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.ethsns[0].height()}")
+        vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.sns[0].height()}")
         total_sleep_time = 0
-        balance_before = self.ethsns[0].get_accrued_rewards([hardhat_account_no_0x])[0].balance
+        balance_before = self.sns[0].get_accrued_rewards([hardhat_account_no_0x])[0].balance
         while True:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
@@ -569,7 +569,7 @@ class SNNetwork:
             #
             # For now we just try and detect a good chunk of the funds being
             # credited by sleeping and check each height.
-            balance_after     = self.ethsns[0].get_accrued_rewards([hardhat_account_no_0x])[0].balance
+            balance_after     = self.sns[0].get_accrued_rewards([hardhat_account_no_0x])[0].balance
             change_in_balance = balance_after - balance_before
             if change_in_balance > 95:
                 vprint("Stake-like change in balance {}, after {} (change {})".format(balance_before, balance_after, change_in_balance))
@@ -578,7 +578,7 @@ class SNNetwork:
                 vprint("Balance before {}, after {} (change {})".format(balance_before, balance_after, change_in_balance))
             balance_before = balance_after
 
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}")
+        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
 
         # Do remove 'after wait time' ##############################################################
         # IMPORTANT: This test must be run last because it advances the L2 blockchain by 31 days.

@@ -600,7 +600,7 @@ class core final {
 
     eth::bls_rewards_response bls_rewards_request(const eth::address& address, uint64_t height);
     eth::bls_removal_liquidation_response bls_removal_liquidation_request(
-            const eth::bls_public_key& bls_pubkey, bool liquidate);
+            const crypto::public_key& pubkey, bool liquidate);
     eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 
     bool is_node_removable(const eth::bls_public_key& node_bls_pubkey);

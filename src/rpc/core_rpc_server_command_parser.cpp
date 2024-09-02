@@ -497,7 +497,7 @@ void parse_request(BLS_REWARDS_REQUEST& cmd, rpc_input in) {
 }
 
 void parse_request(BLS_REMOVAL_LIQUIDATION_REQUEST& cmd, rpc_input in) {
-    get_values(in, "bls_pubkey", required{cmd.request.bls_pubkey});
+    get_values(in, "pubkey", required{cmd.request.pubkey});
     get_values(in, "liquidate", required{cmd.request.liquidate});
 }
 

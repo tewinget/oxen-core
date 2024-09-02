@@ -3415,23 +3415,45 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
         // expired (removal request, e.g. voluntarily exited). Expired nodes are removable and can
         // be removed by aggregating a signature (or without if the wait time has elapsed) from the
         // network to be removed from the smart contract (which gets witnessed by Oxen thereby
-        // removing it from the workchain).
+        // removing it from the post-dereg/exit list aka 'recently_removed_nodes').
         auto sns = service_node_list.get_service_node_list_state();
         bls_pubkeys_in_snl.reserve(sns.size());
         for (const auto& sni : sns)
             bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
 
+        // NOTE: Because of vote confirmations, we have nodes that can exist in the smart contract
+        // but not the service node list for awhile until they get confirmed at which point they get
+        // added to the SNL.
+        //
+        // We assume that these nodes will be added to the SNL. If it does, it will eventually be
+        // removed from this list and show up in the 'get_service_node_list_state()' branch above.
+        //
+        // If the node gets denied, it will be removed from this list and never added to the SNL.
+        {
+            service_node_list.for_each_pending_l2_state(
+                [&bls_pubkeys_in_snl]<typename Event>(const Event& e, const service_nodes::service_node_list::unconfirmed_l2_tx&) {
+                    if constexpr  (std::is_same_v<Event, eth::event::NewServiceNode>) {
+                        bls_pubkeys_in_snl.push_back(e.bls_pubkey);
+                    } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemovalRequest>) {
+                    } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemoval>) {
+                    } else {
+                        log::error(logcat, "Got unknown event type when iterating each pending L2 state from the SNL!");
+                    }
+            });
+        }
+
         // NOTE: Extract all service nodes from the smart contract
         eth::RewardsContract::ServiceNodeIDs smart_contract_ids =
                 m_l2_tracker->get_all_service_node_ids(std::nullopt);
         bls_pubkeys_in_smart_contract = std::move(smart_contract_ids.bls_pubkeys);
+
     }
 
     std::vector<eth::bls_public_key> result;
 
     // NOTE: Find BLS keys that are in the smart contract but not in the service node list generated
     // from Oxen (note that the Oxen list _excludes_ expired nodes, e.g. these nodes exist on the
-    // smart contract but not in the `bls_pbukeys_in_snl` list that we apply the
+    // smart contract but not in the `bls_pubkeys_in_snl` list that we apply the
     // set_difference against).
     //
     // In summary, generate a list with:
@@ -3450,33 +3472,55 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
             bls_pubkeys_in_snl.end(),
             std::back_inserter(result));
 
-    oxen::log::debug(logcat, "Found {} nodes that are removable", result.size());
-    #if !defined(NDEBUG)
-    if (oxen::log::get_level(logcat) == oxen::log::Level::debug) {
+    fmt::memory_buffer buffer;
+    fmt::format_to(std::back_inserter(buffer), "Found {} nodes that are removable", result.size());
+
+#if !defined(NDEBUG)
+    if (oxen::log::get_level(logcat) <= oxen::log::Level::debug) {
+        // NOTE: Print the reason that each node in the list is removable for
+        if (result.size())
+            fmt::format_to(std::back_inserter(buffer), "\n");
+
         for (size_t index = 0; index < result.size(); index++) {
             const eth::bls_public_key& it = result[index];
-            std::optional<uint64_t> requested_unlock_height = {};
-            try {
-                crypto::public_key pubkey = service_node_list.public_key_lookup(it);
-                auto sns = service_node_list.get_service_node_list_state({pubkey});
-                if (sns.size()) {
-                    const service_nodes::service_node_info& sn_info = *sns[0].info;
-                    requested_unlock_height = sn_info.requested_unlock_height;
+            bool protocol_dereg = false;
+            std::optional<uint64_t> unlock_or_dereg_height = {};
+            uint32_t ip = 0;
+            uint16_t port = 0;
+            if (!unlock_or_dereg_height) {
+                for (const service_nodes::service_node_list::recently_removed_node&
+                             recently_removed_it : service_node_list.recently_removed_nodes()) {
+                    if (it == recently_removed_it.bls_pubkey) {
+                        protocol_dereg = recently_removed_it.type ==
+                                         service_nodes::service_node_list::recently_removed_node::
+                                                 type_t::deregister;
+                        unlock_or_dereg_height = recently_removed_it.height;
+                        ip = recently_removed_it.public_ip;
+                        port = recently_removed_it.qnet_port;
+                        break;
+                    }
                 }
-            } catch (...) {
             }
 
-            oxen::log::debug(
-                    logcat,
-                    " {:04d} {} ({})",
+            fmt::format_to(
+                    std::back_inserter(buffer),
+                    " {:04d} {} ({}",
                     index,
                     it,
-                    requested_unlock_height
-                            ? "node expired; height {}"_format(*requested_unlock_height)
+                    unlock_or_dereg_height
+                            ? "node {}; height {} {}:{}"_format(
+                                      protocol_dereg ? "dereg" : "expired",
+                                      *unlock_or_dereg_height,
+                                      epee::string_tools::get_ip_string_from_int32(ip),
+                                      port)
                             : "node exists only in contract");
+            fmt::format_to(std::back_inserter(buffer), ")\n");
         }
     }
-    #endif
+#endif
+
+    std::string log = fmt::to_string(buffer);
+    oxen::log::debug(logcat, "{}", fmt::to_string(buffer));
     return result;
 }
 //------------------------------------------------------------------

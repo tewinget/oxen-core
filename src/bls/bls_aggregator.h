@@ -63,10 +63,10 @@ class bls_aggregator {
     };
 
     // Request the service node network to sign a request to remove the node specified by
-    // `bls_pubkey` from the network. The nature of this removal is set by `type`. This node (the
+    // `pubkey` from the network. The nature of this removal is set by `type`. This node (the
     // aggregator) will aggregate the signatures into the response.
     bls_removal_liquidation_response removal_liquidation_request(
-            const bls_public_key& bls_pubkey, removal_type type);
+            const crypto::public_key& pubkey, removal_type type);
 
     bls_registration_response registration(
             const address& sender, const crypto::public_key& sn_pubkey) const;
