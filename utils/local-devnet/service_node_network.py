@@ -358,9 +358,16 @@ class SNNetwork:
         # Sleep and let pulse quorum do work
         vprint(f"Sleeping now, awaiting pulse quorum to generate blocks (& rewards for node), blockchain height is {self.ethsns[0].height()}");
 
+        # Wait until the node is able to receive rewards
         total_sleep_time = 0
         sleep_time       = 8
         while self.ethsns[0].sn_is_payable() == False:
+            total_sleep_time += sleep_time
+            time.sleep(sleep_time)
+
+        # Wait 1 block to receive rewards
+        target_height = self.ethsns[0].height() + 1;
+        while self.ethsns[0].height() < target_height:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
 
