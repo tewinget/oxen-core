@@ -28,23 +28,22 @@
 #include "db_sqlite.h"
 
 #include <common/exception.h>
+#include <common/guts.h>
+#include <cryptonote_basic/hardfork.h>
+#include <cryptonote_config.h>
+#include <cryptonote_core/blockchain.h>
+#include <cryptonote_core/cryptonote_tx_utils.h>
 #include <fmt/core.h>
 #include <sodium.h>
 #include <sqlite3.h>
 
 #include <cassert>
 
-#include "common/guts.h"
-#include "cryptonote_basic/hardfork.h"
-#include "cryptonote_config.h"
-#include "cryptonote_core/blockchain.h"
-#include "cryptonote_core/service_node_list.h"
-
 namespace cryptonote {
 
 static auto logcat = log::Cat("blockchain.db.sqlite");
 
-BlockchainSQLite::BlockchainSQLite(cryptonote::network_type nettype, fs::path db_path) :
+BlockchainSQLite::BlockchainSQLite(cryptonote::network_type nettype, std::filesystem::path db_path) :
         db::Database(db_path, ""), m_nettype(nettype) {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
     height = 0;

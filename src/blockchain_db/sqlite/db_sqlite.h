@@ -28,25 +28,22 @@
 #pragma once
 
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <cryptonote_basic/cryptonote_basic_impl.h> // cryptonote::address_parse_info...
+#include <cryptonote_config.h>
+#include <cryptonote_core/service_node_list.h> // service_node_list::state_t...
 
 #include <filesystem>
+#include <sqlitedb/database.hpp>
 #include <string>
 
-#include "common/fs.h"
-#include "cryptonote_basic/cryptonote_format_utils.h"
-#include "cryptonote_core/cryptonote_tx_utils.h"
-#include "sqlitedb/database.hpp"
-
 namespace cryptonote {
-
-fs::path check_if_copy_filename(std::string_view db_path);
 
 using block_payments = std::
         unordered_map<std::variant<eth::address, cryptonote::account_public_address>, uint64_t>;
 
 class BlockchainSQLite : public db::Database {
   public:
-    explicit BlockchainSQLite(cryptonote::network_type nettype, fs::path db_path);
+    explicit BlockchainSQLite(cryptonote::network_type nettype, std::filesystem::path db_path);
     BlockchainSQLite(const BlockchainSQLite&) = delete;
 
     // Database management functions. Should be called on creation of BlockchainSQLite
