@@ -54,12 +54,9 @@ class BlockchainSQLite : public db::Database {
     void upgrade_schema();
     void reset_database();
 
-    // The batching database maintains a height variable to know if it gets out of sync with the
-    // mainchain. Calling increment and decrement is the primary method of interacting with this
-    // height variable
+    // Update the height stored in the SQL DB that indicates the last block height that this DB has
+    // synchronised to in.
     void update_height(uint64_t new_height);
-    void increment_height();
-    void decrement_height();
 
     void blockchain_detached(uint64_t new_height);
 
