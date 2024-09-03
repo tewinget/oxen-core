@@ -4881,6 +4881,13 @@ bool service_node_list::load(const uint64_t current_height) {
         return false;
     }
 
+    // NOTE: Temporary code for HF21 on Stagenet for when we introduce exits and liquidations. We
+    // need to populate the exits and liquidations list (e.g. the 'recently_removed_nodes') by
+    // rescanning the entire blockchain. Returning false here tells the SNL that loading failed and
+    // it'll regenerate the entire SNL and hence populate exits and liquidation data.
+    if (blockchain.nettype() == cryptonote::network_type::STAGENET && data_in.version < data_for_serialization::version_t::version_1)
+        return false;
+
     if (data_in.states.empty())
         return false;
 

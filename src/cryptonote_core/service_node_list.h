@@ -918,11 +918,12 @@ class service_node_list {
     struct data_for_serialization {
         enum struct version_t : uint8_t {
             version_0,
+            version_1,
             count,
         };
-        static version_t get_version(cryptonote::hf /*hf_version*/) { return version_t::version_0; }
+        static version_t get_version(cryptonote::hf /*hf_version*/) { return version_t::version_1; }
 
-        version_t version;
+        version_t version{version_t::version_1};
         std::vector<quorum_for_serialization> quorum_states;
         std::vector<state_serialized> states;
         void clear() {
