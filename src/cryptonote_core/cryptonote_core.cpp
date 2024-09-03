@@ -1187,7 +1187,7 @@ bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
     for (const service_nodes::service_node_list::recently_removed_node& it : service_node_list.recently_removed_nodes()) {
         assert(it.bls_pubkey && "Invalid null key got inserted into the recently removed list");
         if (it.bls_pubkey == node_bls_pubkey) {
-            uint64_t liquidatable_height = it.height + netconf.ETH_REMOVAL_BUFFER;
+            uint64_t liquidatable_height = it.height + netconf.ETH_EXIT_BUFFER;
             bool result = height >= liquidatable_height;
             return result;
         }
@@ -2578,12 +2578,12 @@ eth::bls_rewards_response core::bls_rewards_request(const eth::address& address,
     return m_bls_aggregator->rewards_request(address, height);
 }
 //-----------------------------------------------------------------------------------------------
-eth::bls_removal_liquidation_response core::bls_removal_liquidation_request(
+eth::bls_exit_liquidation_response core::bls_exit_liquidation_request(
         const crypto::public_key& pubkey, bool liquidate) {
-    eth::bls_aggregator::removal_type type = liquidate
-                                                   ? eth::bls_aggregator::removal_type::liquidate
-                                                   : eth::bls_aggregator::removal_type::normal;
-    return m_bls_aggregator->removal_liquidation_request(pubkey, type);
+    eth::bls_aggregator::exit_type type = liquidate
+                                                   ? eth::bls_aggregator::exit_type::liquidate
+                                                   : eth::bls_aggregator::exit_type::normal;
+    return m_bls_aggregator->exit_liquidation_request(pubkey, type);
 }
 //-----------------------------------------------------------------------------------------------
 eth::bls_registration_response core::bls_registration(const eth::address& address) const {

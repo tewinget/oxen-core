@@ -17,7 +17,7 @@ struct bls_aggregate_signed {
     bls_signature signature;
 };
 
-struct bls_removal_liquidation_response : bls_aggregate_signed {
+struct bls_exit_liquidation_response : bls_aggregate_signed {
     bls_public_key remove_pubkey;
     uint64_t timestamp;
 };
@@ -57,16 +57,16 @@ class bls_aggregator {
     // amount is `0` or height is greater than the current blockchain height.
     bls_rewards_response rewards_request(const address& addr, uint64_t height);
 
-    enum class removal_type {
+    enum class exit_type {
         normal,
         liquidate,
     };
 
     // Request the service node network to sign a request to remove the node specified by
-    // `pubkey` from the network. The nature of this removal is set by `type`. This node (the
+    // `pubkey` from the network. The nature of this exit is set by `type`. This node (the
     // aggregator) will aggregate the signatures into the response.
-    bls_removal_liquidation_response removal_liquidation_request(
-            const crypto::public_key& pubkey, removal_type type);
+    bls_exit_liquidation_response exit_liquidation_request(
+            const crypto::public_key& pubkey, exit_type type);
 
     bls_registration_response registration(
             const address& sender, const crypto::public_key& sn_pubkey) const;
@@ -74,7 +74,7 @@ class bls_aggregator {
   private:
     void get_rewards(oxenmq::Message& m) const;
 
-    void get_removal_liquidation(oxenmq::Message& m, removal_type type) const;
+    void get_exit_liquidation(oxenmq::Message& m, exit_type type) const;
 
     // Goes out to the nodes on the network and makes oxenmq requests to all of them, when getting
     // the reply `callback` will be called to process their reply

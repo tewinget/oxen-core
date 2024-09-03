@@ -16,8 +16,8 @@ inline constexpr std::string_view pool_address(const cryptonote::network_type ne
 namespace event {
 
     extern const crypto::hash NewServiceNode;
-    extern const crypto::hash ServiceNodeRemovalRequest;
-    extern const crypto::hash ServiceNodeRemoval;
+    extern const crypto::hash ServiceNodeExitRequest;
+    extern const crypto::hash ServiceNodeExit;
 
 }  // namespace event
 

@@ -56,9 +56,9 @@ constexpr uint8_t TX_EXTRA_TAG_PADDING = 0x00, TX_EXTRA_TAG_PUBKEY = 0x01, TX_EX
                   TX_EXTRA_TAG_SERVICE_NODE_STATE_CHANGE = 0x78, TX_EXTRA_TAG_BURN = 0x79,
                   TX_EXTRA_TAG_OXEN_NAME_SYSTEM = 0x7A,
                   TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE = 0x7C,
-                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL_REQUEST = 0x7D,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT_REQUEST = 0x7D,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER = 0x7E,
-                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL = 0x7F,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT = 0x7F,
 
                   TX_EXTRA_MYSTERIOUS_MINERGATE_TAG = 0xDE;
 
@@ -651,8 +651,8 @@ using tx_extra_field = std::variant<
         tx_extra_tx_key_image_proofs,
         tx_extra_tx_key_image_unlock,
         eth::event::NewServiceNode,
-        eth::event::ServiceNodeRemovalRequest,
-        eth::event::ServiceNodeRemoval,
+        eth::event::ServiceNodeExitRequest,
+        eth::event::ServiceNodeExit,
         tx_extra_burn,
         tx_extra_merge_mining_tag,
         tx_extra_mysterious_minergate,
@@ -695,7 +695,7 @@ BINARY_VARIANT_TAG(
         cryptonote::tx_extra_oxen_name_system, cryptonote::TX_EXTRA_TAG_OXEN_NAME_SYSTEM);
 BINARY_VARIANT_TAG(eth::event::NewServiceNode, cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);
 BINARY_VARIANT_TAG(
-        eth::event::ServiceNodeRemovalRequest,
-        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL_REQUEST);
+        eth::event::ServiceNodeExitRequest,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT_REQUEST);
 BINARY_VARIANT_TAG(
-        eth::event::ServiceNodeRemoval, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL);
+        eth::event::ServiceNodeExit, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT);

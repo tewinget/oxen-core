@@ -58,7 +58,7 @@ void L2Tracker::prune_old_states() {
     const auto expiry = latest_height - std::min(latest_height, HIST_SIZE);
     recent_regs.expire(expiry);
     recent_unlocks.expire(expiry);
-    recent_removals.expire(expiry);
+    recent_exits.expire(expiry);
     auto reward_exp = reward_height(expiry, core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS);
     reward_rate.erase(reward_rate.begin(), reward_rate.lower_bound(reward_exp));
 }
@@ -343,12 +343,12 @@ void L2Tracker::add_to_mempool(const event::StateChangeVariant& tx_variant) {
                 if constexpr (std::is_same_v<T, event::NewServiceNode>) {
                     tx.type = txtype::ethereum_new_service_node;
                     add_new_service_node_to_tx_extra(tx.extra, arg);
-                } else if constexpr (std::is_same_v<T, event::ServiceNodeRemovalRequest>) {
-                    tx.type = txtype::ethereum_service_node_removal_request;
-                    add_service_node_removal_request_to_tx_extra(tx.extra, arg);
-                } else if constexpr (std::is_same_v<T, event::ServiceNodeRemoval>) {
-                    tx.type = txtype::ethereum_service_node_removal;
-                    add_service_node_removal_to_tx_extra(tx.extra, arg);
+                } else if constexpr (std::is_same_v<T, event::ServiceNodeExitRequest>) {
+                    tx.type = txtype::ethereum_service_node_exit_request;
+                    add_service_node_exit_request_to_tx_extra(tx.extra, arg);
+                } else if constexpr (std::is_same_v<T, event::ServiceNodeExit>) {
+                    tx.type = txtype::ethereum_service_node_exit;
+                    add_service_node_exit_to_tx_extra(tx.extra, arg);
                 } else {
                     static_assert(
                             std::is_same_v<T, std::monostate>,
@@ -472,10 +472,10 @@ void L2Tracker::update_logs() {
                             add_to_mempool(tx);
                             if (auto* reg = std::get_if<event::NewServiceNode>(&tx))
                                 recent_regs.add(std::move(*reg), *log.blockNumber);
-                            else if (auto* ul = std::get_if<event::ServiceNodeRemovalRequest>(&tx))
+                            else if (auto* ul = std::get_if<event::ServiceNodeExitRequest>(&tx))
                                 recent_unlocks.add(std::move(*ul), *log.blockNumber);
-                            else if (auto* removal = std::get_if<event::ServiceNodeRemoval>(&tx))
-                                recent_removals.add(std::move(*removal), *log.blockNumber);
+                            else if (auto* exit = std::get_if<event::ServiceNodeExit>(&tx))
+                                recent_exits.add(std::move(*exit), *log.blockNumber);
                             else
                                 assert(tx.index() == 0);
                         } catch (const std::exception& e) {
@@ -575,10 +575,10 @@ RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(
 bool L2Tracker::get_vote_for(const event::NewServiceNode& reg) const {
     return recent_regs.contains(reg);
 }
-bool L2Tracker::get_vote_for(const event::ServiceNodeRemoval& removal) const {
-    return recent_removals.contains(removal);
+bool L2Tracker::get_vote_for(const event::ServiceNodeExit& exit) const {
+    return recent_exits.contains(exit);
 }
-bool L2Tracker::get_vote_for(const event::ServiceNodeRemovalRequest& unlock) const {
+bool L2Tracker::get_vote_for(const event::ServiceNodeExitRequest& unlock) const {
     return recent_unlocks.contains(unlock);
 }
 

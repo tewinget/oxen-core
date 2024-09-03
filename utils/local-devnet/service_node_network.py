@@ -422,7 +422,7 @@ class SNNetwork:
                hardhat_account)
         vprint("Balance for '{}' after claim {}".format(hardhat_account, self.sn_contract.erc20balance(hardhat_account)))
 
-        # Begin removal tests ######################################################################
+        # Begin exit tests ######################################################################
         # Make a list of all the nodes, shuffle them and select 3 to remove (remove w/ wait time,
         # remove with signature and liquidate).
         sn_to_remove_indexes = []
@@ -490,7 +490,7 @@ class SNNetwork:
             time.sleep(sleep_time)
         vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}, unlocks are complete")
 
-        # Do removal via signature and liquidation, aggregate signature from network and apply it on
+        # Do exit via signature and liquidation, aggregate signature from network and apply it on
         # the smart contract
         for mode in SNExitMode:
             sn_to_remove_pubkey      = self.sns[sn_to_remove_indexes[mode.value]].get_service_keys().pubkey
@@ -498,7 +498,7 @@ class SNNetwork:
             sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 
             if mode == SNExitMode.WithSignature:
-                exit_request = self.sns[0].get_removal_liquidation_request(sn_to_remove_pubkey, liquidate=False)
+                exit_request = self.sns[0].get_exit_liquidation_request(sn_to_remove_pubkey, liquidate=False)
                 vprint("Exit request aggregated: {}".format(exit_request))
                 vprint("Exit request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
@@ -533,7 +533,7 @@ class SNNetwork:
                 vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
 
                 # Now node was supposed to exit but hasn't in a timely fashion, it can be liquidated
-                exit_request = self.sns[0].get_removal_liquidation_request(sn_to_remove_pubkey, liquidate=True)
+                exit_request = self.sns[0].get_exit_liquidation_request(sn_to_remove_pubkey, liquidate=True)
                 vprint("Liquidate request aggregated: {}".format(exit_request))
                 vprint("Liquidate request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
@@ -582,7 +582,7 @@ class SNNetwork:
 
         # Do remove 'after wait time' ##############################################################
         # IMPORTANT: This test must be run last because it advances the L2 blockchain by 31 days.
-        # This method of removal does _not_ require a signature. The other methods require a
+        # This method of exit does _not_ require a signature. The other methods require a
         # timestamp embedded in the signature. We don't have a way to manipulate timestamps on the
         # Oxen blockchain hence the signature tests are run before this test.
         #
@@ -605,7 +605,7 @@ class SNNetwork:
                 contract_sn_count_before = self.sn_contract.numberServiceNodes()
                 self.sn_contract.removeBLSPublicKeyAfterWaitTime(sn_to_remove_contract_id)
                 contract_sn_count_after = self.sn_contract.numberServiceNodes()
-                vprint("Node count in contract after wait time removal, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
+                vprint("Node count in contract after wait time exit, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
 
                 zero_account = "0x0000000000000000000000000000000000000000";
                 assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == zero_account

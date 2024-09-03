@@ -3434,8 +3434,8 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
             [&bls_pubkeys_in_snl]<typename Event>(const Event& e, const service_nodes::service_node_list::unconfirmed_l2_tx&) {
                 if constexpr  (std::is_same_v<Event, eth::event::NewServiceNode>) {
                     bls_pubkeys_in_snl.push_back(e.bls_pubkey);
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemovalRequest>) {
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemoval>) {
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExit>) {
                 } else {
                     log::error(logcat, "Got unknown event type when iterating each pending L2 state from the SNL!");
                 }
@@ -4297,25 +4297,25 @@ bool Blockchain::check_tx_inputs(
                         hf_version, tx, &tvc.m_verbose_error)) {
                 log::error(
                         log::Cat("verify"),
-                        "Failed to validate Ethereum New Service Node TX reason: {}",
+                        "Failed to validate Ethereum New SN TX reason: {}",
                         tvc.m_verbose_error);
                 return false;
             }
-        } else if (tx.type == txtype::ethereum_service_node_removal_request) {
-            if (!eth::validate_event_tx<eth::event::ServiceNodeRemovalRequest>(
+        } else if (tx.type == txtype::ethereum_service_node_exit_request) {
+            if (!eth::validate_event_tx<eth::event::ServiceNodeExitRequest>(
                         hf_version, tx, &tvc.m_verbose_error)) {
                 log::error(
                         log::Cat("verify"),
-                        "Failed to validate Ethereum Service Node Removal Request TX reason: {}",
+                        "Failed to validate Ethereum SN Exit Request TX reason: {}",
                         tvc.m_verbose_error);
                 return false;
             }
-        } else if (tx.type == txtype::ethereum_service_node_removal) {
-            if (!eth::validate_event_tx<eth::event::ServiceNodeRemoval>(
+        } else if (tx.type == txtype::ethereum_service_node_exit) {
+            if (!eth::validate_event_tx<eth::event::ServiceNodeExit>(
                         hf_version, tx, &tvc.m_verbose_error)) {
                 log::error(
                         log::Cat("verify"),
-                        "Failed to validate Ethereum Service Node Removal TX reason: {}",
+                        "Failed to validate Ethereum SN Exit TX reason: {}",
                         tvc.m_verbose_error);
                 return false;
             }

@@ -16,12 +16,12 @@ event::StateChangeVariant extract_event(
     if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
         if (extract_event(tx, result.emplace<event::NewServiceNode>(), fail_reason))
             return result;
-    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal_request) {
-        if (extract_event(tx, result.emplace<event::ServiceNodeRemovalRequest>(), fail_reason))
+    } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
+        if (extract_event(tx, result.emplace<event::ServiceNodeExitRequest>(), fail_reason))
             return result;
     } else {
-        assert(tx.type == cryptonote::txtype::ethereum_service_node_removal);
-        if (extract_event(tx, result.emplace<event::ServiceNodeRemoval>(), fail_reason))
+        assert(tx.type == cryptonote::txtype::ethereum_service_node_exit);
+        if (extract_event(tx, result.emplace<event::ServiceNodeExit>(), fail_reason))
             return result;
     }
     result = std::monostate{};

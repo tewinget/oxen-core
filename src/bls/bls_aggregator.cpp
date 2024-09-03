@@ -37,9 +37,9 @@ namespace {
     constexpr std::string_view OMQ_BLS_CATEGORY = "bls";
     constexpr std::string_view OMQ_REWARDS_ENDPOINT = "get_rewards";
     constexpr std::string_view OMQ_LIQUIDATE_ENDPOINT = "get_liquidation";
-    constexpr std::string_view OMQ_REMOVAL_ENDPOINT = "get_removal";
-    const std::string OMQ_BLS_REMOVAL_ENDPOINT =
-            "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_REMOVAL_ENDPOINT);
+    constexpr std::string_view OMQ_EXIT_ENDPOINT = "get_exit";
+    const std::string OMQ_BLS_EXIT_ENDPOINT =
+            "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_EXIT_ENDPOINT);
     const std::string OMQ_BLS_LIQUIDATE_ENDPOINT =
             "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_LIQUIDATE_ENDPOINT);
     const std::string OMQ_BLS_REWARDS_ENDPOINT =
@@ -79,9 +79,9 @@ namespace {
         return result;
     }
 
-    std::string dump_bls_removal_liquidation_response(const bls_removal_liquidation_response& item) {
+    std::string dump_bls_exit_liquidation_response(const bls_exit_liquidation_response& item) {
         std::string result =
-                "BLS removal response was:\n"
+                "BLS exit response was:\n"
                 "\n"
                 "  - remove_pubkey: {}\n"
                 "  - timestamp:     {}\n"
@@ -94,18 +94,18 @@ namespace {
         return result;
     }
 
-    std::vector<uint8_t> get_removal_msg_to_sign(
+    std::vector<uint8_t> get_exit_msg_to_sign(
             cryptonote::network_type nettype,
-            bls_aggregator::removal_type type,
+            bls_aggregator::exit_type type,
             const bls_public_key& remove_pk,
             uint64_t unix_timestamp) {
         auto unix_timestamp_be = tools::encode_integer_be<32>(unix_timestamp);
         crypto::hash tag{};
 
-        if (type == bls_aggregator::removal_type::normal) {
-            tag = BLSSigner::buildTagHash(BLSSigner::removalTag, nettype);
+        if (type == bls_aggregator::exit_type::normal) {
+            tag = BLSSigner::buildTagHash(BLSSigner::exitTag, nettype);
         } else {
-            assert(type == bls_aggregator::removal_type::liquidate);
+            assert(type == bls_aggregator::exit_type::liquidate);
             tag = BLSSigner::buildTagHash(BLSSigner::liquidateTag, nettype);
         }
 
@@ -121,18 +121,18 @@ namespace {
         return result;
     }
 
-    struct bls_removal_request {
+    struct bls_exit_request {
         bool good;
         bls_public_key remove_pk;
         std::chrono::seconds timestamp;
     };
 
-    bls_removal_request extract_removal_request(oxenmq::Message& m) {
-        bls_removal_request result{};
+    bls_exit_request extract_exit_request(oxenmq::Message& m) {
+        bls_exit_request result{};
         if (m.data.size() != 1) {
             m.send_reply(
                     "400",
-                    "Bad request: BLS removal command should have one data part; received {}"_format(
+                    "Bad request: BLS exit command should have one data part; received {}"_format(
                             m.data.size()));
             return result;
         }
@@ -147,7 +147,7 @@ namespace {
         } catch (const std::exception& e) {
             m.send_reply(
                     "400",
-                    "Bad request: BLS removal command specified bad bls pubkey or timestamp: {}"_format(
+                    "Bad request: BLS exit command specified bad bls pubkey or timestamp: {}"_format(
                             e.what()));
             return result;
         }
@@ -156,10 +156,10 @@ namespace {
         auto unix_now = std::chrono::system_clock::now().time_since_epoch();
         auto time_since_initial_request = result.timestamp > unix_now ? result.timestamp - unix_now
                                                                       : unix_now - result.timestamp;
-        if (time_since_initial_request > service_nodes::BLS_MAX_TIME_ALLOWED_FOR_REMOVAL_REQUEST) {
+        if (time_since_initial_request > service_nodes::BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST) {
             m.send_reply(
                     "400",
-                    "Bad request: BLS removal was too old ({}) to sign"_format(
+                    "Bad request: BLS exit was too old ({}) to sign"_format(
                             tools::friendly_duration(time_since_initial_request)));
             return result;
         }
@@ -295,10 +295,10 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
             .add_request_command(
                     std::string(OMQ_REWARDS_ENDPOINT), [this](auto& m) { get_rewards(m); })
             .add_request_command(
-                    std::string(OMQ_REMOVAL_ENDPOINT),
-                    [this](auto& m) { get_removal_liquidation(m, removal_type::normal); })
+                    std::string(OMQ_EXIT_ENDPOINT),
+                    [this](auto& m) { get_exit_liquidation(m, exit_type::normal); })
             .add_request_command(std::string(OMQ_LIQUIDATE_ENDPOINT), [this](auto& m) {
-                get_removal_liquidation(m, removal_type::liquidate);
+                get_exit_liquidation(m, exit_type::liquidate);
             });
 }
 
@@ -656,18 +656,18 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
     return result;
 }
 
-void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type type) const {
-    oxen::log::trace(logcat, "Received omq {} signature request", type == removal_type::normal ? "removal" : "liquidation");
-    bls_removal_request request = extract_removal_request(m);
+void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, exit_type type) const {
+    oxen::log::trace(logcat, "Received omq {} signature request", type == exit_type::normal ? "exit" : "liquidation");
+    bls_exit_request request = extract_exit_request(m);
     if (!request.good)
         return;
 
     bool removable = true;
     switch (type) {
-        case removal_type::normal: {
+        case exit_type::normal: {
             removable = core.is_node_removable(request.remove_pk);
         } break;
-        case removal_type::liquidate: {
+        case exit_type::liquidate: {
              removable = core.is_node_liquidatable(request.remove_pk);
         } break;
     }
@@ -677,13 +677,13 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
                 "403",
                 "Forbidden: The BLS pubkey {} is not currently {}."_format(
                         request.remove_pk,
-                        type == removal_type::normal ? "removable" : "liquidatable"));
+                        type == exit_type::normal ? "removable" : "liquidatable"));
         return;
     }
 
     auto& signer = core.bls_signer();
 
-    std::vector<uint8_t> msg = get_removal_msg_to_sign(
+    std::vector<uint8_t> msg = get_exit_msg_to_sign(
             core.get_nettype(),
             type,
             request.remove_pk,
@@ -692,22 +692,22 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
 
     oxenc::bt_dict_producer d;
     d.append("remove", tools::view_guts(request.remove_pk));  // BLS pubkey to remove
-    d.append("signature", tools::view_guts(sig));  // Signs over the removal key and timestamp
+    d.append("signature", tools::view_guts(sig));  // Signs over the exit key and timestamp
     m.send_reply("200", std::move(d).str());
 }
 
-// Common code for removal and liquidation requests, which only differ in three ways:
+// Common code for exit and liquidation requests, which only differ in three ways:
 // - the endpoint they go to;
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
-bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
-        const crypto::public_key& pubkey, removal_type type) {
+bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
+        const crypto::public_key& pubkey, exit_type type) {
 
     // NOTE: Tracy entry into function
     std::string_view label = "";
     switch (type) {
-        case removal_type::normal: label = "remove"; break;
-        case removal_type::liquidate: label = "liquidation"; break;
+        case exit_type::normal: label = "remove"; break;
+        case exit_type::liquidate: label = "liquidation"; break;
     }
     oxen::log::trace(logcat, "Initiating {} request for SN {}", label, pubkey);
 
@@ -723,7 +723,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
 
     if (!maybe_bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
-                "Removal/liquidation request for {} at height {} is invalid, this node is not in the list of recently exited nodes. Request rejected"_format(
+                "Exit/liquidation request for {} at height {} is invalid, this node is not in the list of recently exited nodes. Request rejected"_format(
                         pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
@@ -731,7 +731,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
     const bls_public_key& bls_pubkey = *maybe_bls_pubkey;
     if (!bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
-                "Removal/liquidation request for the zero address at height {} is invalid. Request "
+                "Exit/liquidation request for the zero address at height {} is invalid. Request "
                 "rejected"_format(core.blockchain.get_current_blockchain_height()));
     }
 
@@ -739,11 +739,11 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
     bool removable = false;
     std::string_view endpoint = "";
     switch (type) {
-        case removal_type::normal: {
-            endpoint  = OMQ_BLS_REMOVAL_ENDPOINT;
+        case exit_type::normal: {
+            endpoint  = OMQ_BLS_EXIT_ENDPOINT;
             removable = core.is_node_removable(bls_pubkey);
         } break;
-        case removal_type::liquidate: {
+        case exit_type::liquidate: {
             endpoint  = OMQ_BLS_LIQUIDATE_ENDPOINT;
             removable = core.is_node_liquidatable(bls_pubkey);
         } break;
@@ -753,18 +753,18 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
         throw oxen::traced<std::invalid_argument>(
                 "{} request for {} at height {} is invalid. Node cannot "
                 "be removed yet. Request rejected"_format(
-                        type == removal_type::normal ? "Exit" : "Liquidation",
+                        type == exit_type::normal ? "Exit" : "Liquidation",
                         bls_pubkey,
                         core.blockchain.get_current_blockchain_height()));
     }
 
-    bls_removal_liquidation_response result;
+    bls_exit_liquidation_response result;
     result.remove_pubkey = bls_pubkey;
     result.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                                std::chrono::system_clock::now().time_since_epoch())
                                .count();
     result.msg_to_sign =
-            get_removal_msg_to_sign(core.get_nettype(), type, bls_pubkey, result.timestamp);
+            get_exit_msg_to_sign(core.get_nettype(), type, bls_pubkey, result.timestamp);
 
     std::mutex signers_mutex;
     bls::Signature agg_sig;
@@ -780,7 +780,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
             std::move(message_dict).str(),
             [endpoint, &agg_sig, &result, &signers_mutex, nettype = core.get_nettype()](
                     const bls_response& response, const std::vector<std::string>& data) {
-                bls_removal_liquidation_response removal_liquidation_response = {};
+                bls_exit_liquidation_response exit_liquidation_response = {};
                 bool partially_parsed = true;
                 try {
                     if (!response.success || data.size() != 2 || data[0] != "200")
@@ -790,25 +790,25 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
                     oxenc::bt_dict_consumer d{data[1]};
 
                     // NOTE: Extract parameters
-                    removal_liquidation_response.remove_pubkey =
+                    exit_liquidation_response.remove_pubkey =
                             tools::make_from_guts<bls_public_key>(d.require<std::string_view>("remo"
                                                                                               "v"
                                                                                               "e"));
-                    removal_liquidation_response.signature =
+                    exit_liquidation_response.signature =
                             tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
                                                                                              "tur"
                                                                                              "e"));
 
                     // NOTE: Verify parameters
-                    if (removal_liquidation_response.remove_pubkey != result.remove_pubkey)
+                    if (exit_liquidation_response.remove_pubkey != result.remove_pubkey)
                         throw oxen::traced<std::runtime_error>{
                                 "BLS response pubkey {} does not match the request pubkey {}"_format(
-                                        removal_liquidation_response.remove_pubkey,
+                                        exit_liquidation_response.remove_pubkey,
                                         result.remove_pubkey)};
 
                     if (!BLSSigner::verifyMsg(
                                 nettype,
-                                removal_liquidation_response.signature,
+                                exit_liquidation_response.signature,
                                 response.sn.bls_pubkey,
                                 result.msg_to_sign)) {
                         throw oxen::traced<std::runtime_error>{
@@ -820,7 +820,7 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
                     {
                         std::lock_guard<std::mutex> lock(signers_mutex);
                         bls::Signature bls_sig = bls_utils::from_crypto_signature(
-                                removal_liquidation_response.signature);
+                                exit_liquidation_response.signature);
                         agg_sig.add(bls_sig);
                         result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
                     }
@@ -837,8 +837,8 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
                             response.sn.x_pubkey,
                             epee::string_tools::get_ip_string_from_int32(response.sn.ip),
                             response.sn.port,
-                            dump_bls_removal_liquidation_response(result),
-                            dump_bls_removal_liquidation_response(removal_liquidation_response));
+                            dump_bls_exit_liquidation_response(result),
+                            dump_bls_exit_liquidation_response(exit_liquidation_response));
                 } catch (const std::exception& e) {
                     oxen::log::debug(
                             logcat,
@@ -847,9 +847,9 @@ bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
                             endpoint,
                             response.sn.sn_pubkey,
                             e.what(),
-                            dump_bls_removal_liquidation_response(result),
+                            dump_bls_exit_liquidation_response(result),
                             partially_parsed ? " (partially parsed)" : "",
-                            dump_bls_removal_liquidation_response(removal_liquidation_response));
+                            dump_bls_exit_liquidation_response(exit_liquidation_response));
                 }
             });
 

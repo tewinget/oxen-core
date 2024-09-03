@@ -759,13 +759,13 @@ namespace {
             }
             set("contributors", contributors);
         }
-        void operator()(const eth::event::ServiceNodeRemovalRequest& x) {
-            set("type", "ethereum_service_node_removal_request");
+        void operator()(const eth::event::ServiceNodeExitRequest& x) {
+            set("type", "ethereum_service_node_exit_request");
             set("l2_height", x.l2_height);
             set("bls_pubkey", x.bls_pubkey);
         }
-        void operator()(const eth::event::ServiceNodeRemoval& x) {
-            set("type", "ethereum_service_node_removal");
+        void operator()(const eth::event::ServiceNodeExit& x) {
+            set("type", "ethereum_service_node_exit");
             set("l2_height", x.l2_height);
             set("bls_pubkey", x.bls_pubkey);
             set("returned_amount", x.returned_amount);
@@ -2547,7 +2547,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
             response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_LIST& rpc, rpc_context) {
+void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
     auto list = nlohmann::json::array();
     for (const service_nodes::service_node_list::recently_removed_node& it : m_core.service_node_list.recently_removed_nodes()) {
         // NOTE: Serialise to JSON
@@ -2598,9 +2598,9 @@ void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_LIST& rpc, rpc_context) {
     rpc.response = std::move(list);
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) {
+void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context) {
     const auto response =
-            m_core.bls_removal_liquidation_request(rpc.request.pubkey, rpc.request.liquidate);
+            m_core.bls_exit_liquidation_request(rpc.request.pubkey, rpc.request.liquidate);
     rpc.response["status"] = STATUS_OK;
     rpc.response["timestamp"] = response.timestamp;
     rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
@@ -3022,7 +3022,7 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
 
     sns.response["registrations"] = json::array();
     sns.response["unlocks"] = json::array();
-    sns.response["removals"] = json::array();
+    sns.response["exits"] = json::array();
     m_core.service_node_list.for_each_pending_l2_state(
             [&sns]<typename Event>(const Event& e, const auto& info) {
                 json entry{
@@ -3051,12 +3051,12 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
                         contr.push_back(json{{"amount", amt}});
                         contr_hex.back()["address"] = addr;
                     }
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemovalRequest>) {
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
                     sns.response["unlocks"].push_back(std::move(entry));
                     sns.response_hex["unlocks"].back()["bls_pubkey"] = e.bls_pubkey;
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemoval>) {
-                    sns.response["removals"].push_back(std::move(entry));
-                    sns.response_hex["removals"].back()["bls_pubkey"] = e.bls_pubkey;
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExit>) {
+                    sns.response["exits"].push_back(std::move(entry));
+                    sns.response_hex["exits"].back()["bls_pubkey"] = e.bls_pubkey;
                     sns.response["returned_amount"] = e.returned_amount;
                 } else {
                     log::error(logcat, "Got unknown event type in rpc GET_PENDING_EVENTS handler!");

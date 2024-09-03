@@ -18,7 +18,7 @@ namespace eth {
 namespace {
     auto logcat = oxen::log::Cat("l2_tracker");
 
-    enum class EventType { NewServiceNode, ServiceNodeRemovalRequest, ServiceNodeRemoval, Other };
+    enum class EventType { NewServiceNode, ServiceNodeExitRequest, ServiceNodeExit, Other };
 
     EventType get_log_type(const ethyl::LogEntry& log) {
         if (log.topics.empty())
@@ -27,10 +27,10 @@ namespace {
         auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
 
         return event_sig == contract::event::NewServiceNode ? EventType::NewServiceNode
-             : event_sig == contract::event::ServiceNodeRemovalRequest
-                     ? EventType::ServiceNodeRemovalRequest
-             : event_sig == contract::event::ServiceNodeRemoval ? EventType::ServiceNodeRemoval
-                                                                : EventType::Other;
+             : event_sig == contract::event::ServiceNodeExitRequest
+                     ? EventType::ServiceNodeExitRequest
+             : event_sig == contract::event::ServiceNodeExit ? EventType::ServiceNodeExit
+                                                             : EventType::Other;
     }
 
 }  // namespace
@@ -108,12 +108,12 @@ static std::string log_new_service_node_tx(
     return result;
 }
 
-static std::string log_new_service_node_removal_request_tx(
-        const event::ServiceNodeRemovalRequest& item, std::string_view hex) {
+static std::string log_new_service_node_exit_request_tx(
+        const event::ServiceNodeExitRequest& item, std::string_view hex) {
     fmt::memory_buffer buffer{};
     fmt::format_to(
             std::back_inserter(buffer),
-            "New service removal request components were:\n"
+            "New service exit request components were:\n"
             "  - Chain ID:   {}\n"
             "  - BLS Pubkey: {}\n"
             "  - L2 Height:  {}\n",
@@ -136,12 +136,12 @@ static std::string log_new_service_node_removal_request_tx(
     return result;
 }
 
-static std::string log_new_service_node_removal_tx(
-        const event::ServiceNodeRemoval& item, std::string_view hex) {
+static std::string log_new_service_node_exit_tx(
+        const event::ServiceNodeExit& item, std::string_view hex) {
     fmt::memory_buffer buffer{};
     fmt::format_to(
             std::back_inserter(buffer),
-            "New service removal components were:\n"
+            "New service exit components were:\n"
             "  - Chain ID:          {}\n"
             "  - BLS Pubkey:        {}\n"
             "  - L2 Height:         {}\n"
@@ -324,23 +324,23 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             oxen::log::debug(logcat, "{}", log_new_service_node_tx(item, log.data));
             break;
         }
-        case EventType::ServiceNodeRemovalRequest: {
-            // event ServiceNodeRemovalRequest(
+        case EventType::ServiceNodeExitRequest: {
+            // event ServiceNodeExitRequest(
             //      uint64 indexed serviceNodeID,
             //      address contributor,
             //      BN256G1.G1Point pubkey);
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes,
-            auto& item = result.emplace<event::ServiceNodeRemovalRequest>(chain_id, l2_height);
+            auto& item = result.emplace<event::ServiceNodeExitRequest>(chain_id, l2_height);
             std::tie(item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
 
-            oxen::log::debug(logcat, "{}", log_new_service_node_removal_request_tx(item, log.data));
+            oxen::log::debug(logcat, "{}", log_new_service_node_exit_request_tx(item, log.data));
             break;
         }
-        case EventType::ServiceNodeRemoval: {
-            // event ServiceNodeRemoval(
+        case EventType::ServiceNodeExit: {
+            // event ServiceNodeExit(
             //      uint64 indexed serviceNodeID,
             //      address operator,
             //      uint256 returnedAmount,
@@ -348,13 +348,13 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes
-            auto& item = result.emplace<event::ServiceNodeRemoval>(chain_id, l2_height);
+            auto& item = result.emplace<event::ServiceNodeExit>(chain_id, l2_height);
             u256 amt256;
             std::tie(amt256, item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, u256, bls_public_key>(log.data);
             item.returned_amount = tools::decode_integer_be(amt256);
 
-            oxen::log::debug(logcat, "{}", log_new_service_node_removal_tx(item, log.data));
+            oxen::log::debug(logcat, "{}", log_new_service_node_exit_tx(item, log.data));
             break;
         }
         case EventType::Other: break;

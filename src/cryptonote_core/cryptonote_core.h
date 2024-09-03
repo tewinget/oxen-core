@@ -599,7 +599,7 @@ class core final {
     bool offline() const { return m_offline; }
 
     eth::bls_rewards_response bls_rewards_request(const eth::address& address, uint64_t height);
-    eth::bls_removal_liquidation_response bls_removal_liquidation_request(
+    eth::bls_exit_liquidation_response bls_exit_liquidation_request(
             const crypto::public_key& pubkey, bool liquidate);
     eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 

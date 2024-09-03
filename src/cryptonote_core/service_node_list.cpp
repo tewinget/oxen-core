@@ -1610,12 +1610,12 @@ static eth::event::StateChangeVariant get_event_from_tx(const cryptonote::transa
     if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
         auto& new_sn = result.emplace<NewServiceNode>();
         success = cryptonote::get_field_from_tx_extra(tx.extra, new_sn);
-    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal_request) {
-        auto& remreq = result.emplace<ServiceNodeRemovalRequest>();
+    } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
+        auto& remreq = result.emplace<ServiceNodeExitRequest>();
         success = cryptonote::get_field_from_tx_extra(tx.extra, remreq);
-    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal) {
-        auto& removal = result.emplace<ServiceNodeRemoval>();
-        success = cryptonote::get_field_from_tx_extra(tx.extra, removal);
+    } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit) {
+        auto& exit = result.emplace<ServiceNodeExit>();
+        success = cryptonote::get_field_from_tx_extra(tx.extra, exit);
     }
     if (!success)
         result.emplace<std::monostate>();
@@ -1632,20 +1632,20 @@ static std::pair<crypto::public_key, std::string> eth_tx_info(
         type = "registration";
         if (auto reg = eth_reg_tx_extract_fields(hf_version, tx))
             pk = reg->service_node_pubkey;
-    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal_request) {
+    } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
         type = "unlock";
-        if (eth::event::ServiceNodeRemovalRequest remreq;
+        if (eth::event::ServiceNodeExitRequest remreq;
             cryptonote::get_field_from_tx_extra(tx.extra, remreq))
             try {
                 pk = snl.public_key_lookup(remreq.bls_pubkey);
             } catch (...) {
             }
-    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal) {
-        type = "removal";
-        if (eth::event::ServiceNodeRemoval removal;
-            cryptonote::get_field_from_tx_extra(tx.extra, removal))
+    } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit) {
+        type = "exit";
+        if (eth::event::ServiceNodeExit exit;
+            cryptonote::get_field_from_tx_extra(tx.extra, exit))
             try {
-                pk = snl.public_key_lookup(removal.bls_pubkey);
+                pk = snl.public_key_lookup(exit.bls_pubkey);
             } catch (...) {
             }
     }
@@ -1755,7 +1755,7 @@ bool service_node_list::state_t::process_confirmed_event(
 }
 
 bool service_node_list::state_t::process_confirmed_event(
-        const eth::event::ServiceNodeRemovalRequest& remreq,
+        const eth::event::ServiceNodeExitRequest& remreq,
         cryptonote::network_type nettype,
         cryptonote::hf,
         uint64_t height,
@@ -1806,7 +1806,7 @@ bool service_node_list::state_t::process_confirmed_event(
 }
 
 bool service_node_list::state_t::process_confirmed_event(
-        const eth::event::ServiceNodeRemoval& removal,
+        const eth::event::ServiceNodeExit& exit,
         cryptonote::network_type nettype,
         cryptonote::hf,
         uint64_t,
@@ -1815,39 +1815,39 @@ bool service_node_list::state_t::process_confirmed_event(
 
     // NOTE: Retrieve node from the staging area
     auto node = std::find_if(
-            recently_removed_nodes.begin(), recently_removed_nodes.end(), [&removal](const auto& item) {
-                bool result = item.bls_pubkey == removal.bls_pubkey;
+            recently_removed_nodes.begin(), recently_removed_nodes.end(), [&exit](const auto& item) {
+                bool result = item.bls_pubkey == exit.bls_pubkey;
                 return result;
             });
 
     if (node == recently_removed_nodes.end()) {
         log::warning(
                 logcat,
-                "ETH removal event for BLS pubkey {}: Node has already been removed or did not exist, skipping",
-                removal.bls_pubkey);
+                "ETH exit event for BLS pubkey {}: Node has already been removed or did not exist, skipping",
+                exit.bls_pubkey);
         return false;
     }
 
     // NOTE: Check that the amount to be refunded is well-formed
-    if (removal.returned_amount > node->staking_requirement) {
+    if (exit.returned_amount > node->staking_requirement) {
         log::warning(
                 logcat,
-                "ETH removal event for BLS pubkey {}: Is requesting to return more funds ({}) than it staked ({}). Fixing up value",
-                removal.bls_pubkey,
-                removal.returned_amount,
+                "ETH exit event for BLS pubkey {}: Is requesting to return more funds ({}) than it staked ({}). Fixing up value",
+                exit.bls_pubkey,
+                exit.returned_amount,
                 node->staking_requirement);
     }
 
-    uint64_t const returned_amount = std::min(node->staking_requirement, removal.returned_amount);
+    uint64_t const returned_amount = std::min(node->staking_requirement, exit.returned_amount);
     uint64_t const slash_amount = node->staking_requirement - returned_amount;
 
     // NOTE: Check if they're allowed to be slashed
     if (slash_amount > 0 && node->type != recently_removed_node::type_t::deregister) {
         log::warning(
                 logcat,
-                "ETH removal event for BLS pubkey {}: Has a slash amount defined but the node was not a deregistration, skipping",
-                removal.bls_pubkey,
-                removal.returned_amount,
+                "ETH exit event for BLS pubkey {}: Has a slash amount defined but the node was not a deregistration, skipping",
+                exit.bls_pubkey,
+                exit.returned_amount,
                 node->staking_requirement);
         return false;
     }
@@ -1884,14 +1884,14 @@ bool service_node_list::state_t::process_confirmed_event(
     if (returned_stakes.empty()) {
         log::warning(
                 logcat,
-                "ETH removal event for BLS pubkey {}: Node has 0 contributors detected, null data encountered, skipping",
+                "ETH exit event for BLS pubkey {}: Node has 0 contributors detected, null data encountered, skipping",
                 node->bls_pubkey);
         return false;
     }
 
     // NOTE: Apply the slash penalty to the operator
     if (slash_amount > returned_stakes[0].amount) {
-        log::error(logcat, "ETH removal of BLS pubkey {} rejected: Returned amount {} is less than the operator contribution {}, skipping", node->bls_pubkey, slash_amount, returned_stakes[0].amount);
+        log::error(logcat, "ETH exit of BLS pubkey {} rejected: Returned amount {} is less than the operator contribution {}, skipping", node->bls_pubkey, slash_amount, returned_stakes[0].amount);
         return false;
     }
     returned_stakes[0].amount -= slash_amount;
@@ -1903,7 +1903,7 @@ bool service_node_list::state_t::process_confirmed_event(
     // NOTE: Remove the node from the staging area (successfully liquidated/exited)
     recently_removed_nodes.erase(node);
 
-    // A removal event does not trigger a swarm update because the node is not in the SNL, it's in a
+    // A exit event does not trigger a swarm update because the node is not in the SNL, it's in a
     // staging area where they're awaiting to get removed (e.g. at this point they've already exited
     // the list and the swarm has reconfigured.
     return false;
@@ -3194,8 +3194,8 @@ void service_node_list::state_t::update_from_block(
                 process_key_image_unlock_tx(nettype, hf_version, height, tx);
                 break;
             case txtype::ethereum_new_service_node:
-            case txtype::ethereum_service_node_removal:
-            case txtype::ethereum_service_node_removal_request:
+            case txtype::ethereum_service_node_exit:
+            case txtype::ethereum_service_node_exit_request:
                 log::debug(logcat, "Processing new (unconfirmed) eth tx");
                 process_new_ethereum_tx(block, tx, my_keys);
                 break;

@@ -1050,14 +1050,14 @@ class service_node_list {
                 uint32_t index,
                 const service_node_keys* my_keys);
         bool process_confirmed_event(
-                const eth::event::ServiceNodeRemovalRequest& rem_req,
+                const eth::event::ServiceNodeExitRequest& rem_req,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
                 uint64_t height,
                 uint32_t index,
                 const service_node_keys* my_keys);
         bool process_confirmed_event(
-                const eth::event::ServiceNodeRemoval& removal,
+                const eth::event::ServiceNodeExit& exit,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
                 uint64_t height,
@@ -1141,15 +1141,15 @@ class service_node_list {
     /**
      * @brief iterates through all pending unconfirmed L2 state changes.  `func` should be a generic
      * lambda that will be called with const reference to an eth::event::NewServiceNode,
-     * eth::event::ServiceNodeRemovalRequest, or eth::event::ServiceNodeRemoval.
+     * eth::event::ServiceNodeExitRequest, or eth::event::ServiceNodeExit.
      */
     template <typename F>
         requires std::invocable<F, const eth::event::NewServiceNode&, const unconfirmed_l2_tx&> &&
                  std::invocable<
                          F,
-                         const eth::event::ServiceNodeRemovalRequest&,
+                         const eth::event::ServiceNodeExitRequest&,
                          const unconfirmed_l2_tx&> &&
-                 std::invocable<F, const eth::event::ServiceNodeRemoval&, const unconfirmed_l2_tx&>
+                 std::invocable<F, const eth::event::ServiceNodeExit&, const unconfirmed_l2_tx&>
     void for_each_pending_l2_state(F&& f) const {
         std::lock_guard lock{m_sn_mutex};
         for (auto& [txid, confirm_info] : m_state.unconfirmed_l2_txes) {

@@ -69,19 +69,19 @@ struct NewServiceNode : L2StateChange {
     std::strong_ordering operator<=>(const NewServiceNode& o) const = default;
 
     static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node;
-    static constexpr std::string_view description = "new service node"sv;
+    static constexpr std::string_view description = "new SN"sv;
 };
 
-struct ServiceNodeRemovalRequest : L2StateChange {
+struct ServiceNodeExitRequest : L2StateChange {
     bls_public_key bls_pubkey = crypto::null<bls_public_key>;
 
-    explicit ServiceNodeRemovalRequest(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+    explicit ServiceNodeExitRequest(uint64_t chain_id = 0, uint64_t l2_height = 0) :
             L2StateChange{chain_id, l2_height} {}
 
     std::string to_string() const { return "{} [bls_pubkey={}]"_format(description, bls_pubkey); }
 
   public:
-    std::strong_ordering operator<=>(const ServiceNodeRemovalRequest& o) const = default;
+    std::strong_ordering operator<=>(const ServiceNodeExitRequest& o) const = default;
 
     template <class Archive>
     void serialize_value(Archive& ar) {
@@ -93,22 +93,22 @@ struct ServiceNodeRemovalRequest : L2StateChange {
     }
 
     static constexpr cryptonote::txtype txtype =
-            cryptonote::txtype::ethereum_service_node_removal_request;
-    static constexpr std::string_view description = "removal request"sv;
+            cryptonote::txtype::ethereum_service_node_exit_request;
+    static constexpr std::string_view description = "SN exit request"sv;
 };
 
-struct ServiceNodeRemoval : L2StateChange {
+struct ServiceNodeExit : L2StateChange {
     bls_public_key bls_pubkey = crypto::null<bls_public_key>;
     uint64_t returned_amount = 0;
 
-    explicit ServiceNodeRemoval(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+    explicit ServiceNodeExit(uint64_t chain_id = 0, uint64_t l2_height = 0) :
             L2StateChange{chain_id, l2_height} {}
 
     std::string to_string() const {
         return "{} [bls_pubkey={}, returned={}]"_format(description, bls_pubkey, returned_amount);
     }
 
-    std::strong_ordering operator<=>(const ServiceNodeRemoval& o) const = default;
+    std::strong_ordering operator<=>(const ServiceNodeExit& o) const = default;
 
     template <class Archive>
     void serialize_value(Archive& ar) {
@@ -120,12 +120,12 @@ struct ServiceNodeRemoval : L2StateChange {
         field_varint(ar, "returned_amount", returned_amount);
     }
 
-    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_service_node_removal;
-    static constexpr std::string_view description = "SN removal"sv;
+    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_service_node_exit;
+    static constexpr std::string_view description = "SN exit"sv;
 };
 
 using StateChangeVariant =
-        std::variant<std::monostate, NewServiceNode, ServiceNodeRemovalRequest, ServiceNodeRemoval>;
+        std::variant<std::monostate, NewServiceNode, ServiceNodeExitRequest, ServiceNodeExit>;
 
 }  // namespace eth::event
 

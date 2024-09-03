@@ -25,14 +25,14 @@ enum class txtype : uint16_t {
     stake,
     oxen_name_system,
     ethereum_new_service_node,
-    ethereum_service_node_removal_request,
-    ethereum_service_node_removal,
+    ethereum_service_node_exit_request,
+    ethereum_service_node_exit,
     _count
 };
 
 inline constexpr bool is_l2_event_tx(txtype type) {
     return type >= txtype::ethereum_new_service_node &&
-           type <= txtype::ethereum_service_node_removal;
+           type <= txtype::ethereum_service_node_exit_request;
 }
 
 inline constexpr std::string_view to_string(txversion v) {
@@ -53,9 +53,9 @@ inline constexpr std::string_view to_string(txtype type) {
         case txtype::stake: return "stake"sv;
         case txtype::oxen_name_system: return "oxen_name_system"sv;
         case txtype::ethereum_new_service_node: return "ethereum_new_service_node"sv;
-        case txtype::ethereum_service_node_removal_request:
-            return "ethereum_service_node_removal_request"sv;
-        case txtype::ethereum_service_node_removal: return "ethereum_service_node_removal"sv;
+        case txtype::ethereum_service_node_exit_request:
+            return "ethereum_service_node_exit_request"sv;
+        case txtype::ethereum_service_node_exit: return "ethereum_service_node_exit"sv;
         default: assert(false); return "xx_unhandled_type"sv;
     }
 }

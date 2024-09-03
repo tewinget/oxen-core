@@ -2123,7 +2123,7 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
 ///
 /// Get information on L2 chain events that have been processed but not yet confirmed by the
 /// network's pulse quorums.  These includes new service node registrations, unlock requests, and
-/// removals, which require multiple pulse quorum votes/consensus before taking effect on the Oxen
+/// exits, which require multiple pulse quorum votes/consensus before taking effect on the Oxen
 /// chain.
 ///
 /// Inputs: none.
@@ -2139,13 +2139,13 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
 ///     `amount`.  The *first* element of this array is the service node operator.
 ///   - common fields (see below)
 ///
-/// - `unlocks` -- array of mined but not yet confirmed removal requests.  Once confirmed, these
+/// - `unlocks` -- array of mined but not yet confirmed exit requests.  Once confirmed, these
 ///   will initiate the unlock timer after which the service node leaves active duty and can be
 ///   redeemed.  Fields:
 ///   - `bls_pubkey` -- BLS pubkey of the node to start unlocking
 ///   - common fields (see below)
 ///
-/// - `removals` -- array of removals arriving from the L2 communicating service nodes that have
+/// - `exits` -- array of exits arriving from the L2 communicating service nodes that have
 ///   been removed from the contract.  Once confirmed, these also remove and unlock contributors'
 ///   stakes.  Each element contains fields:
 ///   - `bls_pubkey` -- BLS pubkey of the node removed from the smart contract
@@ -2308,7 +2308,7 @@ struct GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("get_service_node_blacklisted_key_images"); }
 };
 
-/// RPC: service_node/bls_removal_liquidation_list
+/// RPC: service_node/bls_exit_liquidation_list
 ///
 /// Get the list of nodes that are eligible to be removed or liquidated from the network using an
 /// aggregated signature. This request can never fail.
@@ -2316,8 +2316,8 @@ struct GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES : PUBLIC, NO_ARGS {
 /// Outputs:
 ///
 /// - `list` -- The list of nodes that can be removed or liquidated
-struct BLS_REMOVAL_LIQUIDATION_LIST : PUBLIC {
-    static constexpr auto names() { return NAMES("bls_removal_liquidation_list"); }
+struct BLS_EXIT_LIQUIDATION_LIST : PUBLIC {
+    static constexpr auto names() { return NAMES("bls_exit_liquidation_list"); }
     struct request_parameters {
     } request;
 };
@@ -2365,7 +2365,7 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
     } request;
 };
 
-/// RPC: service_node/bls_removal_liquidation_request
+/// RPC: service_node/bls_exit_liquidation_request
 ///
 /// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls
 /// pubkey can exit. If `liquidate` is true then a liquidation request is generated instead. A
@@ -2373,7 +2373,7 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 ///
 /// Inputs:
 ///
-/// - `pubkey` -- this ed25519 pubkey to request a removal/liquidation on
+/// - `pubkey` -- this ed25519 pubkey to request a exit/liquidation on
 /// - `liquidate` -- Sets the request into liqudation mode. If false the request is perceived as a
 ///    voluntary leave request rather than a liquidation request which allocates a small portion
 ///    of the stake to the liquidator.
@@ -2385,8 +2385,8 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 /// - `signed_message` -- The message that has been signed by the network
 /// - `signature` -- BLS signature of the message
 /// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
-struct BLS_REMOVAL_LIQUIDATION_REQUEST : PUBLIC {
-    static constexpr auto names() { return NAMES("bls_removal_liquidation_request"); }
+struct BLS_EXIT_LIQUIDATION_REQUEST : PUBLIC {
+    static constexpr auto names() { return NAMES("bls_exit_liquidation_request"); }
 
     struct request_parameters {
         crypto::public_key pubkey;
@@ -2815,8 +2815,8 @@ using core_rpc_types = tools::type_list<
         GET_SERVICE_NODES,
         GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES,
         BLS_REWARDS_REQUEST,
-        BLS_REMOVAL_LIQUIDATION_LIST,
-        BLS_REMOVAL_LIQUIDATION_REQUEST,
+        BLS_EXIT_LIQUIDATION_LIST,
+        BLS_EXIT_LIQUIDATION_REQUEST,
         BLS_REGISTRATION_REQUEST,
         GET_SERVICE_NODE_REGISTRATION_CMD,
         GET_SERVICE_NODE_REGISTRATION_CMD_RAW,
