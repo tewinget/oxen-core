@@ -4011,6 +4011,7 @@ static service_node_list::state_serialized serialize_service_node_state_object(
     service_node_list::state_serialized result = {};
     result.height = state.height;
     result.unconfirmed_l2_txes = state.unconfirmed_l2_txes;
+    result.recently_removed_nodes = state.recently_removed_nodes;
     result.block_leader = state.block_leader;
     result.quorums = serialize_quorum_state(hf_version, state.height, state.quorums);
     result.only_stored_quorums = state.only_loaded_quorums || only_serialize_quorums;
@@ -4769,6 +4770,7 @@ service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& s
         height{state.height},
         block_leader{std::move(state.block_leader)},
         unconfirmed_l2_txes{std::move(state.unconfirmed_l2_txes)},
+        recently_removed_nodes{std::move(state.recently_removed_nodes)},
         sn_list{snl} {
     if (!sn_list)
         throw oxen::traced<std::logic_error>(

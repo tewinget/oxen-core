@@ -755,6 +755,19 @@ class service_node_list {
                 contributors;            // The contributors for the node
         uint32_t public_ip;              // The last known public IP of this node, may be outdated
         uint16_t qnet_port;              // The last known quorumnet port of this node, may be outdated
+
+        template <class Archive>
+        void serialize_value(Archive& ar) {
+            uint8_t version = 0;
+            field_varint(ar, "version", version);
+            field(ar, "pubkey", pubkey);
+            field(ar, "bls_pubkey", bls_pubkey);
+            field_varint(ar, "height", height);
+            field_varint(ar, "type", type);
+            field(ar, "contributors", contributors);
+            field_varint(ar, "public_ip", public_ip);
+            field_varint(ar, "qnet_port", qnet_port);
+        }
     };
 
     std::span<const recently_removed_node> recently_removed_nodes() const {
@@ -849,7 +862,7 @@ class service_node_list {
 
         template <class Archive>
         void serialize_value(Archive& ar) {
-            // We don't include a version here becuse state_serialized is already versioned.  If we
+            // We don't include a version here because state_serialized is already versioned. If we
             // end up needing versioning on this specific value then we can use a class tag
             // extension to determine which serialization path to follow in state_serialized's
             // serialization.
@@ -864,9 +877,10 @@ class service_node_list {
             version_0,
             version_1_serialize_hash,
             version_2_l2_confirmations,
+            version_3_recently_removed_nodes,
             count,
         };
-        version_t version{version_t::version_2_l2_confirmations};
+        version_t version{version_t::version_3_recently_removed_nodes};
         uint64_t height;
         std::vector<service_node_pubkey_info> infos;
         std::vector<key_image_blacklist_entry> key_image_blacklist;
@@ -874,6 +888,7 @@ class service_node_list {
         bool only_stored_quorums;
         crypto::hash block_hash;
         std::map<crypto::hash, unconfirmed_l2_tx> unconfirmed_l2_txes;
+        std::vector<recently_removed_node> recently_removed_nodes;
         crypto::public_key block_leader;
 
         template <class Archive>
@@ -892,6 +907,9 @@ class service_node_list {
                 field(ar, "unconfirmed_l2", unconfirmed_l2_txes);
                 field(ar, "block_leader", block_leader);
             }
+
+            if (version >= version_t::version_3_recently_removed_nodes)
+                field(ar, "recently_removed_nodes", recently_removed_nodes);
         }
     };
 
