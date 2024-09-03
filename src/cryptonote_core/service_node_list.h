@@ -749,6 +749,7 @@ class service_node_list {
         crypto::public_key pubkey;       // The node's primary ed25519 key
         eth::bls_public_key bls_pubkey;  // The node's primary bls key
         uint64_t height;                 // Height at which the node exited/deregistered
+        uint64_t liquidation_height;     // Height at which the node is eligible for liquidation
         type_t type;                     // The event that occurred to remove this node
         uint64_t staking_requirement;    // The staking requirement this node had to fulfill
         std::vector<service_node_info::contributor_t>
@@ -763,6 +764,7 @@ class service_node_list {
             field(ar, "pubkey", pubkey);
             field(ar, "bls_pubkey", bls_pubkey);
             field_varint(ar, "height", height);
+            field_varint(ar, "liquidation_height", liquidation_height);
             field_varint(ar, "type", type);
             field(ar, "contributors", contributors);
             field_varint(ar, "public_ip", public_ip);

@@ -989,29 +989,6 @@ bool service_node_list::state_t::process_state_change_tx(
                     }
                 }
             }
-
-            if (block.major_version >= feature::ETH_BLS) {
-                uint32_t public_ip = 0;
-                uint16_t qnet_port = 0;
-                auto proof_it = sn_list->proofs.find(iter->first);
-                if (proof_it != sn_list->proofs.end()) {
-                    const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
-                    if (proof) {
-                        public_ip = proof->public_ip;
-                        qnet_port = proof->qnet_port;
-                    }
-                }
-
-                recently_removed_nodes.emplace_back(recently_removed_node{
-                        .pubkey = iter->first,
-                        .bls_pubkey = iter->second->bls_public_key,
-                        .height = block_height,
-                        .type = recently_removed_node::type_t::deregister,
-                        .staking_requirement = iter->second->staking_requirement,
-                        .contributors = iter->second->contributors,
-                        .public_ip = public_ip,
-                        .qnet_port = qnet_port});
-            }
             erase_info(iter);
             return true;
         }
@@ -3053,29 +3030,6 @@ void service_node_list::state_t::update_from_block(
             log::info(logcat, "Service node expired: {} at block height: {}", pubkey, height);
 
         need_swarm_update += i->second->is_active();
-
-        if (block.major_version >= feature::ETH_BLS) {
-            uint32_t public_ip = 0;
-            uint16_t qnet_port = 0;
-            auto proof_it = sn_list->proofs.find(pubkey);
-            if (proof_it != sn_list->proofs.end()) {
-                const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
-                if (proof) {
-                    public_ip = proof->public_ip;
-                    qnet_port = proof->qnet_port;
-                }
-            }
-
-            recently_removed_nodes.emplace_back(recently_removed_node{
-                    .pubkey = i->first,
-                    .bls_pubkey = i->second->bls_public_key,
-                    .height = height,
-                    .type = recently_removed_node::type_t::voluntary_exit,
-                    .staking_requirement = i->second->staking_requirement,
-                    .contributors = i->second->contributors,
-                    .public_ip = public_ip,
-                    .qnet_port = qnet_port});
-        }
         erase_info(i);
     }
 
@@ -4852,9 +4806,38 @@ void service_node_list::state_t::insert_info(
 service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
         const service_nodes_infos_t::iterator& it) {
     const auto& snpk = it->first;
+
+    // NOTE: Cleanup the x25519 map
     if (sn_list && cryptonote::is_hard_fork_at_least(
                            sn_list->blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
         x25519_map.erase(snpk_to_xpk(snpk));
+
+
+    // NOTE: Add node to the recently removed list
+    if (cryptonote::is_hard_fork_at_least(sn_list->blockchain.nettype(), feature::ETH_BLS, height)) {
+        uint32_t public_ip = 0;
+        uint16_t qnet_port = 0;
+        auto proof_it = sn_list->proofs.find(snpk);
+        if (proof_it != sn_list->proofs.end()) {
+            const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
+            if (proof) {
+                public_ip = proof->public_ip;
+                qnet_port = proof->qnet_port;
+            }
+        }
+
+        const auto& netconf = get_config(sn_list->blockchain.nettype());
+        recently_removed_nodes.emplace_back(recently_removed_node{
+                .pubkey = snpk,
+                .bls_pubkey = it->second->bls_public_key,
+                .height = height,
+                .liquidation_height = height + netconf.ETH_EXIT_BUFFER,
+                .type = recently_removed_node::type_t::voluntary_exit,
+                .staking_requirement = it->second->staking_requirement,
+                .contributors = it->second->contributors,
+                .public_ip = public_ip,
+                .qnet_port = qnet_port});
+    }
 
     return service_nodes_infos.erase(it);
 }
