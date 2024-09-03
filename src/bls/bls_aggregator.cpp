@@ -703,17 +703,18 @@ void bls_aggregator::get_removal_liquidation(oxenmq::Message& m, removal_type ty
 bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
         const crypto::public_key& pubkey, removal_type type) {
 
+    // NOTE: Tracy entry into function
     std::string_view label = "";
     switch (type) {
         case removal_type::normal: label = "remove"; break;
         case removal_type::liquidate: label = "liquidation"; break;
     }
-
     oxen::log::trace(logcat, "Initiating {} request for SN {}", label, pubkey);
 
+    // NOTE: Lookup the BLS pubkey associated with the Ed25519 pubkey.
     std::optional<eth::bls_public_key> maybe_bls_pubkey{};
-    auto removed_sn_array = core.service_node_list.recently_removed_nodes();
-    for (auto it : removed_sn_array) {
+    for (const service_nodes::service_node_list::recently_removed_node& it :
+         core.service_node_list.recently_removed_nodes()) {
         if (it.pubkey == pubkey) {
             maybe_bls_pubkey = it.bls_pubkey;
             break;
