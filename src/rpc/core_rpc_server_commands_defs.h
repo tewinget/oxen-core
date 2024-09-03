@@ -2308,6 +2308,20 @@ struct GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("get_service_node_blacklisted_key_images"); }
 };
 
+/// RPC: service_node/bls_removal_liquidation_list
+///
+/// Get the list of nodes that are eligible to be removed or liquidated from the network using an
+/// aggregated signature. This request can never fail.
+///
+/// Outputs:
+///
+/// - `list` -- The list of nodes that can be removed or liquidated
+struct BLS_REMOVAL_LIQUIDATION_LIST : PUBLIC {
+    static constexpr auto names() { return NAMES("bls_removal_liquidation_list"); }
+    struct request_parameters {
+    } request;
+};
+
 /// RPC: service_node/bls_rewards_request
 ///
 /// Sends a request out for all nodes to sign a BLS signature of the rewards amount that an address
@@ -2351,7 +2365,7 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
     } request;
 };
 
-/// RPC: bls removal liquidation request
+/// RPC: service_node/bls_removal_liquidation_request
 ///
 /// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls
 /// pubkey can exit. If `liquidate` is true then a liquidation request is generated instead. A
@@ -2801,6 +2815,7 @@ using core_rpc_types = tools::type_list<
         GET_SERVICE_NODES,
         GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES,
         BLS_REWARDS_REQUEST,
+        BLS_REMOVAL_LIQUIDATION_LIST,
         BLS_REMOVAL_LIQUIDATION_REQUEST,
         BLS_REGISTRATION_REQUEST,
         GET_SERVICE_NODE_REGISTRATION_CMD,

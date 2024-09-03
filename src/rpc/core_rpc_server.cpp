@@ -2547,6 +2547,57 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
             response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
+void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_LIST& rpc, rpc_context) {
+    auto list = nlohmann::json::array();
+    for (const service_nodes::service_node_list::recently_removed_node& it : m_core.service_node_list.recently_removed_nodes()) {
+        // NOTE: Serialise to JSON
+        serialization::json_archiver ar;
+        const_cast<service_nodes::service_node_list::recently_removed_node&>(it).serialize_value(ar);
+        nlohmann::json serialized = ar.json();
+
+        // NOTE: Remove implementation details from the output JSON
+        for (auto& contrib_it : serialized["contributors"]) {
+            constexpr std::string_view ERASE_FIELDS_CONTRIBUTOR[] = {
+                    "address",  // Cryptonote address  (not used in L2, use ETH addresses)
+                    "locked_contributions",  // $OXEN contributions (not used in L2, use $SENT)
+            };
+
+            for (const auto& field : ERASE_FIELDS_CONTRIBUTOR) {
+                assert(contrib_it.find(field) != contrib_it.end());
+                contrib_it.erase(field);
+            }
+        }
+
+        // NOTE: Remove implementation details from the contributor JSON
+        constexpr std::string_view ERASE_FIELDS[] = {
+            "public_ip",
+            "qnet_port",
+            "type",
+        };
+
+        for (const auto& field : ERASE_FIELDS) {
+            assert(serialized.find(field) != serialized.end());
+            serialized.erase(field);
+        }
+
+        // NOTE: Assign the type
+        switch (it.type) {
+            case service_nodes::service_node_list::recently_removed_node::type_t::voluntary_exit:
+                serialized["type"] = "exit";
+                break;
+
+            case service_nodes::service_node_list::recently_removed_node::type_t::deregister:
+                serialized["type"] = "deregister";
+                break;
+        }
+
+        // NOTE: Store the object into the RPC response array
+        list.emplace_back(std::move(serialized));
+    }
+
+    rpc.response = std::move(list);
+}
+//------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) {
     const auto response =
             m_core.bls_removal_liquidation_request(rpc.request.pubkey, rpc.request.liquidate);
