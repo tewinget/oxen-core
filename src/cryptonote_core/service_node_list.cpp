@@ -3324,10 +3324,8 @@ void service_node_list::blockchain_detached(uint64_t height) {
             m_transient.state_history.erase(std::next(it), m_transient.state_history.end());
     }
 
-    // TODO(oxen): We should loop through the prev 10k heights for robustness, but avoid for v4.0.5.
-    // Already enough changes going in
-    if (reinitialise)  // Try finding the next closest old state at 10k intervals
-    {
+    // Try finding the next closest old state at 10k intervals
+    if (reinitialise) {
         uint64_t prev_interval =
                 revert_to_height - (revert_to_height % STORE_LONG_TERM_STATE_INTERVAL);
         auto it = m_transient.state_archive.find(prev_interval);
@@ -3564,7 +3562,6 @@ static void verify_coinbase_tx_output(
     // Because FP math is involved in reward calculations (and compounded by CPUs, compilers,
     // expression contraction, and RandomX fiddling with the rounding modes) we can end up with a
     // 1 ULP difference in the reward calculations.
-    // TODO(oxen): eliminate all FP math from reward calculations
     if (!within_one(output.amount, reward))
         throw oxen::traced<std::runtime_error>{
                 "Service node reward amount incorrect. Should be {}, is: {}"_format(
