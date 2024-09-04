@@ -1819,13 +1819,16 @@ bool service_node_list::state_t::process_confirmed_event(
     uint64_t const slash_amount = node->staking_requirement - returned_amount;
 
     // NOTE: Check if they're allowed to be slashed
-    if (slash_amount > 0 && node->type != recently_removed_node::type_t::deregister) {
+    if (slash_amount > 0 && height < node->liquidation_height) {
         log::warning(
                 logcat,
-                "ETH exit event for BLS pubkey {}: Has a slash amount defined but the node was not a deregistration, skipping",
+                "ETH exit event for BLS pubkey {}: Has a slash amount ({}) for stake {} but the "
+                "node cannot be liquidated at height {} (liquidation height {}), skipping",
                 exit.bls_pubkey,
-                exit.returned_amount,
-                node->staking_requirement);
+                slash_amount,
+                node->staking_requirement,
+                height,
+                node->liquidation_height);
         return false;
     }
 
