@@ -33,6 +33,11 @@
 
 namespace eth {
 
+// When a service node receives a request to sign an exit request for a BLS node, this values
+// determines how old that request is allowed to be from the time it was initiated to us receiving
+// it, that we will consider signing it.
+inline constexpr auto BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST = 3min;
+
 namespace {
     auto logcat = oxen::log::Cat("bls_aggregator");
     constexpr std::string_view OMQ_BLS_CATEGORY = "bls";
@@ -167,7 +172,7 @@ namespace {
         auto unix_now = std::chrono::system_clock::now().time_since_epoch();
         auto time_since_initial_request = result.timestamp > unix_now ? result.timestamp - unix_now
                                                                       : unix_now - result.timestamp;
-        if (time_since_initial_request > service_nodes::BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST) {
+        if (time_since_initial_request > BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST) {
             m.send_reply(
                     "400",
                     "Bad request: BLS exit was too old ({}) to sign"_format(
@@ -739,8 +744,8 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     const bls_public_key& bls_pubkey = *maybe_bls_pubkey;
     if (!bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
-                "{} request for the zero address at height {} is invalid. Request "
-                "rejected"_format(label, core.blockchain.get_current_blockchain_height()));
+                "{} request for SN {} w/ the zero BLS pkey at height {} is invalid. Request "
+                "rejected"_format(label, pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
     // NOTE: Serve the response from our cache if it's a repeated request

@@ -1590,10 +1590,6 @@ namespace {
         }
 
         std::shared_ptr<const service_nodes::service_node_info> info = list_state[0].info;
-
-        // NOTE: We check if the node at 'key' will be active in the next height (e.g. they are
-        // still going to be active to be able to generate the next pulse block).
-        uint64_t next_height = blockchain.get_current_blockchain_height();
         if (!info->is_active()) {
             log::warning(
                     logcat,

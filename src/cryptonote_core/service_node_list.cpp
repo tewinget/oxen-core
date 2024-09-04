@@ -959,7 +959,7 @@ bool service_node_list::state_t::process_state_change_tx(
     }
 
     switch (state_change.state) {
-        case new_state::deregister: {
+        case new_state::deregister:
             if (is_me)
                 log::warning(
                         globallogcat,
@@ -991,7 +991,6 @@ bool service_node_list::state_t::process_state_change_tx(
             }
             erase_info(iter);
             return true;
-        }
 
         case new_state::decommission:
             if (hf_version < hf::hf12_checkpointing) {
@@ -1813,6 +1812,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 exit.bls_pubkey,
                 exit.returned_amount,
                 node->staking_requirement);
+        // NOTE: Value is fixed up below in `returned_amount`
     }
 
     uint64_t const returned_amount = std::min(node->staking_requirement, exit.returned_amount);
@@ -1882,7 +1882,7 @@ bool service_node_list::state_t::process_confirmed_event(
 
     // A exit event does not trigger a swarm update because the node is not in the SNL, it's in a
     // staging area where they're awaiting to get removed (e.g. at this point they've already exited
-    // the list and the swarm has reconfigured.
+    // the list and the swarm has already reconfigured).
     return false;
 }
 
