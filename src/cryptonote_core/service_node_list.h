@@ -977,7 +977,9 @@ class service_node_list {
         // dependent fields (such as x25519_map).
         void insert_info(
                 const crypto::public_key& pubkey, std::shared_ptr<service_node_info>&& info_ptr);
-        service_nodes_infos_t::iterator erase_info(const service_nodes_infos_t::iterator& it);
+
+        service_nodes_infos_t::iterator erase_info(
+                const service_nodes_infos_t::iterator& it, recently_removed_node::type_t exit_type);
 
         std::vector<pubkey_and_sninfo> active_service_nodes_infos() const;
         std::vector<pubkey_and_sninfo> decommissioned_service_nodes_infos()

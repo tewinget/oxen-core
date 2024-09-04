@@ -989,7 +989,7 @@ bool service_node_list::state_t::process_state_change_tx(
                     }
                 }
             }
-            erase_info(iter);
+            erase_info(iter, recently_removed_node::type_t::deregister);
             return true;
 
         case new_state::decommission:
@@ -3030,7 +3030,7 @@ void service_node_list::state_t::update_from_block(
             log::info(logcat, "Service node expired: {} at block height: {}", pubkey, height);
 
         need_swarm_update += i->second->is_active();
-        erase_info(i);
+        erase_info(i, recently_removed_node::type_t::voluntary_exit);
     }
 
     //
@@ -4804,7 +4804,7 @@ void service_node_list::state_t::insert_info(
 }
 
 service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
-        const service_nodes_infos_t::iterator& it) {
+        const service_nodes_infos_t::iterator& it, recently_removed_node::type_t exit_type) {
     const auto& snpk = it->first;
 
     // NOTE: Cleanup the x25519 map
@@ -4832,7 +4832,7 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
                 .bls_pubkey = it->second->bls_public_key,
                 .height = height,
                 .liquidation_height = height + netconf.ETH_EXIT_BUFFER,
-                .type = recently_removed_node::type_t::voluntary_exit,
+                .type = exit_type,
                 .staking_requirement = it->second->staking_requirement,
                 .contributors = it->second->contributors,
                 .public_ip = public_ip,
