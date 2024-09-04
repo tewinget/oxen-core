@@ -1179,16 +1179,12 @@ bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
         return false;
 
     // NOTE: Node exists in the smart contract but not the oxen service node
-    // list, it's been deregistered _OR_ it's expired (voluntarily exited, but hasn't removed
-    // themselves from the list).
-
-    const auto& netconf = get_net_config();
+    // list, it's been deregistered from _OR_ it voluntarily exited the SNL.
     uint64_t height = blockchain.get_current_blockchain_height();
     for (const service_nodes::service_node_list::recently_removed_node& it : service_node_list.recently_removed_nodes()) {
         assert(it.bls_pubkey && "Invalid null key got inserted into the recently removed list");
         if (it.bls_pubkey == node_bls_pubkey) {
-            uint64_t liquidatable_height = it.height + netconf.ETH_EXIT_BUFFER;
-            bool result = height >= liquidatable_height;
+            bool result = height >= it.liquidation_height;
             return result;
         }
     }
