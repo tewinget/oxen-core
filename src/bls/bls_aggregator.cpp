@@ -9,6 +9,7 @@
 #include <common/string_util.h>
 #include <crypto/crypto.h>
 #include <cryptonote_core/cryptonote_core.h>
+#include <l2_tracker/contracts.h>
 #include <logging/oxen_logger.h>
 #include <oxenc/bt_producer.h>
 #include <oxenmq/oxenmq.h>
@@ -44,6 +45,14 @@ namespace {
             "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_LIQUIDATE_ENDPOINT);
     const std::string OMQ_BLS_REWARDS_ENDPOINT =
             "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_REWARDS_ENDPOINT);
+
+    std::string_view bls_exit_type_label(bls_exit_type type) {
+        switch (type) {
+            case bls_exit_type::normal: return "Exit";
+            case bls_exit_type::liquidate: return "Liquidation";
+        }
+        return "bls_exit_type_label_ERROR";
+    }
 
     std::vector<uint8_t> get_reward_balance_msg_to_sign(
             cryptonote::network_type nettype,
@@ -83,10 +92,12 @@ namespace {
         std::string result =
                 "BLS exit response was:\n"
                 "\n"
+                "  - type:          {}\n"
                 "  - remove_pubkey: {}\n"
                 "  - timestamp:     {}\n"
                 "  - signature:     {}\n"
                 "  - msg_to_sign:   {}\n"_format(
+                        bls_exit_type_label(item.type),
                         item.remove_pubkey,
                         item.timestamp,
                         item.signature,
@@ -96,16 +107,16 @@ namespace {
 
     std::vector<uint8_t> get_exit_msg_to_sign(
             cryptonote::network_type nettype,
-            bls_aggregator::exit_type type,
+            bls_exit_type type,
             const bls_public_key& remove_pk,
             uint64_t unix_timestamp) {
         auto unix_timestamp_be = tools::encode_integer_be<32>(unix_timestamp);
         crypto::hash tag{};
 
-        if (type == bls_aggregator::exit_type::normal) {
+        if (type == bls_exit_type::normal) {
             tag = BLSSigner::buildTagHash(BLSSigner::exitTag, nettype);
         } else {
-            assert(type == bls_aggregator::exit_type::liquidate);
+            assert(type == bls_exit_type::liquidate);
             tag = BLSSigner::buildTagHash(BLSSigner::liquidateTag, nettype);
         }
 
@@ -296,9 +307,9 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
                     std::string(OMQ_REWARDS_ENDPOINT), [this](auto& m) { get_rewards(m); })
             .add_request_command(
                     std::string(OMQ_EXIT_ENDPOINT),
-                    [this](auto& m) { get_exit_liquidation(m, exit_type::normal); })
+                    [this](auto& m) { get_exit_liquidation(m, bls_exit_type::normal); })
             .add_request_command(std::string(OMQ_LIQUIDATE_ENDPOINT), [this](auto& m) {
-                get_exit_liquidation(m, exit_type::liquidate);
+                get_exit_liquidation(m, bls_exit_type::liquidate);
             });
 }
 
@@ -352,7 +363,8 @@ uint64_t bls_aggregator::nodes_request(
                     },
                     message);
         } else {
-            // TODO: I'm unable to get this to work
+            // TODO: I'm unable to get this to work, because, I believe SN's reject
+            // non-authenticated requests.
             #if 0
             if (1) {
                 std::lock_guard connection_lock(connection_mutex);
@@ -487,7 +499,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
 
     // NOTE: Serve the response from our cache if it's a repeated request
     {
-        std::lock_guard lock{mutex};
+        std::lock_guard lock{rewards_response_cache_mutex};
         auto cache_it = rewards_response_cache.find(addr);
         if (cache_it != rewards_response_cache.end()) {
             const bls_rewards_response& cache_response = cache_it->second;
@@ -646,28 +658,29 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                 service_node_list, core.l2_tracker(), result.signers_bls_pubkeys);
     }
 
-    // NOTE: Store the response in to the cache if the number of non-signers was less than 1/3rd.
+    // NOTE: Store the response in to the cache if the number of non-signers is small enough to
+    // constitute a valid signature.
     uint64_t non_signers_count = total_requests - result.signers_bls_pubkeys.size();
-    if (non_signers_count < (total_requests / 3)) {
-        std::lock_guard lock{mutex};
+    if (non_signers_count <= contract::rewards_bls_non_signer_threshold(total_requests)) {
+        std::lock_guard lock{rewards_response_cache_mutex};
         rewards_response_cache[addr] = result;
     }
 
     return result;
 }
 
-void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, exit_type type) const {
-    oxen::log::trace(logcat, "Received omq {} signature request", type == exit_type::normal ? "exit" : "liquidation");
+void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, bls_exit_type type) const {
+    oxen::log::trace(logcat, "Received omq {} signature request", bls_exit_type_label(type));
     bls_exit_request request = extract_exit_request(m);
     if (!request.good)
         return;
 
     bool removable = true;
     switch (type) {
-        case exit_type::normal: {
+        case bls_exit_type::normal: {
             removable = core.is_node_removable(request.remove_pk);
         } break;
-        case exit_type::liquidate: {
+        case bls_exit_type::liquidate: {
              removable = core.is_node_liquidatable(request.remove_pk);
         } break;
     }
@@ -676,8 +689,7 @@ void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, exit_type type) co
         m.send_reply(
                 "403",
                 "Forbidden: The BLS pubkey {} is not currently {}."_format(
-                        request.remove_pk,
-                        type == exit_type::normal ? "removable" : "liquidatable"));
+                        request.remove_pk, bls_exit_type_label(type)));
         return;
     }
 
@@ -701,14 +713,10 @@ void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, exit_type type) co
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
 bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
-        const crypto::public_key& pubkey, exit_type type) {
+        const crypto::public_key& pubkey, bls_exit_type type) {
 
-    // NOTE: Tracy entry into function
-    std::string_view label = "";
-    switch (type) {
-        case exit_type::normal: label = "remove"; break;
-        case exit_type::liquidate: label = "liquidation"; break;
-    }
+    // NOTE: Trace entry into function
+    std::string_view label = bls_exit_type_label(type);
     oxen::log::trace(logcat, "Initiating {} request for SN {}", label, pubkey);
 
     // NOTE: Lookup the BLS pubkey associated with the Ed25519 pubkey.
@@ -723,27 +731,54 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
 
     if (!maybe_bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
-                "Exit/liquidation request for {} at height {} is invalid, this node is not in the list of recently exited nodes. Request rejected"_format(
-                        pubkey, core.blockchain.get_current_blockchain_height()));
+                "{} request for {} at height {} is invalid, this node is not in the list of recently exited nodes. Request rejected"_format(
+                        label, pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
     // NOTE: Validate the arguments
     const bls_public_key& bls_pubkey = *maybe_bls_pubkey;
     if (!bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
-                "Exit/liquidation request for the zero address at height {} is invalid. Request "
-                "rejected"_format(core.blockchain.get_current_blockchain_height()));
+                "{} request for the zero address at height {} is invalid. Request "
+                "rejected"_format(label, core.blockchain.get_current_blockchain_height()));
+    }
+
+    // NOTE: Serve the response from our cache if it's a repeated request
+    {
+        std::lock_guard lock{exit_liquidation_response_cache_mutex};
+        auto cache_it = exit_liquidation_response_cache.find(bls_pubkey);
+        if (cache_it != exit_liquidation_response_cache.end()) {
+
+            const bls_exit_liquidation_cache_item& cache = cache_it->second;
+            const bls_exit_liquidation_response& response = type == bls_exit_type::normal ? cache.exit : cache.liquidation;
+
+            auto now_unix_ts = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch());
+            auto cache_ts = std::chrono::seconds(response.timestamp);
+
+            if (now_unix_ts >= cache_ts) {
+                std::chrono::seconds cache_age = now_unix_ts - cache_ts;
+                if (cache_age <= contract::REWARDS_SIGNATURE_EXPIRY) {
+                    log::trace(
+                            logcat,
+                            "Serving response from cache for SN {} (cached {})\n{}",
+                            pubkey,
+                            tools::get_human_readable_timespan(cache_age),
+                            dump_bls_exit_liquidation_response(response));
+                    return response;
+                }
+            }
+        }
     }
 
     // NOTE: The OMQ endpoint to hit
     bool removable = false;
     std::string_view endpoint = "";
     switch (type) {
-        case exit_type::normal: {
+        case bls_exit_type::normal: {
             endpoint  = OMQ_BLS_EXIT_ENDPOINT;
             removable = core.is_node_removable(bls_pubkey);
         } break;
-        case exit_type::liquidate: {
+        case bls_exit_type::liquidate: {
             endpoint  = OMQ_BLS_LIQUIDATE_ENDPOINT;
             removable = core.is_node_liquidatable(bls_pubkey);
         } break;
@@ -753,13 +788,12 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
         throw oxen::traced<std::invalid_argument>(
                 "{} request for {} at height {} is invalid. Node cannot "
                 "be removed yet. Request rejected"_format(
-                        type == exit_type::normal ? "Exit" : "Liquidation",
-                        bls_pubkey,
-                        core.blockchain.get_current_blockchain_height()));
+                        label, bls_pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
     bls_exit_liquidation_response result;
     result.remove_pubkey = bls_pubkey;
+    result.type = type;
     result.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                                std::chrono::system_clock::now().time_since_epoch())
                                .count();
@@ -775,7 +809,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     message_dict.append("timestamp", result.timestamp);
 
     // FIXME: make this async
-    nodes_request(
+    uint64_t total_requests = nodes_request(
             endpoint,
             std::move(message_dict).str(),
             [endpoint, &agg_sig, &result, &signers_mutex, nettype = core.get_nettype()](
@@ -863,6 +897,22 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     if (debug_redo_bls_aggregation) {
         debug_redo_bls_aggregation_steps_locally(
                 core.service_node_list, core.l2_tracker(), result.signers_bls_pubkeys);
+    }
+
+    // NOTE: Store the response in to the cache if the number of non-signers is small enough to
+    // constitute a valid signature.
+    uint64_t non_signers_count = total_requests - result.signers_bls_pubkeys.size();
+    if (non_signers_count <= contract::rewards_bls_non_signer_threshold(total_requests)) {
+        std::lock_guard lock{exit_liquidation_response_cache_mutex};
+        switch (type) {
+            case bls_exit_type::normal:
+                exit_liquidation_response_cache[bls_pubkey].exit = result;
+                break;
+
+            case bls_exit_type::liquidate:
+                exit_liquidation_response_cache[bls_pubkey].liquidation = result;
+                break;
+        }
     }
 
     return result;

@@ -17,7 +17,13 @@ struct bls_aggregate_signed {
     bls_signature signature;
 };
 
+enum class bls_exit_type {
+    normal,
+    liquidate,
+};
+
 struct bls_exit_liquidation_response : bls_aggregate_signed {
+    bls_exit_type type;
     bls_public_key remove_pubkey;
     uint64_t timestamp;
 };
@@ -49,7 +55,7 @@ class bls_aggregator {
     explicit bls_aggregator(cryptonote::core& core);
 
     // Request the service node network to sign the requested amount of
-    // 'rewards' for the given Ethereum 'address' if by consensus they agree
+    // `rewards` for the given Ethereum `address` if by consensus they agree
     // that the amount is valid. This node (the aggregator) will aggregate the
     // signatures into the response.
     //
@@ -57,16 +63,11 @@ class bls_aggregator {
     // amount is `0` or height is greater than the current blockchain height.
     bls_rewards_response rewards_request(const address& addr, uint64_t height);
 
-    enum class exit_type {
-        normal,
-        liquidate,
-    };
-
     // Request the service node network to sign a request to remove the node specified by
     // `pubkey` from the network. The nature of this exit is set by `type`. This node (the
     // aggregator) will aggregate the signatures into the response.
     bls_exit_liquidation_response exit_liquidation_request(
-            const crypto::public_key& pubkey, exit_type type);
+            const crypto::public_key& pubkey, bls_exit_type type);
 
     bls_registration_response registration(
             const address& sender, const crypto::public_key& sn_pubkey) const;
@@ -74,7 +75,7 @@ class bls_aggregator {
   private:
     void get_rewards(oxenmq::Message& m) const;
 
-    void get_exit_liquidation(oxenmq::Message& m, exit_type type) const;
+    void get_exit_liquidation(oxenmq::Message& m, bls_exit_type type) const;
 
     // Goes out to the nodes on the network and makes oxenmq requests to all of them, when getting
     // the reply `callback` will be called to process their reply
@@ -87,9 +88,22 @@ class bls_aggregator {
     cryptonote::core& core;
 
     // The BLS aggregator can be called from multiple threads via the RPC server. Since we have a
-    // cache that can be concurrently written to, we guard that around a lock.
-    std::mutex mutex;
+    // cache that can be concurrently written to, we guard each cache by a lock
+    std::mutex rewards_response_cache_mutex;
 
+    // See `rewards_response_cache_mutex`
+    std::mutex exit_liquidation_response_cache_mutex;
+
+    // Cache the aggregate signature response for updating rewards to avoid requerying the network
     std::unordered_map<address, bls_rewards_response> rewards_response_cache;
+
+    struct bls_exit_liquidation_cache_item
+    {
+        bls_exit_liquidation_response exit;
+        bls_exit_liquidation_response liquidation;
+    };
+
+    // The cache for exits and liquidation signature aggregations. See `rewards_response_cache`
+    std::unordered_map<bls_public_key, bls_exit_liquidation_cache_item> exit_liquidation_response_cache;
 };
 }  // namespace eth

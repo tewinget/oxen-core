@@ -2580,9 +2580,8 @@ eth::bls_rewards_response core::bls_rewards_request(const eth::address& address,
 //-----------------------------------------------------------------------------------------------
 eth::bls_exit_liquidation_response core::bls_exit_liquidation_request(
         const crypto::public_key& pubkey, bool liquidate) {
-    eth::bls_aggregator::exit_type type = liquidate
-                                                   ? eth::bls_aggregator::exit_type::liquidate
-                                                   : eth::bls_aggregator::exit_type::normal;
+    eth::bls_exit_type type =
+            liquidate ? eth::bls_exit_type::liquidate : eth::bls_exit_type::normal;
     return m_bls_aggregator->exit_liquidation_request(pubkey, type);
 }
 //-----------------------------------------------------------------------------------------------
