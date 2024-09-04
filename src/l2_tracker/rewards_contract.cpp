@@ -325,7 +325,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             break;
         }
         case EventType::ServiceNodeExitRequest: {
-            // event ServiceNodeExitRequest(
+            // event ServiceNodeRemovalRequest(
             //      uint64 indexed serviceNodeID,
             //      address contributor,
             //      BN256G1.G1Point pubkey);
@@ -340,7 +340,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             break;
         }
         case EventType::ServiceNodeExit: {
-            // event ServiceNodeExit(
+            // event ServiceNodeRemoval(
             //      uint64 indexed serviceNodeID,
             //      address operator,
             //      uint256 returnedAmount,

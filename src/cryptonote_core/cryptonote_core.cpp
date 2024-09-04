@@ -451,7 +451,6 @@ static std::string time_ago_str(time_t now, time_t then) {
 // Returns a bool on whether the service node is currently active
 bool core::is_active_sn() const {
     auto info = get_my_sn_info();
-    uint64_t top_height = blockchain.get_current_blockchain_height() - 1;
     return (info && info->is_active());
 }
 
@@ -469,13 +468,12 @@ std::shared_ptr<const service_nodes::service_node_info> core::get_my_sn_info() c
 // Returns a string for systemd status notifications such as:
 // Height: 1234567, SN: active, proof: 55m12s, storage: 4m48s, lokinet: 47s
 std::string core::get_status_string() const {
-    uint64_t top_height = blockchain.get_current_blockchain_height() - 1;
     std::string s;
     s.reserve(128);
     s += 'v';
     s += OXEN_VERSION_STR;
     s += "; Height: ";
-    s += std::to_string(top_height + 1);
+    s += std::to_string(blockchain.get_current_blockchain_height());
     s += ", SN: ";
     if (!service_node())
         s += "no";

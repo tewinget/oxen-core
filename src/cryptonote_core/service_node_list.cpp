@@ -1797,19 +1797,35 @@ bool service_node_list::state_t::process_confirmed_event(
             });
 
     if (node == recently_removed_nodes.end()) {
+        if (oxen::log::get_level(logcat) <= oxen::log::Level::trace) {
+            serialization::json_archiver serializer;
+            node->serialize_value(serializer);
+            oxen::log::trace(logcat, "ETH exit event for BLS\n{}", serializer.dump());
+        }
+
         log::warning(
                 logcat,
                 "ETH exit event for BLS pubkey {}: Node has already been removed or did not exist, skipping",
                 exit.bls_pubkey);
         return false;
+    } else {
+        if (oxen::log::get_level(logcat) <= oxen::log::Level::trace) {
+            serialization::json_archiver node_serializer;
+            serialization::json_archiver event_serializer;
+            node->serialize_value(node_serializer);
+            const_cast<eth::event::ServiceNodeExit&>(exit).serialize_value(event_serializer);
+            oxen::log::trace(logcat, "ETH exit event for BLS\nEvent\n{}\n\nRecently Removed Entry\n{}", event_serializer.dump(), node_serializer.dump());
+        }
     }
+
 
     // NOTE: Check that the amount to be refunded is well-formed
     if (exit.returned_amount > node->staking_requirement) {
         log::warning(
                 logcat,
-                "ETH exit event for BLS pubkey {}: Is requesting to return more funds ({}) than it staked ({}). Fixing up value",
+                "ETH exit event for BLS pubkey {}: SN {} is requesting to return more funds ({}) than it staked ({}). Fixing up value",
                 exit.bls_pubkey,
+                node->pubkey,
                 exit.returned_amount,
                 node->staking_requirement);
         // NOTE: Value is fixed up below in `returned_amount`
@@ -1822,9 +1838,10 @@ bool service_node_list::state_t::process_confirmed_event(
     if (slash_amount > 0 && height < node->liquidation_height) {
         log::warning(
                 logcat,
-                "ETH exit event for BLS pubkey {}: Has a slash amount ({}) for stake {} but the "
+                "ETH exit event for BLS pubkey {}: SN {} has a slash amount ({}) for stake {} but the "
                 "node cannot be liquidated at height {} (liquidation height {}), skipping",
                 exit.bls_pubkey,
+                node->pubkey,
                 slash_amount,
                 node->staking_requirement,
                 height,
@@ -1864,14 +1881,22 @@ bool service_node_list::state_t::process_confirmed_event(
     if (returned_stakes.empty()) {
         log::warning(
                 logcat,
-                "ETH exit event for BLS pubkey {}: Node has 0 contributors detected, null data encountered, skipping",
+                "ETH exit event for BLS pubkey {}: SN {} has 0 contributors detected, null data encountered, skipping",
+                node->pubkey,
                 node->bls_pubkey);
         return false;
     }
 
     // NOTE: Apply the slash penalty to the operator
     if (slash_amount > returned_stakes[0].amount) {
-        log::error(logcat, "ETH exit of BLS pubkey {} rejected: Returned amount {} is less than the operator contribution {}, skipping", node->bls_pubkey, slash_amount, returned_stakes[0].amount);
+        log::error(
+                logcat,
+                "ETH exit of BLS pubkey {} rejected: SN {} returned amount {} is less than the "
+                "operator contribution {}, skipping",
+                node->bls_pubkey,
+                node->pubkey,
+                slash_amount,
+                returned_stakes[0].amount);
         return false;
     }
     returned_stakes[0].amount -= slash_amount;
@@ -4811,25 +4836,28 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
     const auto& snpk = it->first;
 
     // NOTE: Cleanup the x25519 map
-    if (sn_list && cryptonote::is_hard_fork_at_least(
-                           sn_list->blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
+    cryptonote::network_type nettype =
+            sn_list ? sn_list->blockchain.nettype() : cryptonote::network_type::FAKECHAIN;
+    if (cryptonote::is_hard_fork_at_least(nettype, feature::SN_PK_IS_ED25519, height))
         x25519_map.erase(snpk_to_xpk(snpk));
 
 
     // NOTE: Add node to the recently removed list
-    if (cryptonote::is_hard_fork_at_least(sn_list->blockchain.nettype(), feature::ETH_BLS, height)) {
+    if (cryptonote::is_hard_fork_at_least(nettype, feature::ETH_BLS, height)) {
         uint32_t public_ip = 0;
         uint16_t qnet_port = 0;
-        auto proof_it = sn_list->proofs.find(snpk);
-        if (proof_it != sn_list->proofs.end()) {
-            const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
-            if (proof) {
-                public_ip = proof->public_ip;
-                qnet_port = proof->qnet_port;
+        if (sn_list) {
+            auto proof_it = sn_list->proofs.find(snpk);
+            if (proof_it != sn_list->proofs.end()) {
+                const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
+                if (proof) {
+                    public_ip = proof->public_ip;
+                    qnet_port = proof->qnet_port;
+                }
             }
         }
 
-        const auto& netconf = get_config(sn_list->blockchain.nettype());
+        const auto& netconf = get_config(nettype);
         recently_removed_nodes.emplace_back(recently_removed_node{
                 .pubkey = snpk,
                 .bls_pubkey = it->second->bls_public_key,
@@ -4888,6 +4916,9 @@ bool service_node_list::load(const uint64_t current_height) {
     // need to populate the exits and liquidations list (e.g. the 'recently_removed_nodes') by
     // rescanning the entire blockchain. Returning false here tells the SNL that loading failed and
     // it'll regenerate the entire SNL and hence populate exits and liquidation data.
+    //
+    // TODO: This doesn't work, it seems to always force a rescan. Is the version not being saved
+    // out correctly?
     if (blockchain.nettype() == cryptonote::network_type::STAGENET && data_in.version < data_for_serialization::version_t::version_1)
         return false;
 

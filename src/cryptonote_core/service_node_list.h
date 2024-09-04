@@ -610,6 +610,7 @@ class service_node_list {
         bool sn_pk_is_ed25519_hf = cryptonote::is_hard_fork_at_least(
                 nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height);
 
+        // NOTE: Add nodes from the SNL (active & decomm)
         for (const auto& pk_info : m_state.service_nodes_infos) {
             auto it = proofs.find(pk_info.first);
             if (it == proofs.end())
@@ -637,7 +638,10 @@ class service_node_list {
         }
 
         if (sn_pk_is_ed25519_hf) {
+            // NOTE: Add nodes from the recently removed list
             for (const auto& recently_removed_it : m_state.recently_removed_nodes) {
+
+                // NOTE: Look for their latest IP/port from an uptime proof
                 auto it = proofs.find(recently_removed_it.pubkey);
                 if (it != proofs.end() && it->second.proof) {
                     auto& proof = *it->second.proof;
@@ -746,16 +750,15 @@ class service_node_list {
             deregister,
         };
 
-        crypto::public_key pubkey;       // The node's primary ed25519 key
-        eth::bls_public_key bls_pubkey;  // The node's primary bls key
-        uint64_t height;                 // Height at which the node exited/deregistered
-        uint64_t liquidation_height;     // Height at which the node is eligible for liquidation
-        type_t type;                     // The event that occurred to remove this node
-        uint64_t staking_requirement;    // The staking requirement this node had to fulfill
-        std::vector<service_node_info::contributor_t>
-                contributors;            // The contributors for the node
-        uint32_t public_ip;              // The last known public IP of this node, may be outdated
-        uint16_t qnet_port;              // The last known quorumnet port of this node, may be outdated
+        crypto::public_key pubkey;       // SN primary ed25519 key
+        eth::bls_public_key bls_pubkey;  // SN primary bls key
+        uint64_t height;                 // Height at which the SN exited/deregistered
+        uint64_t liquidation_height;     // Height at which the SN is eligible for liquidation
+        type_t type;                     // Event that occurred to remove this SN
+        uint64_t staking_requirement;    // Staking requirement this SN had to fulfill
+        std::vector<service_node_info::contributor_t> contributors;  // Contributors for the SN
+        uint32_t public_ip;  // Last known public IP of this SN (may be outdated)
+        uint16_t qnet_port;  // Last known quorumnet port of this SN (may be outdated)
 
         template <class Archive>
         void serialize_value(Archive& ar) {
@@ -962,6 +965,11 @@ class service_node_list {
         // the order of txes in here.
         std::map<crypto::hash, unconfirmed_l2_tx> unconfirmed_l2_txes;
 
+        // List of nodes that have been removed from the SNL. A SN leaves the SNL by
+        // deregistration (by consensus) or requesting a voluntary exit (by initiating a request on
+        // the smart contract and waiting the necessary unlock time). Nodes that have left the SNL
+        // are added to this list at which point they are now eligible for exiting the smart
+        // contract by requesting the network to aggregate a signature for said request.
         std::vector<recently_removed_node> recently_removed_nodes;
 
         service_node_list* sn_list;

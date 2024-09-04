@@ -2976,7 +2976,7 @@ void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
                 std::remove_if(
                         sn_infos.begin(),
                         sn_infos.end(),
-                        [top_height](const service_nodes::service_node_pubkey_info& snpk_info) {
+                        [](const service_nodes::service_node_pubkey_info& snpk_info) {
                             return !snpk_info.info->is_active();
                         }),
                 sn_infos.end());
@@ -3036,7 +3036,7 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
                           info.confirmations) /
                                  (double)info.FULL_SCORE}};
 
-                if constexpr  (std::is_same_v<Event, eth::event::NewServiceNode>) {
+                if constexpr (std::is_same_v<Event, eth::event::NewServiceNode>) {
                     sns.response["registrations"].push_back(std::move(entry));
                     auto& res = sns.response["registrations"].back();
                     auto res_hex = sns.response_hex["registrations"].back();

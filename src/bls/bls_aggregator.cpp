@@ -736,7 +736,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
 
     if (!maybe_bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
-                "{} request for {} at height {} is invalid, this node is not in the list of recently exited nodes. Request rejected"_format(
+                "{} request for SN {} at height {} is invalid, node is not in the list of recently exited nodes. Request rejected"_format(
                         label, pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
@@ -765,7 +765,8 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                 if (cache_age <= contract::REWARDS_SIGNATURE_EXPIRY) {
                     log::trace(
                             logcat,
-                            "Serving response from cache for SN {} (cached {})\n{}",
+                            "Serving {} response from cache for SN {} (cached {})\n{}",
+                            label,
                             pubkey,
                             tools::get_human_readable_timespan(cache_age),
                             dump_bls_exit_liquidation_response(response));
@@ -791,9 +792,9 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
 
     if (!removable) {
         throw oxen::traced<std::invalid_argument>(
-                "{} request for {} at height {} is invalid. Node cannot "
+                "{} request for SN {} (BLS {}) at height {} is invalid. Node cannot "
                 "be removed yet. Request rejected"_format(
-                        label, bls_pubkey, core.blockchain.get_current_blockchain_height()));
+                        label, pubkey, bls_pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
     bls_exit_liquidation_response result;
@@ -819,7 +820,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
             std::move(message_dict).str(),
             [endpoint, &agg_sig, &result, &signers_mutex, nettype = core.get_nettype()](
                     const bls_response& response, const std::vector<std::string>& data) {
-                bls_exit_liquidation_response exit_liquidation_response = {};
+                bls_exit_liquidation_response exit_response = {};
                 bool partially_parsed = true;
                 try {
                     if (!response.success || data.size() != 2 || data[0] != "200")
@@ -829,25 +830,24 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                     oxenc::bt_dict_consumer d{data[1]};
 
                     // NOTE: Extract parameters
-                    exit_liquidation_response.remove_pubkey =
+                    exit_response.remove_pubkey =
                             tools::make_from_guts<bls_public_key>(d.require<std::string_view>("remo"
                                                                                               "v"
                                                                                               "e"));
-                    exit_liquidation_response.signature =
+                    exit_response.signature =
                             tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
                                                                                              "tur"
                                                                                              "e"));
 
                     // NOTE: Verify parameters
-                    if (exit_liquidation_response.remove_pubkey != result.remove_pubkey)
+                    if (exit_response.remove_pubkey != result.remove_pubkey)
                         throw oxen::traced<std::runtime_error>{
                                 "BLS response pubkey {} does not match the request pubkey {}"_format(
-                                        exit_liquidation_response.remove_pubkey,
-                                        result.remove_pubkey)};
+                                        exit_response.remove_pubkey, result.remove_pubkey)};
 
                     if (!BLSSigner::verifyMsg(
                                 nettype,
-                                exit_liquidation_response.signature,
+                                exit_response.signature,
                                 response.sn.bls_pubkey,
                                 result.msg_to_sign)) {
                         throw oxen::traced<std::runtime_error>{
@@ -858,8 +858,8 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                     // NOTE: Aggregate parameters
                     {
                         std::lock_guard<std::mutex> lock(signers_mutex);
-                        bls::Signature bls_sig = bls_utils::from_crypto_signature(
-                                exit_liquidation_response.signature);
+                        bls::Signature bls_sig =
+                                bls_utils::from_crypto_signature(exit_response.signature);
                         agg_sig.add(bls_sig);
                         result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
                     }
@@ -877,7 +877,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                             epee::string_tools::get_ip_string_from_int32(response.sn.ip),
                             response.sn.port,
                             dump_bls_exit_liquidation_response(result),
-                            dump_bls_exit_liquidation_response(exit_liquidation_response));
+                            dump_bls_exit_liquidation_response(exit_response));
                 } catch (const std::exception& e) {
                     oxen::log::debug(
                             logcat,
@@ -888,7 +888,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                             e.what(),
                             dump_bls_exit_liquidation_response(result),
                             partially_parsed ? " (partially parsed)" : "",
-                            dump_bls_exit_liquidation_response(exit_liquidation_response));
+                            dump_bls_exit_liquidation_response(exit_response));
                 }
             });
 

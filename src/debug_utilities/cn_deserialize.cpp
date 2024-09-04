@@ -143,7 +143,7 @@ struct extra_printer {
                 x.signature);
     }
     std::string operator()(const tx_extra_ethereum_service_node_exit_request& x) {
-        return "Ethereum Service Node Remove Request: version {}, bls key {}"_format(
+        return "Ethereum Service Node Exit Request: version {}, bls key {}"_format(
                 x.version, x.bls_pubkey);
     }
     std::string operator()(const tx_extra_ethereum_service_node_exit& x) {
