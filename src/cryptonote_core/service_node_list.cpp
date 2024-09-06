@@ -3164,6 +3164,7 @@ void service_node_list::state_t::update_from_block(
             case txtype::ethereum_new_service_node:
             case txtype::ethereum_service_node_removal:
             case txtype::ethereum_service_node_removal_request:
+            case txtype::ethereum_staking_requirement_updated:
                 log::debug(logcat, "Processing new (unconfirmed) eth tx");
                 process_new_ethereum_tx(block, tx, my_keys);
                 break;
