@@ -18,7 +18,13 @@ namespace eth {
 namespace {
     auto logcat = oxen::log::Cat("l2_tracker");
 
-    enum class EventType { NewServiceNode, ServiceNodeExitRequest, ServiceNodeExit, StakingRequirementUpdated, Other };
+    enum class EventType {
+        NewServiceNode,
+        ServiceNodeExitRequest,
+        ServiceNodeExit,
+        StakingRequirementUpdated,
+        Other
+    };
 
     EventType get_log_type(const ethyl::LogEntry& log) {
         if (log.topics.empty())
@@ -30,7 +36,9 @@ namespace {
              : event_sig == contract::event::ServiceNodeExitRequest
                      ? EventType::ServiceNodeExitRequest
              : event_sig == contract::event::ServiceNodeExit ? EventType::ServiceNodeExit
-                                                             : EventType::Other;
+             : event_sig == contract::event::StakingRequirementUpdated
+                     ? EventType::StakingRequirementUpdated
+                     : EventType::Other;
     }
 
 }  // namespace

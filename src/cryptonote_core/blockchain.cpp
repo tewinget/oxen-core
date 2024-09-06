@@ -4295,30 +4295,12 @@ bool Blockchain::check_tx_inputs(
             return false;
         }
 
-        if (tx.type == txtype::ethereum_new_service_node) {
-            if (!eth::validate_event_tx<eth::event::NewServiceNode>(
-                        hf_version, tx, &tvc.m_verbose_error)) {
+        if (is_l2_event_tx(tx.type)) {
+            if (!eth::validate_event_tx(tx.type, hf_version, tx, &tvc.m_verbose_error)) {
                 log::error(
                         log::Cat("verify"),
-                        "Failed to validate Ethereum New SN TX reason: {}",
-                        tvc.m_verbose_error);
-                return false;
-            }
-        } else if (tx.type == txtype::ethereum_service_node_exit_request) {
-            if (!eth::validate_event_tx<eth::event::ServiceNodeExitRequest>(
-                        hf_version, tx, &tvc.m_verbose_error)) {
-                log::error(
-                        log::Cat("verify"),
-                        "Failed to validate Ethereum SN Exit Request TX reason: {}",
-                        tvc.m_verbose_error);
-                return false;
-            }
-        } else if (tx.type == txtype::ethereum_service_node_exit) {
-            if (!eth::validate_event_tx<eth::event::ServiceNodeExit>(
-                        hf_version, tx, &tvc.m_verbose_error)) {
-                log::error(
-                        log::Cat("verify"),
-                        "Failed to validate Ethereum SN Exit TX reason: {}",
+                        "Failed to validate {} TX: {}",
+                        tx.type,
                         tvc.m_verbose_error);
                 return false;
             }
