@@ -475,6 +475,7 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
 #endif
     }
 
+    result.success = true;
     return result;
 }
 

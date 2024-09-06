@@ -3442,7 +3442,11 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
         });
 
         // NOTE: Extract all service nodes from the smart contract
-        bls_pubkeys_in_smart_contract = m_l2_tracker->get_all_service_node_ids(std::nullopt).bls_pubkeys;
+        eth::RewardsContract::ServiceNodeIDs smart_contract_ids =
+                m_l2_tracker->get_all_service_node_ids(std::nullopt);
+        if (!smart_contract_ids.success)
+            throw oxen::traced<std::runtime_error>("Querying of service node IDs from smart contract failed");
+        bls_pubkeys_in_smart_contract = std::move(smart_contract_ids.bls_pubkeys);
     }
 
     // NOTE: Ensure lists are sorted as required for 'set_difference'

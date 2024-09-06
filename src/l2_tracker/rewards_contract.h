@@ -51,6 +51,7 @@ class RewardsContract {
 
     struct ServiceNodeIDs
     {
+        bool success;
         std::vector<uint64_t> ids;
         std::vector<bls_public_key> bls_pubkeys;
     };
