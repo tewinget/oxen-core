@@ -102,14 +102,8 @@ class bls_aggregator {
     // Cache the aggregate signature response for updating rewards to avoid requerying the network
     std::unordered_map<address, bls_rewards_response> rewards_response_cache;
 
-    struct bls_exit_liquidation_cache_item
-    {
-        bls_exit_liquidation_response exit;
-        bls_exit_liquidation_response liquidation;
-    };
-
     // The cache for exits and liquidation signature aggregations. See `rewards_response_cache`
-    std::unordered_map<bls_public_key, bls_exit_liquidation_cache_item> exit_liquidation_response_cache;
+    std::unordered_map<bls_public_key, bls_exit_liquidation_response> exit_liquidation_response_cache;
 };
 }  // namespace eth
 

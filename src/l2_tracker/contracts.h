@@ -43,7 +43,7 @@ namespace call {
 // How long a BLS aggregated signature is valid for before it's rejected by the smart contract for
 // being too old. This is used to invalidate old exits and liquidation requests (and also stop
 // replay of signatures).
-constexpr inline std::chrono::seconds REWARDS_SIGNATURE_EXPIRY = 10min;
+constexpr inline std::chrono::seconds REWARDS_EXIT_SIGNATURE_EXPIRY = 10min;
 
 // How many non-signers are permitted given the node count.
 constexpr inline uint64_t rewards_bls_non_signer_threshold(uint64_t total_nodes) {

@@ -334,13 +334,12 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
                     const uint64_t cutoff =
                             std::chrono::duration_cast<std::chrono::seconds>(
                                     std::chrono::system_clock::now().time_since_epoch() -
-                                    contract::REWARDS_SIGNATURE_EXPIRY)
+                                    contract::REWARDS_EXIT_SIGNATURE_EXPIRY)
                                     .count();
 
                     std::lock_guard lock{exit_liquidation_response_cache_mutex};
                     std::erase_if(exit_liquidation_response_cache, [&cutoff](const auto& item) {
-                        return item.second.exit.timestamp < cutoff &&
-                               item.second.liquidation.timestamp < cutoff;
+                        return item.second.timestamp < cutoff;
                     });
                 }
             },
@@ -756,8 +755,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
 
     // NOTE: Lookup the BLS pubkey associated with the Ed25519 pubkey.
     std::optional<eth::bls_public_key> maybe_bls_pubkey{};
-    for (const service_nodes::service_node_list::recently_removed_node& it :
-         core.service_node_list.recently_removed_nodes()) {
+    for (const auto& it : core.service_node_list.recently_removed_nodes()) {
         if (it.pubkey == pubkey) {
             maybe_bls_pubkey = it.bls_pubkey;
             break;
@@ -766,7 +764,8 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
 
     if (!maybe_bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
-                "{} request for SN {} at height {} is invalid, node is not in the list of recently exited nodes. Request rejected"_format(
+                "{} request for SN {} at height {} is invalid, node is not in the list of recently"
+                " exited nodes. Request rejected"_format(
                         type, pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
@@ -781,18 +780,14 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     // NOTE: Serve the response from our cache if it's a repeated request
     {
         std::lock_guard lock{exit_liquidation_response_cache_mutex};
-        auto cache_it = exit_liquidation_response_cache.find(bls_pubkey);
-        if (cache_it != exit_liquidation_response_cache.end()) {
-
-            const bls_exit_liquidation_cache_item& cache = cache_it->second;
-            const bls_exit_liquidation_response& response = type == bls_exit_type::normal ? cache.exit : cache.liquidation;
-
+        auto it = exit_liquidation_response_cache.find(bls_pubkey);
+        if (it != exit_liquidation_response_cache.end()) {
+            const bls_exit_liquidation_response& response = it->second;
             auto now_unix_ts = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch());
             auto cache_ts = std::chrono::seconds(response.timestamp);
-
-            if (now_unix_ts >= cache_ts) {
+            if (response.type == type && now_unix_ts >= cache_ts) {
                 std::chrono::seconds cache_age = now_unix_ts - cache_ts;
-                if (cache_age <= contract::REWARDS_SIGNATURE_EXPIRY) {
+                if (cache_age <= contract::REWARDS_EXIT_SIGNATURE_EXPIRY) {
                     log::trace(
                             logcat,
                             "Serving {} response from cache for SN {} (cached {})\n{}",
@@ -939,15 +934,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     uint64_t non_signers_count = total_requests - result.signers_bls_pubkeys.size();
     if (non_signers_count <= contract::rewards_bls_non_signer_threshold(total_requests)) {
         std::lock_guard lock{exit_liquidation_response_cache_mutex};
-        switch (type) {
-            case bls_exit_type::normal:
-                exit_liquidation_response_cache[bls_pubkey].exit = result;
-                break;
-
-            case bls_exit_type::liquidate:
-                exit_liquidation_response_cache[bls_pubkey].liquidation = result;
-                break;
-        }
+        exit_liquidation_response_cache[bls_pubkey] = result;
     }
 
     return result;
