@@ -2569,8 +2569,9 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
             };
 
             for (const auto& field : ERASE_FIELDS_CONTRIBUTOR) {
-                assert(contrib_it.find(field) != contrib_it.end());
-                contrib_it.erase(field);
+                auto it = contrib_it.find(field);
+                assert(it != contrib_it.end());
+                contrib_it.erase(it);
             }
         }
 
@@ -2582,8 +2583,9 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
         };
 
         for (const auto& field : ERASE_FIELDS) {
-            assert(serialized.find(field) != serialized.end());
-            serialized.erase(field);
+            auto it = serialized.find(field);
+            assert(it != serialized.end());
+            serialized.erase(it);
         }
 
         // NOTE: Assign the type
