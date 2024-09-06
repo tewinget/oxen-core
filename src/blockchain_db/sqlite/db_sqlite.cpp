@@ -309,7 +309,7 @@ void BlockchainSQLite::reset_database() {
 }
 
 void BlockchainSQLite::update_height(uint64_t new_height) {
-    log::trace(logcat, "BlockchainDB_SQLITE::{} Changing to to height: {}, prev: {}", __func__, new_height, height);
+    log::trace(logcat, "BlockchainDB_SQLITE::{} Changing to height: {}, prev: {}", __func__, new_height, height);
     height = new_height;
     prepared_exec("UPDATE batch_db_info SET height = ?", static_cast<int64_t>(height));
 }
