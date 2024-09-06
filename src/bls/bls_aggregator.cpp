@@ -380,8 +380,8 @@ uint64_t bls_aggregator::nodes_request(
                         [&active_connections] { return active_connections < MAX_CONNECTIONS; });
             }
 
-            auto addr = oxenmq::address{"tcp://{}:{}"_format(
-                    epee::string_tools::get_ip_string_from_int32(snode.ip), snode.port, tools::view_guts(snode.x_pubkey))};
+            auto addr = oxenmq::address{"curve://{}:{}/{:x}"_format(
+                    epee::string_tools::get_ip_string_from_int32(snode.ip), snode.port, snode.x_pubkey)};
             auto conn = omq.connect_remote(
                     addr,
                     [](oxenmq::ConnectionID) { /* Successfully connected */ },
