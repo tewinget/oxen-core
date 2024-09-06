@@ -27,12 +27,16 @@ struct bls_exit_liquidation_response : bls_aggregate_signed {
     bls_exit_type type;
     bls_public_key remove_pubkey;
     uint64_t timestamp;
+
+    std::string to_string() const;
 };
 
 struct bls_rewards_response : bls_aggregate_signed {
     address addr;
     uint64_t amount;
     uint64_t height;
+
+    std::string to_string() const;
 };
 
 struct bls_registration_response {
@@ -111,3 +115,6 @@ class bls_aggregator {
 
 template <>
 inline constexpr bool formattable::via_to_string<eth::bls_exit_type> = true;
+
+template <std::derived_from<eth::bls_aggregate_signed> T>
+inline constexpr bool ::formattable::via_to_string<T> = true;

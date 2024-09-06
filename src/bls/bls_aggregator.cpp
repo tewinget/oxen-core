@@ -75,40 +75,6 @@ namespace {
         return result;
     }
 
-    std::string dump_bls_rewards_response(const bls_rewards_response& item) {
-        std::string result =
-                "BLS rewards response was:\n"
-                "\n"
-                "  - address:     {}\n"
-                "  - amount:      {}\n"
-                "  - height:      {}\n"
-                "  - signature:   {}\n"
-                "  - msg_to_sign: {}\n"_format(
-                        item.addr,
-                        item.amount,
-                        item.height,
-                        item.signature,
-                        oxenc::to_hex(item.msg_to_sign.begin(), item.msg_to_sign.end()));
-        return result;
-    }
-
-    std::string dump_bls_exit_liquidation_response(const bls_exit_liquidation_response& item) {
-        std::string result =
-                "BLS exit response was:\n"
-                "\n"
-                "  - type:          {}\n"
-                "  - remove_pubkey: {}\n"
-                "  - timestamp:     {}\n"
-                "  - signature:     {}\n"
-                "  - msg_to_sign:   {}\n"_format(
-                        item.type,
-                        item.remove_pubkey,
-                        item.timestamp,
-                        item.signature,
-                        oxenc::to_hex(item.msg_to_sign.begin(), item.msg_to_sign.end()));
-        return result;
-    }
-
     std::vector<uint8_t> get_exit_msg_to_sign(
             cryptonote::network_type nettype,
             bls_exit_type type,
@@ -300,6 +266,40 @@ namespace {
         }
     }
 }  // namespace
+
+std::string bls_exit_liquidation_response::to_string() const {
+    std::string result =
+            "BLS exit response was:\n"
+            "\n"
+            "  - type:          {}\n"
+            "  - remove_pubkey: {}\n"
+            "  - timestamp:     {}\n"
+            "  - signature:     {}\n"
+            "  - msg_to_sign:   {}\n"_format(
+                    type,
+                    remove_pubkey,
+                    timestamp,
+                    signature,
+                    oxenc::to_hex(msg_to_sign.begin(), msg_to_sign.end()));
+    return result;
+}
+
+std::string bls_rewards_response::to_string() const {
+    std::string result =
+            "BLS rewards response was:\n"
+            "\n"
+            "  - address:     {}\n"
+            "  - amount:      {}\n"
+            "  - height:      {}\n"
+            "  - signature:   {}\n"
+            "  - msg_to_sign: {}\n"_format(
+                    addr,
+                    amount,
+                    height,
+                    signature,
+                    oxenc::to_hex(msg_to_sign.begin(), msg_to_sign.end()));
+    return result;
+}
 
 bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
     if (!core.service_node())
@@ -609,8 +609,8 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                             response.sn.x_pubkey,
                             epee::string_tools::get_ip_string_from_int32(response.sn.ip),
                             response.sn.port,
-                            dump_bls_rewards_response(result),
-                            dump_bls_rewards_response(rewards_response));
+                            result,
+                            rewards_response);
 
                 } catch (const std::exception& e) {
                     oxen::log::debug(
@@ -619,9 +619,9 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                             "response had{}: {}",
                             response.sn.sn_pubkey,
                             e.what(),
-                            dump_bls_rewards_response(result),
+                            result,
                             partially_parsed ? " (partially parsed)" : "",
-                            dump_bls_rewards_response(rewards_response));
+                            rewards_response);
                 }
             });
 
@@ -767,7 +767,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                             type,
                             pubkey,
                             tools::get_human_readable_timespan(cache_age),
-                            dump_bls_exit_liquidation_response(response));
+                            response);
                     return response;
                 }
             }
@@ -874,8 +874,8 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                             response.sn.x_pubkey,
                             epee::string_tools::get_ip_string_from_int32(response.sn.ip),
                             response.sn.port,
-                            dump_bls_exit_liquidation_response(result),
-                            dump_bls_exit_liquidation_response(exit_response));
+                            result,
+                            exit_response);
                 } catch (const std::exception& e) {
                     oxen::log::debug(
                             logcat,
@@ -884,9 +884,9 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                             endpoint,
                             response.sn.sn_pubkey,
                             e.what(),
-                            dump_bls_exit_liquidation_response(result),
+                            result,
                             partially_parsed ? " (partially parsed)" : "",
-                            dump_bls_exit_liquidation_response(exit_response));
+                            exit_response);
                 }
             });
 
