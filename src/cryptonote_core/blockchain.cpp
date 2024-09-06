@@ -3434,10 +3434,10 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
             [&bls_pubkeys_in_snl]<typename Event>(const Event& e, const service_nodes::service_node_list::unconfirmed_l2_tx&) {
                 if constexpr  (std::is_same_v<Event, eth::event::NewServiceNode>) {
                     bls_pubkeys_in_snl.push_back(e.bls_pubkey);
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExit>) {
                 } else {
-                    log::error(logcat, "Got unknown event type when iterating each pending L2 state from the SNL!");
+                    static_assert(std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
+                        std::is_same_v<Event, eth::event::ServiceNodeExit>);
+                }
                 }
         });
 
