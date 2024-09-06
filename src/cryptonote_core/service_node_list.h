@@ -905,7 +905,7 @@ class service_node_list {
 
         // An overridden staking requirement from the L2 contract (after confirmations); if 0 then
         // the default staking requirement applies.
-        uint64_t staking_requirement;
+        uint64_t staking_requirement{0};
 
         service_node_list* sn_list;
 
