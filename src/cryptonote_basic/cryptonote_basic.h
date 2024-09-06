@@ -62,10 +62,11 @@ struct quorum_signature {
     quorum_signature(uint16_t voter_index, crypto::signature const& signature) :
             voter_index(voter_index), signature(signature) {}
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(voter_index)
-    FIELD(signature)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "voter_index", voter_index);
+        field(ar, "signature", signature);
+    }
 };
 };  // namespace service_nodes
 
@@ -75,10 +76,11 @@ struct txout_to_script {
     std::vector<crypto::public_key> keys;
     std::vector<uint8_t> script;
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(keys)
-    FIELD(script)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "keys", keys);
+        field(ar, "script", script);
+    }
 };
 
 struct txout_to_scripthash {
@@ -96,9 +98,10 @@ struct txout_to_key {
 struct txin_gen {
     size_t height;
 
-    BEGIN_SERIALIZE_OBJECT()
-    VARINT_FIELD(height)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "height", height);
+    }
 };
 
 struct txin_to_script {
@@ -106,11 +109,12 @@ struct txin_to_script {
     size_t prevout;
     std::vector<uint8_t> sigset;
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(prev)
-    VARINT_FIELD(prevout)
-    FIELD(sigset)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "prev", prev);
+        field_varint(ar, "prevout", prevout);
+        field(ar, "sigset", sigset);
+    }
 };
 
 struct txin_to_scripthash {
@@ -119,12 +123,13 @@ struct txin_to_scripthash {
     txout_to_script script;
     std::vector<uint8_t> sigset;
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(prev)
-    VARINT_FIELD(prevout)
-    FIELD(script)
-    FIELD(sigset)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "prev", prev);
+        field_varint(ar, "prevout", prevout);
+        field(ar, "script", script);
+        field(ar, "sigset", sigset);
+    }
 };
 
 struct txin_to_key {
@@ -132,11 +137,12 @@ struct txin_to_key {
     std::vector<uint64_t> key_offsets;
     crypto::key_image k_image;  // double spending protection
 
-    BEGIN_SERIALIZE_OBJECT()
-    VARINT_FIELD(amount)
-    FIELD(key_offsets)
-    FIELD(k_image)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "amount", amount);
+        field(ar, "key_offsets", key_offsets);
+        field(ar, "k_image", k_image);
+    }
 };
 
 using txin_v = std::variant<txin_gen, txin_to_script, txin_to_scripthash, txin_to_key>;
@@ -148,10 +154,11 @@ struct tx_out {
     uint64_t amount;
     txout_target_v target;
 
-    BEGIN_SERIALIZE_OBJECT()
-    VARINT_FIELD(amount)
-    FIELD(target)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "amount", amount);
+        field(ar, "target", target);
+    }
 };
 
 // Blink quorum statuses.  Note that the underlying numeric values is used in the RPC.  `none` is

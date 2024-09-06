@@ -324,9 +324,10 @@ namespace {
 
       public:
         pruned_transaction(transaction& tx) : tx(tx) {}
-        BEGIN_SERIALIZE_OBJECT()
-        tx.serialize_base(ar);
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_value(Archive& ar) {
+            tx.serialize_base(ar);
+        }
     };
 }  // namespace
 //------------------------------------------------------------------------------------------------------------------------------

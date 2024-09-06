@@ -192,10 +192,11 @@ struct pulse_sort_key {
         return result;
     }
 
-    BEGIN_SERIALIZE_OBJECT()
-    VARINT_FIELD(last_height_validating_in_quorum)
-    FIELD(quorum_index)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "last_height_validating_in_quorum", last_height_validating_in_quorum);
+        field(ar, "quorum_index", quorum_index);
+    }
 };
 
 struct service_node_info  // registration information
@@ -233,12 +234,15 @@ struct service_node_info  // registration information
                 uint64_t amount) :
                 version{version}, key_image_pub_key{pubkey}, key_image{key_image}, amount{amount} {}
 
-        BEGIN_SERIALIZE_OBJECT()
-        ENUM_FIELD(version, version < version_t::_count)
-        FIELD(key_image_pub_key)
-        FIELD(key_image)
-        VARINT_FIELD(amount)
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            field_varint(ar, "version", version, [](auto& version) {
+                return version < version_t::_count;
+            });
+            field(ar, "key_image_pub_key", key_image_pub_key);
+            field(ar, "key_image", key_image);
+            field_varint(ar, "amount", amount);
+        }
     };
 
     struct contributor_t {
@@ -257,15 +261,17 @@ struct service_node_info  // registration information
             address = address_;
         }
 
-        BEGIN_SERIALIZE_OBJECT()
-        VARINT_FIELD(version)
-        VARINT_FIELD(amount)
-        VARINT_FIELD(reserved)
-        FIELD(address)
-        FIELD(locked_contributions)
-        if (version >= 1)
-            FIELD(ethereum_address);
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            field_varint(ar, "version", version);
+            field_varint(ar, "amount", amount);
+            field_varint(ar, "reserved", reserved);
+            field(ar, "address", address);
+            field(ar, "locked_contributions", locked_contributions);
+            if (version >= 1)
+                field(ar, "ethereum_address", ethereum_address);
+            ;
+        }
     };
 
     uint64_t registration_height = 0;
@@ -319,52 +325,60 @@ struct service_node_info  // registration information
     bool can_be_voted_on(uint64_t block_height) const;
     size_t total_num_locked_contributions() const;
 
-    BEGIN_SERIALIZE_OBJECT()
-    ENUM_FIELD(version, version < version_t::_count)
-    VARINT_FIELD(registration_height)
-    VARINT_FIELD(requested_unlock_height)
-    VARINT_FIELD(last_reward_block_height)
-    VARINT_FIELD(last_reward_transaction_index)
-    VARINT_FIELD(decommission_count)
-    VARINT_FIELD(active_since_height)
-    VARINT_FIELD(last_decommission_height)
-    FIELD(contributors)
-    VARINT_FIELD(total_contributed)
-    VARINT_FIELD(total_reserved)
-    VARINT_FIELD(staking_requirement)
-    VARINT_FIELD(portions_for_operator)
-    FIELD(operator_address)
-    VARINT_FIELD(swarm_id)
-    if (version < version_t::v4_noproofs) {
-        uint32_t fake_ip = 0;
-        uint16_t fake_port = 0;
-        VARINT_FIELD_N("public_ip", fake_ip)
-        VARINT_FIELD_N("storage_port", fake_port)
-    }
-    VARINT_FIELD(last_ip_change_height)
-    if (version >= version_t::v1_add_registration_hf_version)
-        VARINT_FIELD(registration_hf_version);
-    if (version >= version_t::v2_ed25519 && version < version_t::v4_noproofs) {
-        crypto::ed25519_public_key fake_pk = crypto::null<crypto::ed25519_public_key>;
-        FIELD_N("pubkey_ed25519", fake_pk)
-        if (version >= version_t::v3_quorumnet) {
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(
+                ar, "version", version, [](auto& version) { return version < version_t::_count; });
+        field_varint(ar, "registration_height", registration_height);
+        field_varint(ar, "requested_unlock_height", requested_unlock_height);
+        field_varint(ar, "last_reward_block_height", last_reward_block_height);
+        field_varint(ar, "last_reward_transaction_index", last_reward_transaction_index);
+        field_varint(ar, "decommission_count", decommission_count);
+        field_varint(ar, "active_since_height", active_since_height);
+        field_varint(ar, "last_decommission_height", last_decommission_height);
+        field(ar, "contributors", contributors);
+        field_varint(ar, "total_contributed", total_contributed);
+        field_varint(ar, "total_reserved", total_reserved);
+        field_varint(ar, "staking_requirement", staking_requirement);
+        field_varint(ar, "portions_for_operator", portions_for_operator);
+        field(ar, "operator_address", operator_address);
+        field_varint(ar, "swarm_id", swarm_id);
+        if (version < version_t::v4_noproofs) {
+            uint32_t fake_ip = 0;
             uint16_t fake_port = 0;
-            VARINT_FIELD_N("quorumnet_port", fake_port)
+            field_varint(ar, "public_ip", fake_ip);
+            field_varint(ar, "storage_port", fake_port);
+        }
+        field_varint(ar, "last_ip_change_height", last_ip_change_height);
+        if (version >= version_t::v1_add_registration_hf_version)
+            field_varint(ar, "registration_hf_version", registration_hf_version);
+        if (version >= version_t::v2_ed25519 && version < version_t::v4_noproofs) {
+            crypto::ed25519_public_key fake_pk = crypto::null<crypto::ed25519_public_key>;
+            field(ar, "pubkey_ed25519", fake_pk);
+            if (version >= version_t::v3_quorumnet) {
+                uint16_t fake_port = 0;
+                field_varint(ar, "quorumnet_port", fake_port);
+            }
+        }
+        if (version >= version_t::v5_pulse_recomm_credit) {
+            field_varint(ar, "recommission_credit", recommission_credit);
+            field(ar, "pulse_sorter", pulse_sorter);
+        }
+        if (version >= version_t::v7_decommission_reason) {
+            field_varint(
+                    ar,
+                    "last_decommission_reason_consensus_all",
+                    last_decommission_reason_consensus_all);
+            field_varint(
+                    ar,
+                    "last_decommission_reason_consensus_any",
+                    last_decommission_reason_consensus_any);
+        }
+        if (version >= version_t::v8_ethereum_address) {
+            field(ar, "bls_public_key", bls_public_key);
+            field(ar, "operator_ethereum_address", operator_ethereum_address);
         }
     }
-    if (version >= version_t::v5_pulse_recomm_credit) {
-        VARINT_FIELD(recommission_credit)
-        FIELD(pulse_sorter)
-    }
-    if (version >= version_t::v7_decommission_reason) {
-        VARINT_FIELD(last_decommission_reason_consensus_all)
-        VARINT_FIELD(last_decommission_reason_consensus_any)
-    }
-    if (version >= version_t::v8_ethereum_address) {
-        FIELD(bls_public_key)
-        FIELD(operator_ethereum_address)
-    }
-    END_SERIALIZE()
 };
 
 struct service_node_address {
@@ -387,12 +401,13 @@ struct service_node_pubkey_info {
     service_node_pubkey_info(const pubkey_and_sninfo& pair) :
             pubkey{pair.first}, info{pair.second} {}
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(pubkey)
-    if (Archive::is_deserializer)
-        info = std::make_shared<service_node_info>();
-    FIELD_N("info", const_cast<service_node_info&>(*info))
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "pubkey", pubkey);
+        if (Archive::is_deserializer)
+            info = std::make_shared<service_node_info>();
+        field(ar, "info", const_cast<service_node_info&>(*info));
+    }
 };
 
 struct key_image_blacklist_entry {
@@ -419,13 +434,15 @@ struct key_image_blacklist_entry {
     }
     bool operator==(const crypto::key_image& image) const { return key_image == image; }
 
-    BEGIN_SERIALIZE()
-    ENUM_FIELD(version, version < version_t::count)
-    FIELD(key_image)
-    VARINT_FIELD(unlock_height)
-    if (version >= version_t::version_1_serialize_amount)
-        VARINT_FIELD(amount)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(
+                ar, "version", version, [](auto& version) { return version < version_t::count; });
+        field(ar, "key_image", key_image);
+        field_varint(ar, "unlock_height", unlock_height);
+        if (version >= version_t::version_1_serialize_amount)
+            field_varint(ar, "amount", amount);
+    }
 };
 
 struct payout_entry {
@@ -788,12 +805,17 @@ class service_node_list {
         uint64_t height;
         quorum quorums[tools::enum_count<quorum_type>];
 
-        BEGIN_SERIALIZE()
-        FIELD(version)
-        FIELD(height)
-        FIELD_N("obligations_quorum", quorums[static_cast<uint8_t>(quorum_type::obligations)])
-        FIELD_N("checkpointing_quorum", quorums[static_cast<uint8_t>(quorum_type::checkpointing)])
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            field(ar, "version", version);
+            field(ar, "height", height);
+            field(ar,
+                  "obligations_quorum",
+                  quorums[static_cast<uint8_t>(quorum_type::obligations)]);
+            field(ar,
+                  "checkpointing_quorum",
+                  quorums[static_cast<uint8_t>(quorum_type::checkpointing)]);
+        }
     };
 
     struct unconfirmed_l2_tx {
@@ -940,11 +962,14 @@ class service_node_list {
             version = {};
         }
 
-        BEGIN_SERIALIZE()
-        ENUM_FIELD(version, version < version_t::count)
-        FIELD(quorum_states)
-        FIELD(states)
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            field_varint(ar, "version", version, [](auto& version) {
+                return version < version_t::count;
+            });
+            field(ar, "quorum_states", quorum_states);
+            field(ar, "states", states);
+        }
     };
 
     struct state_t;
