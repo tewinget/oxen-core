@@ -679,7 +679,7 @@ void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, bls_exit_type type
     if (!request.good)
         return;
 
-    bool removable = true;
+    bool removable;
     switch (type) {
         case bls_exit_type::normal: {
             removable = core.is_node_removable(request.remove_pk);
