@@ -882,11 +882,13 @@ class service_node_list {
             version_0,
             version_1_serialize_hash,
             version_2_l2_confirmations,
-            version_3_recently_removed_nodes,
+            version_3_l2_staking_req,
+            version_4_recently_removed_nodes,
             count,
         };
-        version_t version{version_t::version_3_recently_removed_nodes};
+        version_t version{version_t::version_4_recently_removed_nodes};
         uint64_t height;
+        uint64_t staking_requirement;
         std::vector<service_node_pubkey_info> infos;
         std::vector<key_image_blacklist_entry> key_image_blacklist;
         quorum_for_serialization quorums;
@@ -913,7 +915,10 @@ class service_node_list {
                 field(ar, "block_leader", block_leader);
             }
 
-            if (version >= version_t::version_3_recently_removed_nodes)
+            if (version >= version_t::version_3_l2_staking_req)
+                field_varint(ar, "staking_requirement", staking_requirement);
+
+            if (version >= version_t::version_4_recently_removed_nodes)
                 field(ar, "recently_removed_nodes", recently_removed_nodes);
         }
     };
@@ -971,6 +976,10 @@ class service_node_list {
         // are added to this list at which point they are now eligible for exiting the smart
         // contract by requesting the network to aggregate a signature for said request.
         std::vector<recently_removed_node> recently_removed_nodes;
+
+        // An overridden staking requirement from the L2 contract (after confirmations); if 0 then
+        // the default staking requirement applies.
+        uint64_t staking_requirement;
 
         service_node_list* sn_list;
 
@@ -1077,6 +1086,13 @@ class service_node_list {
                 uint32_t index,
                 const service_node_keys* my_keys);
         bool process_confirmed_event(
+                const eth::event::StakingRequirementUpdated& req_change,
+                cryptonote::network_type nettype,
+                cryptonote::hf hf_version,
+                uint64_t height,
+                uint32_t index,
+                const service_node_keys*);
+        bool process_confirmed_event(
                 const std::monostate&,  // do-nothing fallback for "not an event" variant
                 cryptonote::network_type,
                 cryptonote::hf,
@@ -1116,6 +1132,10 @@ class service_node_list {
         // quorum leader, or a null key if there was no pulse quorum for this state_t/block.
         crypto::public_key get_block_producer() const;
 
+        // Returns the current staking requirement (which could, in HF21+, come from a confirmed
+        // contract staking requirement update).
+        uint64_t get_staking_requirement(cryptonote::network_type nettype) const;
+
       private:
         // Rebuilds the x25519_map from the list of service nodes.  Does nothing if the
         // feature::SN_PK_IS_ED25519 fork hasn't happened for this state height.
@@ -1150,6 +1170,18 @@ class service_node_list {
      * @returns vector of votes
      */
     std::vector<bool> l2_pending_state_votes() const;
+
+    /**
+     * @brief returns the current staking requirement.
+     *
+     * - Before HF16 on mainnet, this is a height-dependent value.
+     * - Otherwise, before HF21 this is a fixed value.
+     * - From HF21 this starts at a fixed value, but the staking contract can change it (and the
+     *   change applies to the Oxen chain after SN confirmations of the change).
+     *
+     * @returns current staking requirement, in atomic currency units
+     */
+    uint64_t get_staking_requirement() const;
 
     /**
      * @brief iterates through all pending unconfirmed L2 state changes.  `func` should be a generic
@@ -1276,6 +1308,7 @@ bool is_registration_tx(
         const cryptonote::transaction& tx,
         uint64_t block_timestamp,
         uint64_t block_height,
+        uint64_t staking_requirement,
         uint32_t index,
         crypto::public_key& key,
         service_node_info& info);

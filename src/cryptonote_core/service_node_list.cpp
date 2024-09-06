@@ -49,6 +49,7 @@
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/txtypes.h"
@@ -1258,7 +1259,7 @@ bool service_node_list::state_t::is_premature_unlock(
     uint64_t small_contributor_unlock_blocks =
             get_config(nettype).BLOCKS_IN(SMALL_CONTRIBUTOR_UNLOCK_TIMER);
     uint64_t small_contributor_amount_threshold = mul128_div64(
-            service_nodes::get_staking_requirement(nettype, block_height),
+            get_staking_requirement(nettype),
             service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::num,
             service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::den);
     for (const auto& contributor : node_info.contributors) {
@@ -1282,6 +1283,7 @@ bool is_registration_tx(
         uint64_t block_timestamp,
         uint64_t block_height,
         uint32_t index,
+        uint64_t staking_requirement,
         crypto::public_key& key,
         service_node_info& info) {
     auto maybe_reg = reg_tx_extract_fields(tx);
@@ -1300,7 +1302,6 @@ bool is_registration_tx(
         return false;
     }
 
-    uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
     try {
         validate_registration(hf_version, nettype, staking_requirement, block_timestamp, reg);
         validate_registration_signature(reg);
@@ -1449,9 +1450,9 @@ validate_ethereum_registration(
         cryptonote::network_type nettype,
         hf hf_version,
         uint64_t block_height,
-        uint32_t index) {
+        uint32_t index,
+        uint64_t staking_requirement) {
     auto reg = eth_reg_details(hf_version, new_sn);
-    uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
 
     validate_registration(
             hf_version, nettype, staking_requirement, 0 /*block_timestamp not used in HF19+*/, reg);
@@ -1509,7 +1510,15 @@ bool service_node_list::state_t::process_registration_tx(
     auto info_ptr = std::make_shared<service_node_info>();
     service_node_info& info = *info_ptr;
     if (!is_registration_tx(
-                nettype, hf_version, tx, block_timestamp, block_height, index, key, info))
+                nettype,
+                hf_version,
+                tx,
+                block_timestamp,
+                block_height,
+                index,
+                get_staking_requirement(nettype),
+                key,
+                info))
         return false;
 
     if (hf_version >= hf::hf11_infinite_staking) {
@@ -1592,6 +1601,9 @@ static eth::event::StateChangeVariant get_event_from_tx(const cryptonote::transa
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit) {
         auto& exit = result.emplace<ServiceNodeExit>();
         success = cryptonote::get_field_from_tx_extra(tx.extra, exit);
+    } else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated) {
+        auto& req = result.emplace<StakingRequirementUpdated>();
+        success = cryptonote::get_field_from_tx_extra(tx.extra, req);
     }
     if (!success)
         result.emplace<std::monostate>();
@@ -1600,10 +1612,10 @@ static eth::event::StateChangeVariant get_event_from_tx(const cryptonote::transa
 
 // Helper primarily used for log messages to extract info about an incoming, unconfirmed eth state
 // change
-static std::pair<crypto::public_key, std::string> eth_tx_info(
+static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
         hf hf_version, const service_node_list& snl, const cryptonote::transaction& tx) {
-    auto result = std::make_pair(crypto::null<crypto::public_key>, "unknown");
-    auto& [pk, type] = result;
+    auto result = std::make_tuple(crypto::null<crypto::public_key>, "unknown", uint64_t{0});
+    auto& [pk, type, val] = result;
     if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
         type = "registration";
         if (auto reg = eth_reg_tx_extract_fields(hf_version, tx))
@@ -1624,6 +1636,11 @@ static std::pair<crypto::public_key, std::string> eth_tx_info(
                 pk = snl.public_key_lookup(exit.bls_pubkey);
             } catch (...) {
             }
+    } else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated) {
+        type = "staking requirement";
+        if (eth::event::StakingRequirementUpdated req;
+            cryptonote::get_field_from_tx_extra(tx.extra, req))
+            val = req.staking_requirement;
     }
     return result;
 }
@@ -1644,7 +1661,7 @@ void service_node_list::state_t::process_new_ethereum_tx(
         throw oxen::traced<std::logic_error>{
                 "Internal error: incoming eth tx {} not found in blockchain db"_format(tx_hash)};
 
-    auto [snpk, type] = eth_tx_info(hf_version, *sn_list, tx);
+    auto [snpk, type, val] = eth_tx_info(hf_version, *sn_list, tx);
     if (my_keys && my_keys->pub == snpk)
         log::info(
                 globallogcat,
@@ -1653,6 +1670,13 @@ void service_node_list::state_t::process_new_ethereum_tx(
                 "confirmations",
                 type,
                 snpk,
+                block_height);
+    else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated)
+        log::info(
+                globallogcat,
+                "Service node staking requirement tx from ethereum changing to {} SENT @ height: "
+                "{}; awaiting confirmations",
+                cryptonote::print_money(val),
                 block_height);
     else
         log::info(
@@ -1701,8 +1725,8 @@ bool service_node_list::state_t::process_confirmed_event(
     }
 
     try {
-        auto [key, service_node_info] =
-                validate_ethereum_registration(new_sn, nettype, hf_version, height, index);
+        auto [key, service_node_info] = validate_ethereum_registration(
+                new_sn, nettype, hf_version, height, index, get_staking_requirement(nettype));
         if (sn_list && !sn_list->m_rescanning) {
             auto& proof = sn_list->proofs[key];
             proof = {};
@@ -1912,6 +1936,37 @@ bool service_node_list::state_t::process_confirmed_event(
     // staging area where they're awaiting to get removed (e.g. at this point they've already exited
     // the list and the swarm has already reconfigured).
     return false;
+}
+
+bool service_node_list::state_t::process_confirmed_event(
+        const eth::event::StakingRequirementUpdated& req_change,
+        cryptonote::network_type nettype,
+        cryptonote::hf,
+        uint64_t height,
+        uint32_t,
+        const service_node_keys*) {
+    auto old_staking_requirement = get_staking_requirement(nettype);
+    staking_requirement = req_change.staking_requirement;
+    auto new_staking_requirement = get_staking_requirement(nettype);
+
+    if (old_staking_requirement != new_staking_requirement) {
+        log::info(
+                globallogcat,
+                fg(fmt::terminal_color::yellow),
+                "Service node staking requirement changed from {} to {} @ height {}",
+                cryptonote::print_money(old_staking_requirement),
+                cryptonote::print_money(new_staking_requirement),
+                height);
+    } else {
+        log::info(
+                logcat,
+                fg(fmt::terminal_color::yellow),
+                "Confirmed a non-changing staking requirement transaction ({}) @ height {}",
+                cryptonote::print_money(new_staking_requirement),
+                height);
+    }
+
+    return false; // This doesn't affect swarm composition
 }
 
 bool service_node_list::state_t::process_contribution_tx(
@@ -3376,6 +3431,7 @@ std::vector<crypto::public_key> service_node_list::state_t::get_expired_nodes(
                         block.timestamp,
                         expired_nodes_block_height,
                         index,
+                        get_default_staking_requirement(nettype, expired_nodes_block_height),
                         key,
                         info))
                 expired_nodes.push_back(key);
@@ -3992,6 +4048,7 @@ static service_node_list::state_serialized serialize_service_node_state_object(
         bool only_serialize_quorums = false) {
     service_node_list::state_serialized result = {};
     result.height = state.height;
+    result.staking_requirement = state.staking_requirement;
     result.unconfirmed_l2_txes = state.unconfirmed_l2_txes;
     result.recently_removed_nodes = state.recently_removed_nodes;
     result.block_leader = state.block_leader;
@@ -4660,6 +4717,20 @@ std::vector<bool> service_node_list::l2_pending_state_votes() const {
     return votes;
 }
 
+uint64_t service_node_list::get_staking_requirement() const {
+    std::lock_guard lock{m_sn_mutex};
+    return m_state.get_staking_requirement(blockchain.nettype());
+}
+
+uint64_t service_node_list::state_t::get_staking_requirement(
+        cryptonote::network_type nettype) const {
+    if (get_network_version(nettype, height) >= feature::ETH_BLS && staking_requirement > 0)
+        // Contract-overridden staking requirement:
+        return staking_requirement;
+
+    return get_default_staking_requirement(nettype, height);
+}
+
 std::optional<bool> proof_info::reachable_stats::reachable(
         const std::chrono::steady_clock::time_point& now) const {
     if (last_reachable >= last_unreachable)
@@ -4753,6 +4824,7 @@ service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& s
         block_leader{std::move(state.block_leader)},
         unconfirmed_l2_txes{std::move(state.unconfirmed_l2_txes)},
         recently_removed_nodes{std::move(state.recently_removed_nodes)},
+        staking_requirement{state.staking_requirement},
         sn_list{snl} {
     if (!sn_list)
         throw oxen::traced<std::logic_error>(

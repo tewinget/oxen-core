@@ -18,7 +18,7 @@ namespace eth {
 namespace {
     auto logcat = oxen::log::Cat("l2_tracker");
 
-    enum class EventType { NewServiceNode, ServiceNodeExitRequest, ServiceNodeExit, Other };
+    enum class EventType { NewServiceNode, ServiceNodeExitRequest, ServiceNodeExit, StakingRequirementUpdated, Other };
 
     EventType get_log_type(const ethyl::LogEntry& log) {
         if (log.topics.empty())
@@ -355,6 +355,14 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             item.returned_amount = tools::decode_integer_be(amt256);
 
             oxen::log::debug(logcat, "{}", log_new_service_node_exit_tx(item, log.data));
+            break;
+        }
+        case EventType::StakingRequirementUpdated: {
+            // event StakingRequirementUpdated(uint256 newRequirement);
+
+            auto& item = result.emplace<event::StakingRequirementUpdated>(chain_id, l2_height);
+            auto [amt256] = tools::split_hex_into<u256>(log.data);
+            item.staking_requirement = tools::decode_integer_be(amt256);
             break;
         }
         case EventType::Other: break;
