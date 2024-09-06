@@ -761,7 +761,7 @@ class service_node_list {
         uint16_t qnet_port;  // Last known quorumnet port of this SN (may be outdated)
 
         template <class Archive>
-        void serialize_value(Archive& ar) {
+        void serialize_object(Archive& ar) {
             uint8_t version = 0;
             field_varint(ar, "version", version);
             field(ar, "pubkey", pubkey);
@@ -866,7 +866,7 @@ class service_node_list {
                 unconfirmed_l2_tx{height, FULL_SCORE / (static_cast<uint32_t>(pulse.round) + 1)} {}
 
         template <class Archive>
-        void serialize_value(Archive& ar) {
+        void serialize_object(Archive& ar) {
             // We don't include a version here because state_serialized is already versioned. If we
             // end up needing versioning on this specific value then we can use a class tag
             // extension to determine which serialization path to follow in state_serialized's
@@ -899,7 +899,7 @@ class service_node_list {
         crypto::public_key block_leader;
 
         template <class Archive>
-        void serialize_value(Archive& ar) {
+        void serialize_object(Archive& ar) {
             field_varint(ar, "version", version, [](auto v) { return v < version_t::count; });
             field_varint(ar, "height", height);
             field(ar, "infos", infos);

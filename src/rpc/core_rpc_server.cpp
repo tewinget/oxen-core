@@ -2540,7 +2540,8 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
     if (rpc.request.height <= 0) {
         rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
     }
-    const auto response = m_core.bls_rewards_request(rpc.request.address, static_cast<uint64_t>(rpc.request.height));
+    const auto response = m_core.bls_rewards_request(
+            rpc.request.address, static_cast<uint64_t>(rpc.request.height));
     rpc.response["status"] = STATUS_OK;
     rpc.response_hex["address"] = response.addr;
     rpc.response["amount"] = response.amount;
@@ -2555,11 +2556,12 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
     auto list = nlohmann::json::array();
-    for (const service_nodes::service_node_list::recently_removed_node& elem : m_core.service_node_list.recently_removed_nodes()) {
+    using node_t = service_nodes::service_node_list::recently_removed_node;
+    for (const node_t& elem : m_core.service_node_list.recently_removed_nodes()) {
         // NOTE: Serialise to JSON
         serialization::json_archiver ar;
-        const_cast<service_nodes::service_node_list::recently_removed_node&>(elem).serialize_value(ar);
-        nlohmann::json serialized = ar.json();
+        serialize(ar, const_cast<node_t&>(elem));
+        nlohmann::json serialized = std::move(ar).json();
 
         // NOTE: Remove implementation details from the output JSON
         for (auto& contrib_it : serialized["contributors"]) {
@@ -2577,9 +2579,9 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
 
         // NOTE: Remove implementation details from the contributor JSON
         constexpr std::string_view ERASE_FIELDS[] = {
-            "public_ip",
-            "qnet_port",
-            "type",
+                "public_ip",
+                "qnet_port",
+                "type",
         };
 
         for (const auto& field : ERASE_FIELDS) {

@@ -185,27 +185,30 @@ class transaction_prefix {
     std::vector<uint8_t> extra;
     std::vector<uint64_t> output_unlock_times;
 
-    BEGIN_SERIALIZE()
-    ENUM_FIELD(version, version >= txversion::v1 && version < txversion::_count);
-    if (version >= txversion::v3_per_output_unlock_times) {
-        FIELD(output_unlock_times)
-        if (version == txversion::v3_per_output_unlock_times) {
-            bool is_state_change = type == txtype::state_change;
-            FIELD(is_state_change)
-            type = is_state_change ? txtype::state_change : txtype::standard;
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "version", version, [](auto& version) {
+            return version >= txversion::v1 && version < txversion::_count;
+        });
+        if (version >= txversion::v3_per_output_unlock_times) {
+            field(ar, "output_unlock_times", output_unlock_times);
+            if (version == txversion::v3_per_output_unlock_times) {
+                bool is_state_change = type == txtype::state_change;
+                field(ar, "is_state_change", is_state_change);
+                type = is_state_change ? txtype::state_change : txtype::standard;
+            }
         }
+        field_varint(ar, "unlock_time", unlock_time);
+        field(ar, "vin", vin);
+        field(ar, "vout", vout);
+        if (version >= txversion::v3_per_output_unlock_times &&
+            vout.size() != output_unlock_times.size()) {
+            throw oxen::traced<std::invalid_argument>{"v3 tx without correct unlock times"};
+        }
+        field(ar, "extra", extra);
+        if (version >= txversion::v4_tx_types)
+            field_varint(ar, "type", type, [](auto& type) { return type < txtype::_count; });
     }
-    VARINT_FIELD(unlock_time)
-    FIELD(vin)
-    FIELD(vout)
-    if (version >= txversion::v3_per_output_unlock_times &&
-        vout.size() != output_unlock_times.size()) {
-        throw oxen::traced<std::invalid_argument>{"v3 tx without correct unlock times"};
-    }
-    FIELD(extra)
-    if (version >= txversion::v4_tx_types)
-        ENUM_FIELD_N("type", type, type < txtype::_count);
-    END_SERIALIZE()
 
     transaction_prefix() { set_null(); }
     void set_null();
@@ -267,85 +270,87 @@ class transaction final : public transaction_prefix {
         set_blob_size_valid(true);
     }
 
-    BEGIN_SERIALIZE_OBJECT()
-    constexpr bool Binary = serialization::is_binary<Archive>;
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        constexpr bool Binary = serialization::is_binary<Archive>;
 
-    if (Archive::is_deserializer) {
-        set_hash_valid(false);
-        set_blob_size_valid(false);
-    }
-
-    unsigned int start_pos = 0;
-    if constexpr (Binary)
-        start_pos = ar.streampos();
-
-    serialization::value(ar, static_cast<transaction_prefix&>(*this));
-
-    if constexpr (Binary)
-        prefix_size = ar.streampos() - start_pos;
-
-    if (version == txversion::v1) {
-        if constexpr (Binary)
-            unprunable_size = ar.streampos() - start_pos;
-
-        ar.tag("signatures");
-        auto arr = ar.begin_array();
-        if (Archive::is_deserializer)
-            signatures.resize(vin.size());
-        bool signatures_expected = !signatures.empty();
-        if (signatures_expected && vin.size() != signatures.size())
-            throw oxen::traced<std::invalid_argument>{"Incorrect number of signatures"};
-
-        const size_t vin_sigs = pruned ? 0 : vin.size();
-        for (size_t i = 0; i < vin_sigs; ++i) {
-            size_t signature_size = get_signature_size(vin[i]);
-            if (!signatures_expected) {
-                if (signature_size > 0)
-                    throw oxen::traced<std::invalid_argument>{"Invalid unexpected signature"};
-                continue;
-            }
-
-            if (Archive::is_deserializer)
-                signatures[i].resize(signature_size);
-            else if (signature_size != signatures[i].size())
-                throw oxen::traced<std::invalid_argument>{
-                        "Invalid signature size (expected " + std::to_string(signature_size) +
-                        ", have " + std::to_string(signatures[i].size()) + ")"};
-
-            value(ar, signatures[i]);
+        if (Archive::is_deserializer) {
+            set_hash_valid(false);
+            set_blob_size_valid(false);
         }
-    } else {
-        if (!vin.empty()) {
-            {
-                ar.tag("rct_signatures");
-                auto obj = ar.begin_object();
-                rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
-            }
 
+        unsigned int start_pos = 0;
+        if constexpr (Binary)
+            start_pos = ar.streampos();
+
+        static_cast<transaction_prefix&>(*this).serialize_object(ar);
+
+        if constexpr (Binary)
+            prefix_size = ar.streampos() - start_pos;
+
+        if (version == txversion::v1) {
             if constexpr (Binary)
                 unprunable_size = ar.streampos() - start_pos;
 
-            if (!pruned && rct_signatures.type != rct::RCTType::Null) {
-                ar.tag("rctsig_prunable");
-                auto obj = ar.begin_object();
-                rct_signatures.p.serialize_rctsig_prunable(
-                        ar,
-                        rct_signatures.type,
-                        vin.size(),
-                        vout.size(),
-                        vin.size() > 0 && std::holds_alternative<txin_to_key>(vin[0])
-                                ? var::get<txin_to_key>(vin[0]).key_offsets.size() - 1
-                                : 0);
+            ar.tag("signatures");
+            auto arr = ar.begin_array();
+            if (Archive::is_deserializer)
+                signatures.resize(vin.size());
+            bool signatures_expected = !signatures.empty();
+            if (signatures_expected && vin.size() != signatures.size())
+                throw oxen::traced<std::invalid_argument>{"Incorrect number of signatures"};
+
+            const size_t vin_sigs = pruned ? 0 : vin.size();
+            for (size_t i = 0; i < vin_sigs; ++i) {
+                size_t signature_size = get_signature_size(vin[i]);
+                if (!signatures_expected) {
+                    if (signature_size > 0)
+                        throw oxen::traced<std::invalid_argument>{"Invalid unexpected signature"};
+                    continue;
+                }
+
+                if (Archive::is_deserializer)
+                    signatures[i].resize(signature_size);
+                else if (signature_size != signatures[i].size())
+                    throw oxen::traced<std::invalid_argument>{
+                            "Invalid signature size (expected " + std::to_string(signature_size) +
+                            ", have " + std::to_string(signatures[i].size()) + ")"};
+
+                value(ar, signatures[i]);
+            }
+        } else {
+            if (!vin.empty()) {
+                {
+                    ar.tag("rct_signatures");
+                    auto obj = ar.begin_object();
+                    rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
+                }
+
+                if constexpr (Binary)
+                    unprunable_size = ar.streampos() - start_pos;
+
+                if (!pruned && rct_signatures.type != rct::RCTType::Null) {
+                    ar.tag("rctsig_prunable");
+                    auto obj = ar.begin_object();
+                    rct_signatures.p.serialize_rctsig_prunable(
+                            ar,
+                            rct_signatures.type,
+                            vin.size(),
+                            vout.size(),
+                            vin.size() > 0 && std::holds_alternative<txin_to_key>(vin[0])
+                                    ? var::get<txin_to_key>(vin[0]).key_offsets.size() - 1
+                                    : 0);
+                }
             }
         }
+        if (Archive::is_deserializer)
+            pruned = false;
     }
-    if (Archive::is_deserializer)
-        pruned = false;
-    END_SERIALIZE()
 
     template <class Archive>
     void serialize_base(Archive& ar) {
-        serialization::value(ar, static_cast<transaction_prefix&>(*this));
+        auto o = ar.begin_object();
+        static_cast<transaction_prefix&>(*this).serialize_object(ar);
 
         if (version != txversion::v1) {
             if (!vin.empty()) {
@@ -383,11 +388,10 @@ struct pulse_header {
 };
 
 template <typename Archive>
-void serialize_value(Archive& ar, pulse_header& p) {
-    auto obj = ar.begin_object();
-    serialization::field(ar, "random_value", p.random_value);
-    serialization::field(ar, "round", p.round);
-    serialization::field(ar, "validator_bitset", p.validator_bitset);
+void serialize_object(Archive& ar, pulse_header& p) {
+    field(ar, "random_value", p.random_value);
+    field(ar, "round", p.round);
+    field(ar, "validator_bitset", p.validator_bitset);
 }
 
 struct block_header {
@@ -509,8 +513,7 @@ struct block : public block_header {
 };
 
 template <class Archive>
-void serialize_value(Archive& ar, block_header& b) {
-    using namespace serialization;
+void serialize_object(Archive& ar, block_header& b) {
     field(ar, "major_version", b.major_version);
     field_varint(ar, "minor_version", b.minor_version);
     field_varint(ar, "timestamp", b.timestamp);
@@ -534,12 +537,13 @@ void serialize_value(Archive& ar, block_header& b) {
 inline constexpr bool SUPPORT_OXEN10_INTEROP = true;
 
 template <class Archive>
-void serialize_value(Archive& ar, block& b) {
-    auto _obj = ar.begin_object();
+void serialize_object(Archive& ar, block& b) {
     if constexpr (Archive::is_deserializer)
         b.set_hash_valid(false);
 
-    serialization::value(ar, static_cast<block_header&>(b));
+    // Call this directly (rather than via serialization::value) because we want its fields
+    // *without* starting a new object:
+    serialize_object(ar, static_cast<block_header&>(b));
     if (b.major_version >= feature::ETH_BLS) {
         // No miner txes ever under ETH_BLS, because we never generate OXEN anymore.
         if constexpr (Archive::is_deserializer)
@@ -610,10 +614,11 @@ struct account_public_address {
     crypto::public_key m_spend_public_key;
     crypto::public_key m_view_public_key;
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(m_spend_public_key)
-    FIELD(m_view_public_key)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "m_spend_public_key", m_spend_public_key);
+        field(ar, "m_view_public_key", m_view_public_key);
+    }
 
     BEGIN_KV_SERIALIZE_MAP()
     KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(m_spend_public_key)
@@ -697,7 +702,7 @@ constexpr txtype transaction_prefix::get_max_type_for_hf(hf hf_version) {
 template <class Archive>
 void serialize_value(Archive& ar, hf& x) {
     auto val = static_cast<std::underlying_type_t<hf>>(x);
-    serialization::value(ar, val);
+    value(ar, val);
     if constexpr (Archive::is_deserializer)
         x = static_cast<hf>(val);
 }

@@ -33,7 +33,7 @@ struct Contributor {
     auto operator<=>(const Contributor& o) const = default;
 
     template <class Archive>
-    void serialize_value(Archive& ar) {
+    void serialize_object(Archive& ar) {
         field(ar, "address", address);
         field_varint(ar, "amount", amount);
     }
@@ -54,7 +54,7 @@ struct NewServiceNode : L2StateChange {
     }
 
     template <class Archive>
-    void serialize_value(Archive& ar) {
+    void serialize_object(Archive& ar) {
         [[maybe_unused]] uint8_t version = 0;
         field_varint(ar, "version", version);
         field_varint(ar, "chain_id", chain_id);
@@ -84,7 +84,7 @@ struct ServiceNodeExitRequest : L2StateChange {
     std::strong_ordering operator<=>(const ServiceNodeExitRequest& o) const = default;
 
     template <class Archive>
-    void serialize_value(Archive& ar) {
+    void serialize_object(Archive& ar) {
         [[maybe_unused]] uint8_t version = 0;
         field_varint(ar, "version", version);
         field_varint(ar, "chain_id", chain_id);
@@ -111,7 +111,7 @@ struct ServiceNodeExit : L2StateChange {
     std::strong_ordering operator<=>(const ServiceNodeExit& o) const = default;
 
     template <class Archive>
-    void serialize_value(Archive& ar) {
+    void serialize_object(Archive& ar) {
         [[maybe_unused]] uint8_t version = 0;
         field_varint(ar, "version", version);
         field_varint(ar, "chain_id", chain_id);
@@ -135,7 +135,7 @@ struct StakingRequirementUpdated : L2StateChange {
     std::strong_ordering operator<=>(const StakingRequirementUpdated& o) const = default;
 
     template <class Archive>
-    void serialize_value(Archive& ar) {
+    void serialize_object(Archive& ar) {
         [[maybe_unused]] uint8_t version = 0;
         field_varint(ar, "version", version);
         field_varint(ar, "chain_id", chain_id);

@@ -401,7 +401,7 @@ struct tx_extra_service_node_state_change {
     }
 
     template <class Archive>
-    void serialize_value(Archive& ar) {
+    void serialize_object(Archive& ar) {
         // Retrofit a field version in here.  Prior to adding reason fields, the first value (in
         // binary serialization) was the `state` enum, which had a maximum acceptable value of 3: so
         // if we get >= 4, that's a version, and otherwise we're implicitly version 0 (and there is
