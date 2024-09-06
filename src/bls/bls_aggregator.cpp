@@ -35,7 +35,7 @@ namespace eth {
 
 // When a service node receives a request to sign an exit request for a BLS node, this value
 // determines the age cutoff for what we are willing to sign.
-inline constexpr auto BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST = 3min;
+constexpr auto BLS_EXIT_REQUEST_MAX_AGE = 3min;
 
 namespace {
     auto logcat = oxen::log::Cat("bls_aggregator");
@@ -171,7 +171,7 @@ namespace {
         auto unix_now = std::chrono::system_clock::now().time_since_epoch();
         auto time_since_initial_request = result.timestamp > unix_now ? result.timestamp - unix_now
                                                                       : unix_now - result.timestamp;
-        if (time_since_initial_request > BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST) {
+        if (time_since_initial_request > BLS_EXIT_REQUEST_MAX_AGE) {
             m.send_reply(
                     "400",
                     "Bad request: BLS exit was too old ({}) to sign"_format(
