@@ -33,9 +33,8 @@
 
 namespace eth {
 
-// When a service node receives a request to sign an exit request for a BLS node, this values
-// determines how old that request is allowed to be from the time it was initiated to us receiving
-// it, that we will consider signing it.
+// When a service node receives a request to sign an exit request for a BLS node, this value
+// determines the age cutoff for what we are willing to sign.
 inline constexpr auto BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST = 3min;
 
 namespace {
