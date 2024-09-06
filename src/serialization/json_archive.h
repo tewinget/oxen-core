@@ -37,6 +37,7 @@
 #pragma once
 
 #include <cassert>
+#include <exception>
 #include <nlohmann/json.hpp>
 #include <vector>
 
@@ -132,6 +133,10 @@ struct json_archiver : public serializer {
     template <typename T>
     nlohmann::json& set(T&& val) {
         auto& c = curr();
+        if (stack_.empty()) {
+            c = std::forward<T>(val);
+            return c;
+        }
         if (c.is_array()) {
             c.push_back(std::forward<T>(val));
             return c.back();
