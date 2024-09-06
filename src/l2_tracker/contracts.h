@@ -49,8 +49,7 @@ constexpr inline std::chrono::seconds REWARDS_SIGNATURE_EXPIRY = 10min;
 constexpr inline uint64_t rewards_bls_non_signer_threshold(uint64_t total_nodes) {
     constexpr uint64_t bls_non_signer_threshold_max = 300;
     uint64_t one_third_of_nodes = total_nodes / 3;
-    uint64_t result = one_third_of_nodes > bls_non_signer_threshold_max ? bls_non_signer_threshold_max : one_third_of_nodes;
-    return result;
+    return std::min(bls_non_signer_threshold_max, one_third_of_nodes);
 }
 
 }  // namespace eth::contract
