@@ -1,11 +1,11 @@
 #pragma once
 
+#include <common/formattable.h>
+#include <crypto/crypto.h>
+#include <cryptonote_core/service_node_list.h>
+
 #include <string>
 #include <vector>
-
-#include "crypto/crypto.h"
-#include "cryptonote_core/service_node_list.h"
-#include <common/formattable.h>
 
 namespace oxenmq {
 class OxenMq;
