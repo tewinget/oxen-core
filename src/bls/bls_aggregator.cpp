@@ -303,6 +303,7 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
     if (!core.service_node())
         return;
 
+    // NOTE: Register endpoints contactable by OMQ for BLS aggregation
     auto& omq = core.omq();
     omq.add_category(std::string(OMQ_BLS_CATEGORY), oxenmq::Access{oxenmq::AuthLevel::none})
             .add_request_command(
@@ -313,6 +314,37 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
             .add_request_command(std::string(OMQ_LIQUIDATE_ENDPOINT), [this](auto& m) {
                 get_exit_liquidation(m, bls_exit_type::liquidate);
             });
+
+    // NOTE: Add timers to cull the cached responses that have gone stale peroidically
+    omq.add_timer(
+            [this] {
+                {
+                    // NOTE: Handle overflow if STORE_RECENT_REWARDS is large or you're on some
+                    // fresh network that has hardly any blocks (e.g. localdev).
+                    uint64_t top_height = core.blockchain.get_current_blockchain_height() - 1;
+                    uint64_t cutoff = top_height - core.get_net_config().STORE_RECENT_REWARDS;
+                    if (cutoff < top_height) {
+                        std::lock_guard lock{rewards_response_cache_mutex};
+                        std::erase_if(rewards_response_cache, [&cutoff](const auto& item) {
+                            return item.second.height < cutoff;
+                        });
+                    }
+                }
+                {
+                    const uint64_t cutoff =
+                            std::chrono::duration_cast<std::chrono::seconds>(
+                                    std::chrono::system_clock::now().time_since_epoch() -
+                                    contract::REWARDS_SIGNATURE_EXPIRY)
+                                    .count();
+
+                    std::lock_guard lock{exit_liquidation_response_cache_mutex};
+                    std::erase_if(exit_liquidation_response_cache, [&cutoff](const auto& item) {
+                        return item.second.exit.timestamp < cutoff &&
+                               item.second.liquidation.timestamp < cutoff;
+                    });
+                }
+            },
+            5min);
 }
 
 bls_registration_response bls_aggregator::registration(
