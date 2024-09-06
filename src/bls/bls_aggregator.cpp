@@ -37,6 +37,14 @@ namespace eth {
 // determines the age cutoff for what we are willing to sign.
 constexpr auto BLS_EXIT_REQUEST_MAX_AGE = 3min;
 
+static constexpr std::string_view to_string(bls_exit_type type) {
+    switch (type) {
+        case bls_exit_type::normal: return "Exit";
+        case bls_exit_type::liquidate: return "Liquidation";
+    }
+    return "bls_exit_type_label_ERROR";
+}
+
 namespace {
     auto logcat = oxen::log::Cat("bls_aggregator");
     constexpr std::string_view OMQ_BLS_CATEGORY = "bls";
@@ -49,14 +57,6 @@ namespace {
             "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_LIQUIDATE_ENDPOINT);
     const std::string OMQ_BLS_REWARDS_ENDPOINT =
             "{}.{}"_format(OMQ_BLS_CATEGORY, OMQ_REWARDS_ENDPOINT);
-
-    std::string_view bls_exit_type_label(bls_exit_type type) {
-        switch (type) {
-            case bls_exit_type::normal: return "Exit";
-            case bls_exit_type::liquidate: return "Liquidation";
-        }
-        return "bls_exit_type_label_ERROR";
-    }
 
     std::vector<uint8_t> get_reward_balance_msg_to_sign(
             cryptonote::network_type nettype,
@@ -101,7 +101,7 @@ namespace {
                 "  - timestamp:     {}\n"
                 "  - signature:     {}\n"
                 "  - msg_to_sign:   {}\n"_format(
-                        bls_exit_type_label(item.type),
+                        item.type,
                         item.remove_pubkey,
                         item.timestamp,
                         item.signature,
@@ -674,7 +674,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
 }
 
 void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, bls_exit_type type) const {
-    oxen::log::trace(logcat, "Received omq {} signature request", bls_exit_type_label(type));
+    oxen::log::trace(logcat, "Received omq {} signature request", type);
     bls_exit_request request = extract_exit_request(m);
     if (!request.good)
         return;
@@ -693,7 +693,7 @@ void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, bls_exit_type type
         m.send_reply(
                 "403",
                 "Forbidden: The BLS pubkey {} is not currently {}."_format(
-                        request.remove_pk, bls_exit_type_label(type)));
+                        request.remove_pk, type));
         return;
     }
 
@@ -720,8 +720,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
         const crypto::public_key& pubkey, bls_exit_type type) {
 
     // NOTE: Trace entry into function
-    std::string_view label = bls_exit_type_label(type);
-    oxen::log::trace(logcat, "Initiating {} request for SN {}", label, pubkey);
+    oxen::log::trace(logcat, "Initiating {} request for SN {}", type, pubkey);
 
     // NOTE: Lookup the BLS pubkey associated with the Ed25519 pubkey.
     std::optional<eth::bls_public_key> maybe_bls_pubkey{};
@@ -736,7 +735,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     if (!maybe_bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
                 "{} request for SN {} at height {} is invalid, node is not in the list of recently exited nodes. Request rejected"_format(
-                        label, pubkey, core.blockchain.get_current_blockchain_height()));
+                        type, pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
     // NOTE: Validate the arguments
@@ -744,7 +743,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     if (!bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
                 "{} request for SN {} w/ the zero BLS pkey at height {} is invalid. Request "
-                "rejected"_format(label, pubkey, core.blockchain.get_current_blockchain_height()));
+                "rejected"_format(type, pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
     // NOTE: Serve the response from our cache if it's a repeated request
@@ -765,7 +764,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                     log::trace(
                             logcat,
                             "Serving {} response from cache for SN {} (cached {})\n{}",
-                            label,
+                            type,
                             pubkey,
                             tools::get_human_readable_timespan(cache_age),
                             dump_bls_exit_liquidation_response(response));
@@ -793,7 +792,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
         throw oxen::traced<std::invalid_argument>(
                 "{} request for SN {} (BLS {}) at height {} is invalid. Node cannot "
                 "be removed yet. Request rejected"_format(
-                        label, pubkey, bls_pubkey, core.blockchain.get_current_blockchain_height()));
+                        type, pubkey, bls_pubkey, core.blockchain.get_current_blockchain_height()));
     }
 
     bls_exit_liquidation_response result;

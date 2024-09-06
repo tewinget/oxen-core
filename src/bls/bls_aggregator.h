@@ -5,6 +5,7 @@
 
 #include "crypto/crypto.h"
 #include "cryptonote_core/service_node_list.h"
+#include <common/formattable.h>
 
 namespace oxenmq {
 class OxenMq;
@@ -107,3 +108,6 @@ class bls_aggregator {
     std::unordered_map<bls_public_key, bls_exit_liquidation_cache_item> exit_liquidation_response_cache;
 };
 }  // namespace eth
+
+template <>
+inline constexpr bool formattable::via_to_string<eth::bls_exit_type> = true;
