@@ -776,7 +776,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     }
 
     // NOTE: The OMQ endpoint to hit
-    bool removable = false;
+    bool removable;
     std::string_view endpoint = "";
     switch (type) {
         case bls_exit_type::normal: {
