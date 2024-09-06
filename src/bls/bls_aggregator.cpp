@@ -397,8 +397,9 @@ uint64_t bls_aggregator::nodes_request(
                     },
                     message);
         } else {
-            // TODO: I'm unable to get this to work, because, I believe SN's reject
-            // non-authenticated requests.
+            // TODO: This appears to work now that we currently generate the endpoint to contact the
+            // node on (and actually use their xkey for authenticated comms). The localdev script
+            // fails though but it progresses further than it did before when this was last enabled.
             #if 0
             if (1) {
                 std::lock_guard connection_lock(connection_mutex);
@@ -420,13 +421,14 @@ uint64_t bls_aggregator::nodes_request(
             omq.request(
                     conn,
                     request_name,
-                    [i, &snodes, &connection_mutex, &active_connections, &cv, &callback](
+                    [i, &snodes, &connection_mutex, &active_connections, &cv, &callback, conn, &omq](
                             bool success, std::vector<std::string> data) {
                         callback(bls_response{snodes[i], success}, data);
                         std::lock_guard connection_lock{connection_mutex};
                         assert(active_connections);
                         if (--active_connections == 0)
                             cv.notify_all();
+                        omq.disconnect(conn);
                     },
                     message);
             #endif
