@@ -79,8 +79,8 @@ namespace {
             cryptonote::network_type nettype,
             bls_exit_type type,
             const bls_public_key& remove_pk,
-            uint64_t unix_timestamp) {
-        auto unix_timestamp_be = tools::encode_integer_be<32>(unix_timestamp);
+            uint64_t unix_ts) {
+        auto unix_ts_be = tools::encode_integer_be<32>(unix_ts);
         crypto::hash tag{};
 
         if (type == bls_exit_type::normal) {
@@ -92,13 +92,11 @@ namespace {
 
         // TODO(doyle): See BLSSigner::proofOfPossession
         std::vector<uint8_t> result;
-        result.reserve(tag.size() + remove_pk.size() + unix_timestamp_be.size());
+        result.reserve(tag.size() + remove_pk.size() + unix_ts_be.size());
         result.insert(result.end(), tag.begin(), tag.end());
         result.insert(result.end(), remove_pk.begin(), remove_pk.end());
-        result.insert(
-                result.end(),
-                reinterpret_cast<uint8_t*>(unix_timestamp_be.begin()),
-                reinterpret_cast<uint8_t*>(unix_timestamp_be.end()));
+        auto* ts_ptr = reinterpret_cast<uint8_t*>(unix_ts_be.data());
+        result.insert(result.end(), ts_ptr, ts_ptr + unix_ts_be.size());
         return result;
     }
 
