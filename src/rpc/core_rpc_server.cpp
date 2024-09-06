@@ -2549,10 +2549,10 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
     auto list = nlohmann::json::array();
-    for (const service_nodes::service_node_list::recently_removed_node& it : m_core.service_node_list.recently_removed_nodes()) {
+    for (const service_nodes::service_node_list::recently_removed_node& elem : m_core.service_node_list.recently_removed_nodes()) {
         // NOTE: Serialise to JSON
         serialization::json_archiver ar;
-        const_cast<service_nodes::service_node_list::recently_removed_node&>(it).serialize_value(ar);
+        const_cast<service_nodes::service_node_list::recently_removed_node&>(elem).serialize_value(ar);
         nlohmann::json serialized = ar.json();
 
         // NOTE: Remove implementation details from the output JSON
@@ -2581,7 +2581,7 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
         }
 
         // NOTE: Assign the type
-        switch (it.type) {
+        switch (elem.type) {
             case service_nodes::service_node_list::recently_removed_node::type_t::voluntary_exit:
                 serialized["type"] = "exit";
                 break;
