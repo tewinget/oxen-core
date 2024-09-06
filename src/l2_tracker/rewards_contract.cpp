@@ -39,7 +39,9 @@ namespace {
              : event_sig == contract::event::ServiceNodeRemovalRequest
                      ? EventType::ServiceNodeRemovalRequest
              : event_sig == contract::event::ServiceNodeRemoval ? EventType::ServiceNodeRemoval
-                                                                : EventType::Other;
+             : event_sig == contract::event::StakingRequirementUpdated
+                     ? EventType::StakingRequirementUpdated
+                     : EventType::Other;
     }
 
 }  // namespace
