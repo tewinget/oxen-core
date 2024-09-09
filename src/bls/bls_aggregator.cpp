@@ -370,12 +370,17 @@ uint64_t bls_aggregator::nodes_request(
             std::back_inserter(snodes), core.get_nettype());
 
     auto& omq = core.omq();
+    size_t result = 0;
     for (size_t i = 0; i < snodes.size(); i++) {
         auto& snode = snodes[i];
-        if (core.service_node_list.is_service_node(snode.sn_pubkey, /*require_active*/ false)) {
+
+        // TODO: We should query non-active SNs as well and try and get them to participate in the
+        // aggregation step to reduce the number of non-signers. They might still be contactable.
+        if (core.service_node_list.is_service_node(snode.sn_pubkey, /*require_active*/ true)) {
             if (1) {
                 std::lock_guard connection_lock(connection_mutex);
                 ++active_connections;
+                ++result;
             } else {
                 // TODO(doyle): Rate limit
                 std::unique_lock connection_lock(connection_mutex);
@@ -437,7 +442,7 @@ uint64_t bls_aggregator::nodes_request(
 
     std::unique_lock connection_lock{connection_mutex};
     cv.wait(connection_lock, [&active_connections] { return active_connections == 0; });
-    return snodes.size();
+    return result;
 }
 
 void bls_aggregator::get_rewards(oxenmq::Message& m) const {
