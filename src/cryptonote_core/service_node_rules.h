@@ -210,6 +210,7 @@ struct proof_version {
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS = {
         proof_version{{cryptonote::hf::hf19_reward_batching, 6}, {10, 6, 0}, {0, 9, 11}, {2, 8, 0}},
         proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 0, 3}, {0, 9, 11}, {2, 8, 0}},
+        proof_version{{cryptonote::hf::hf21_eth, 1}, {11, 0, 4}, {0, 9, 11}, {2, 8, 0}},
 };
 
 using swarm_id_t = uint64_t;
