@@ -1769,6 +1769,10 @@ bool Blockchain::create_block_template_internal(
     uint64_t already_generated_coins;
     uint64_t pool_cookie;
 
+    if (!m_l2_tracker)
+        throw oxen::traced<std::logic_error>{
+                "Cannot create a block template without a configured L2 provider"};
+
     auto lock = tools::shared_locks(tx_pool, *this, *m_l2_tracker);
     if (m_btc_valid) {
         // The pool cookie is atomic. The lack of locking is OK, as if it changes
@@ -3324,8 +3328,9 @@ void Blockchain::flush_invalid_blocks() {
     m_invalid_blocks.clear();
 }
 //------------------------------------------------------------------
-std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const
-{
+std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
+    assert(m_l2_tracker);
+
     // TODO: Just calculate an acceleration structure on block receive.
     std::vector<eth::bls_public_key> bls_pubkeys_in_snl;
     std::vector<eth::bls_public_key> bls_pubkeys_in_smart_contract;

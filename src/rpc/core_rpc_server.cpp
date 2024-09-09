@@ -2536,8 +2536,25 @@ void core_rpc_server::invoke(
     get_service_node_blacklisted_key_images.response["status"] = STATUS_OK;
     get_service_node_blacklisted_key_images.response["blacklist"] = blacklist;
 }
+
+void set_contract_signature(nlohmann::json& response, tools::json_binary_proxy& response_hex,
+        const eth::bls_aggregate_signed& sig, eth::L2Tracker& l2_tracker
+        ) {
+    response_hex["msg_to_sign"] = std::string_view(
+            reinterpret_cast<const char*>(sig.msg_to_sign.data()),
+            sig.msg_to_sign.size());
+    response_hex["signature"] = sig.signature;
+    response["non_signer_indices"] = l2_tracker.get_non_signers(
+            sig.signers_bls_pubkeys.begin(), sig.signers_bls_pubkeys.end());
+}
+
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
+    if (!m_core.have_l2_tracker()) {
+        rpc.response["status"] = STATUS_FAILED;
+        rpc.response["error"] = "Unable to process request: this RPC node is not configured with an ETH L2 provider";
+        return;
+    }
     if (rpc.request.height <= 0) {
         rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
     }
@@ -2547,12 +2564,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
     rpc.response_hex["address"] = response.addr;
     rpc.response["amount"] = response.amount;
     rpc.response["height"] = response.height;
-    rpc.response_hex["msg_to_sign"] = std::string_view(
-            reinterpret_cast<const char*>(response.msg_to_sign.data()),
-            response.msg_to_sign.size());
-    rpc.response_hex["signature"] = response.signature;
-    rpc.response["non_signer_indices"] = m_core.blockchain.l2_tracker().get_non_signers(
-            response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
+    set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
@@ -2610,17 +2622,17 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context) {
+    if (!m_core.have_l2_tracker()) {
+        rpc.response["status"] = STATUS_FAILED;
+        rpc.response["error"] = "Unable to process request: this RPC node is not configured with an ETH L2 provider";
+        return;
+    }
     const auto response =
             m_core.bls_exit_liquidation_request(rpc.request.pubkey, rpc.request.liquidate);
     rpc.response["status"] = STATUS_OK;
     rpc.response["timestamp"] = response.timestamp;
     rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
-    rpc.response_hex["msg_to_sign"] = std::string_view(
-            reinterpret_cast<const char*>(response.msg_to_sign.data()),
-            response.msg_to_sign.size());
-    rpc.response_hex["signature"] = response.signature;
-    rpc.response["non_signer_indices"] = m_core.blockchain.l2_tracker().get_non_signers(
-            response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
+    set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {

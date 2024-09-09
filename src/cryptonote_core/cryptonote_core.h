@@ -432,6 +432,11 @@ class core final {
      */
     void set_cryptonote_protocol(i_cryptonote_protocol* pprotocol);
 
+    /// Returns true if we have a configured L2 tracking object.  This will always be true for
+    /// service nodes, but non-service node code should check this before attempting to access
+    /// `l2_tracker()`.
+    bool have_l2_tracker() const { return static_cast<bool>(m_l2_tracker); }
+
     /// Returns a reference to the Ethereum L2 tracking object
     eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
 

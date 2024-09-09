@@ -1149,6 +1149,8 @@ class Blockchain {
 
     cryptonote::BlockchainSQLite& sqlite_db();
 
+    /// NOTE: unchecked access; should only be called in service node more where this is guaranteed
+    /// to be set.
     eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
 
     /**
