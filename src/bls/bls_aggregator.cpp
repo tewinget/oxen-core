@@ -715,7 +715,7 @@ void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, bls_exit_type type
     if (!request.good)
         return;
 
-    bool removable;
+    bool removable = false;
     switch (type) {
         case bls_exit_type::normal: {
             removable = core.is_node_removable(request.remove_pk);
@@ -807,7 +807,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     }
 
     // NOTE: The OMQ endpoint to hit
-    bool removable;
+    bool removable = false;
     std::string_view endpoint = "";
     switch (type) {
         case bls_exit_type::normal: {
