@@ -492,11 +492,15 @@ void parse_request(BLS_REWARDS_REQUEST& cmd, rpc_input in) {
     get_values(in, "address", required{cmd.request.address}, "height", cmd.request.height);
 }
 
-void parse_request(BLS_EXIT_LIQUIDATION_LIST&, rpc_input) { }
+void parse_request(BLS_EXIT_LIQUIDATION_LIST&, rpc_input) {}
 
 void parse_request(BLS_EXIT_LIQUIDATION_REQUEST& cmd, rpc_input in) {
-    get_values(in, "pubkey", required{cmd.request.pubkey});
-    get_values(in, "liquidate", required{cmd.request.liquidate});
+    get_values(
+            in,
+            "liquidate",
+            required{cmd.request.liquidate},
+            "pubkey",
+            required{cmd.request.pubkey});
 }
 
 void parse_request(BLS_REGISTRATION_REQUEST& cmd, rpc_input in) {

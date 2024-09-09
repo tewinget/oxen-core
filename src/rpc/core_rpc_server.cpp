@@ -2537,12 +2537,13 @@ void core_rpc_server::invoke(
     get_service_node_blacklisted_key_images.response["blacklist"] = blacklist;
 }
 
-void set_contract_signature(nlohmann::json& response, tools::json_binary_proxy& response_hex,
-        const eth::bls_aggregate_signed& sig, eth::L2Tracker& l2_tracker
-        ) {
+void set_contract_signature(
+        nlohmann::json& response,
+        tools::json_binary_proxy& response_hex,
+        const eth::bls_aggregate_signed& sig,
+        eth::L2Tracker& l2_tracker) {
     response_hex["msg_to_sign"] = std::string_view(
-            reinterpret_cast<const char*>(sig.msg_to_sign.data()),
-            sig.msg_to_sign.size());
+            reinterpret_cast<const char*>(sig.msg_to_sign.data()), sig.msg_to_sign.size());
     response_hex["signature"] = sig.signature;
     response["non_signer_indices"] = l2_tracker.get_non_signers(
             sig.signers_bls_pubkeys.begin(), sig.signers_bls_pubkeys.end());
@@ -2550,21 +2551,25 @@ void set_contract_signature(nlohmann::json& response, tools::json_binary_proxy& 
 
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
-    if (!m_core.have_l2_tracker()) {
-        rpc.response["status"] = STATUS_FAILED;
-        rpc.response["error"] = "Unable to process request: this RPC node is not configured with an ETH L2 provider";
-        return;
+    try {
+        if (!m_core.have_l2_tracker())
+            throw std::invalid_argument{
+                    "Unable to process request: this RPC node is not configured with an ETH L2 "
+                    "provider"};
+
+        if (rpc.request.height <= 0)
+            rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
+
+        const auto response = m_core.bls_rewards_request(
+                rpc.request.address, static_cast<uint64_t>(rpc.request.height));
+        set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
+        rpc.response["status"] = STATUS_OK;
+        rpc.response_hex["address"] = response.addr;
+        rpc.response["amount"] = response.amount;
+        rpc.response["height"] = response.height;
+    } catch (const std::exception& e) {
+        throw rpc_error{ERROR_BLS_SIG, e.what()};
     }
-    if (rpc.request.height <= 0) {
-        rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
-    }
-    const auto response = m_core.bls_rewards_request(
-            rpc.request.address, static_cast<uint64_t>(rpc.request.height));
-    rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["address"] = response.addr;
-    rpc.response["amount"] = response.amount;
-    rpc.response["height"] = response.height;
-    set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
@@ -2622,17 +2627,21 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context) {
-    if (!m_core.have_l2_tracker()) {
-        rpc.response["status"] = STATUS_FAILED;
-        rpc.response["error"] = "Unable to process request: this RPC node is not configured with an ETH L2 provider";
-        return;
+    try {
+        if (!m_core.have_l2_tracker())
+            throw std::invalid_argument{
+                    "Unable to process request: this RPC node is not configured with an ETH L2 "
+                    "provider"};
+
+        const auto response =
+                m_core.bls_exit_liquidation_request(rpc.request.pubkey, rpc.request.liquidate);
+        set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
+        rpc.response["status"] = STATUS_OK;
+        rpc.response["timestamp"] = response.timestamp;
+        rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
+    } catch (const std::exception& e) {
+        throw rpc_error{ERROR_BLS_SIG, e.what()};
     }
-    const auto response =
-            m_core.bls_exit_liquidation_request(rpc.request.pubkey, rpc.request.liquidate);
-    rpc.response["status"] = STATUS_OK;
-    rpc.response["timestamp"] = response.timestamp;
-    rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
-    set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {
