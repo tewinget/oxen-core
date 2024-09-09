@@ -412,7 +412,6 @@ class Blockchain {
      * @brief creates a new block to mine against
      *
      * @param b return-by-reference block to be filled in
-     * @param from_block optional block hash to start mining from (main chain tip if NULL)
      * @param miner_address address new coins for the block will go to
      * @param di return-by-reference tells the miner what the difficulty target is
      * @param height return-by-reference tells the miner what height it's mining against
@@ -422,14 +421,6 @@ class Blockchain {
      *
      * @return true if block template filled in successfully, else false
      */
-    bool create_miner_block_template(
-            block& b,
-            const crypto::hash* from_block,
-            const account_public_address& miner_address,
-            difficulty_type& diffic,
-            uint64_t& height,
-            uint64_t& expected_reward,
-            const std::string& ex_nonce);
     bool create_next_miner_block_template(
             block& b,
             const account_public_address& miner_address,
@@ -1214,7 +1205,6 @@ class Blockchain {
 
     bool create_block_template_internal(
             block& b,
-            const crypto::hash* from_block,
             block_template_info const& info,
             difficulty_type& di,
             uint64_t& height,

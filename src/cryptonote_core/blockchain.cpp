@@ -1759,7 +1759,6 @@ uint64_t Blockchain::get_current_cumulative_block_weight_median() const {
 // This function makes a new block for a miner to mine the hash for
 bool Blockchain::create_block_template_internal(
         block& b,
-        const crypto::hash* from_block,
         const block_template_info& info,
         difficulty_type& diffic,
         uint64_t& height,
@@ -1771,7 +1770,7 @@ bool Blockchain::create_block_template_internal(
     uint64_t pool_cookie;
 
     auto lock = tools::shared_locks(tx_pool, *this, *m_l2_tracker);
-    if (m_btc_valid && !from_block) {
+    if (m_btc_valid) {
         // The pool cookie is atomic. The lack of locking is OK, as if it changes
         // just as we compare it, we'll just use a slightly old template, but
         // this would be the case anyway if we'd lock, and the change happened
@@ -1792,85 +1791,20 @@ bool Blockchain::create_block_template_internal(
         }
         log::debug(
                 logcat,
-                "Not using cached template: address {}, nonce {}, cookie {}, from_block {}",
+                "Not using cached template: address {}, nonce {}, cookie {}",
                 (bool)(info.miner_address != m_btc_address),
                 (m_btc_nonce == ex_nonce),
-                (m_btc_pool_cookie == tx_pool.cookie()),
-                (!!from_block));
+                (m_btc_pool_cookie == tx_pool.cookie()));
         invalidate_block_template_cache();
     }
 
-    // from_block is usually nullptr, used to build altchains
-    if (from_block) {
-        // build alternative subchain, front -> mainchain, back -> alternative head
-        // block is not related with head of main chain
-        // first of all - look in alternative chains container
-        alt_block_data_t prev_data;
-        bool parent_in_alt =
-                m_db->get_alt_block(*from_block, &prev_data, NULL, nullptr /*checkpoint*/);
-        bool parent_in_main = m_db->block_exists(*from_block);
-        if (!parent_in_alt && !parent_in_main) {
-            log::error(logcat, "Unknown from block");
-            return false;
-        }
-
-        // we have new block in alternative chain
-        std::list<block_extended_info> alt_chain;
-        block_verification_context bvc{};
-        std::vector<uint64_t> timestamps;
-        if (!build_alt_chain(
-                    *from_block,
-                    alt_chain,
-                    timestamps,
-                    bvc,
-                    nullptr /*num_alt_checkpoints*/,
-                    nullptr /*num_checkpoints*/))
-            return false;
-
-        if (parent_in_main) {
-            cryptonote::block prev_block;
-            CHECK_AND_ASSERT_MES(
-                    get_block_by_hash(*from_block, prev_block),
-                    false,
-                    "From block not found");  // TODO
-            uint64_t from_block_height = prev_block.get_height();
-            height = from_block_height + 1;
-        } else {
-            height = alt_chain.back().height + 1;
-        }
-        auto [maj, min] = get_ideal_block_version(m_nettype, height);
-        b.major_version = maj;
-        b.minor_version = min;
-        b.prev_id = *from_block;
-
-        // cheat and use the weight of the block we start from, virtually certain to be acceptable
-        // and use 1.9 times rather than 2 times so we're even more sure
-        if (parent_in_main) {
-            median_weight = m_db->get_block_weight(height - 1);
-            already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
-        } else {
-            median_weight = prev_data.cumulative_weight - prev_data.cumulative_weight / 20;
-            already_generated_coins = alt_chain.back().already_generated_coins;
-        }
-
-        // FIXME: consider moving away from block_extended_info at some point
-        block_extended_info bei{};
-        bei.bl = b;
-        bei.height =
-                alt_chain.size() ? prev_data.height + 1 : m_db->get_block_height(*from_block) + 1;
-
-        diffic = get_difficulty_for_alternative_chain(alt_chain, bei.height, !info.is_miner);
-    } else {
-        // Creates the block template for next block on main chain
-        std::tie(height, b.prev_id) = get_tail_id();
-        ++height;  // Convert to the next block's height
-        auto [maj, min] = get_ideal_block_version(m_nettype, height);
-        b.major_version = maj;
-        b.minor_version = min;
-        median_weight = m_current_block_cumul_weight_limit / 2;
-        diffic = get_difficulty_for_next_block(!info.is_miner);
-        already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
-    }
+    // Creates the block template for next block on main chain
+    std::tie(height, b.prev_id) = get_tail_id();
+    ++height;  // Convert to the next block's height
+    std::tie(b.major_version, b.minor_version) = get_ideal_block_version(m_nettype, height);
+    median_weight = m_current_block_cumul_weight_limit / 2;
+    diffic = get_difficulty_for_next_block(!info.is_miner);
+    already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
     b.timestamp = time(NULL);
 
     uint64_t median_ts;
@@ -2040,9 +1974,8 @@ bool Blockchain::create_block_template_internal(
                 txs_weight,
                 get_transaction_weight(b.miner_tx));
 
-        if (!from_block)
-            cache_block_template(
-                    b, info.miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
+        cache_block_template(
+                b, info.miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
 
         if (miner_tx_context.pulse)
             b.oxen10_pulse_producer = miner_tx_context.pulse_block_producer.key;
@@ -2057,9 +1990,8 @@ bool Blockchain::create_block_template_internal(
     return false;
 }
 //------------------------------------------------------------------
-bool Blockchain::create_miner_block_template(
+bool Blockchain::create_next_miner_block_template(
         block& b,
-        const crypto::hash* from_block,
         const account_public_address& miner_address,
         difficulty_type& diffic,
         uint64_t& height,
@@ -2068,19 +2000,7 @@ bool Blockchain::create_miner_block_template(
     block_template_info info = {};
     info.is_miner = true;
     info.miner_address = miner_address;
-    return create_block_template_internal(
-            b, from_block, info, diffic, height, expected_reward, ex_nonce);
-}
-//------------------------------------------------------------------
-bool Blockchain::create_next_miner_block_template(
-        block& b,
-        const account_public_address& miner_address,
-        difficulty_type& diffic,
-        uint64_t& height,
-        uint64_t& expected_reward,
-        const std::string& ex_nonce) {
-    return create_miner_block_template(
-            b, nullptr /*from_block*/, miner_address, diffic, height, expected_reward, ex_nonce);
+    return create_block_template_internal(b, info, diffic, height, expected_reward, ex_nonce);
 }
 //------------------------------------------------------------------
 bool Blockchain::create_next_pulse_block_template(
@@ -2095,8 +2015,7 @@ bool Blockchain::create_next_pulse_block_template(
     uint64_t diffic = 0;
     std::string nonce = {};
 
-    bool result = create_block_template_internal(
-            b, nullptr /*from_block*/, info, diffic, height, expected_reward, nonce);
+    bool result = create_block_template_internal(b, info, diffic, height, expected_reward, nonce);
     b.pulse.round = round;
     b.pulse.validator_bitset = validator_bitset;
     return result;
