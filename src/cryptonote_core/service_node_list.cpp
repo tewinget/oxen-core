@@ -4079,8 +4079,8 @@ bool service_node_list::store() {
     for (data_for_serialization* serialize_entry : data) {
         if (serialize_entry->version != serialize_version)
             m_transient.state_added_to_archive = true;
-        serialize_entry->version = serialize_version;
         serialize_entry->clear();
+        serialize_entry->version = serialize_version;
     }
 
     m_transient.cache_short_term_data.quorum_states.reserve(m_transient.old_quorum_states.size());
