@@ -1115,7 +1115,8 @@ namespace {
         //
         // NOTE: If already processing pulse for height, wait for next height
         //
-        uint64_t chain_height = blockchain.get_current_blockchain_height(true /*lock*/);
+        cryptonote::block top_block = blockchain.db().get_top_block();
+        uint64_t chain_height = top_block.get_height() + 1;
         if (context.wait_for_next_block.height == chain_height) {
             for (static uint64_t last_height = 0; last_height != chain_height;
                  last_height = chain_height)
@@ -1127,34 +1128,8 @@ namespace {
             return round_state::wait_for_next_block;
         }
 
-        crypto::hash prev_hash = blockchain.get_block_id_by_height(chain_height - 1);
-        if (!prev_hash) {
-            for (static uint64_t last_height = 0; last_height != chain_height;
-                 last_height = chain_height)
-                log::debug(
-                        logcat,
-                        "{}Failed to query the block hash for height {}",
-                        log_prefix(context),
-                        chain_height - 1);
-            return round_state::wait_for_next_block;
-        }
-
-        uint64_t prev_timestamp = 0;
-        try {
-            prev_timestamp = blockchain.db().get_block_timestamp(chain_height - 1);
-        } catch (std::exception const& e) {
-            for (static uint64_t last_height = 0; last_height != chain_height;
-                 last_height = chain_height)
-                log::debug(
-                        logcat,
-                        "{}Failed to query the block hash for height {}",
-                        log_prefix(context),
-                        chain_height - 1);
-            return round_state::wait_for_next_block;
-        }
-
         pulse::timings times = {};
-        if (!get_round_timings(blockchain, chain_height, prev_timestamp, times)) {
+        if (!get_round_timings(blockchain, chain_height, top_block.timestamp, times)) {
             for (static uint64_t last_height = 0; last_height != chain_height;
                  last_height = chain_height)
                 log::error(
@@ -1166,7 +1141,7 @@ namespace {
 
         context.wait_for_next_block.round_0_start_time = times.r0_timestamp;
         context.wait_for_next_block.height = chain_height;
-        context.wait_for_next_block.top_hash = prev_hash;
+        context.wait_for_next_block.top_hash = cryptonote::get_block_hash(top_block);
         context.prepare_for_round = {};
 
         return round_state::prepare_for_round;
