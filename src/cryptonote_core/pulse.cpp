@@ -1113,25 +1113,27 @@ namespace {
             round_context& context,
             cryptonote::Blockchain const& blockchain) {
         //
-        // NOTE: If already processing pulse for height, wait for next height
+        // NOTE: If the top hash stored in the pulse context is the same as the top block's hash
+        // then we've already attempted Pulse with the current state of the blockchain and
+        // encountered a failure.
         //
         cryptonote::block top_block = blockchain.db().get_top_block();
+        crypto::hash top_hash = cryptonote::get_block_hash(top_block);
         uint64_t chain_height = top_block.get_height() + 1;
-        if (context.wait_for_next_block.height == chain_height) {
-            for (static uint64_t last_height = 0; last_height != chain_height;
-                 last_height = chain_height)
+        if (context.wait_for_next_block.top_hash == top_hash) {
+            for (static crypto::hash last_hash = {}; last_hash != top_hash; last_hash = top_hash)
                 log::debug(
                         logcat,
-                        "{}Network is currently producing block {}, waiting until next block",
+                        "{}Network is currently producing block {} (w/ parent {}), waiting until next block",
                         log_prefix(context),
-                        chain_height);
+                        chain_height,
+                        top_hash);
             return round_state::wait_for_next_block;
         }
 
         pulse::timings times = {};
         if (!get_round_timings(blockchain, chain_height, top_block.timestamp, times)) {
-            for (static uint64_t last_height = 0; last_height != chain_height;
-                 last_height = chain_height)
+            for (static crypto::hash last_hash = {}; last_hash != top_hash; last_hash = top_hash)
                 log::error(
                         logcat,
                         "{}Failed to query the block data for Pulse timings",
@@ -1141,7 +1143,7 @@ namespace {
 
         context.wait_for_next_block.round_0_start_time = times.r0_timestamp;
         context.wait_for_next_block.height = chain_height;
-        context.wait_for_next_block.top_hash = cryptonote::get_block_hash(top_block);
+        context.wait_for_next_block.top_hash = top_hash;
         context.prepare_for_round = {};
 
         return round_state::prepare_for_round;
@@ -1176,8 +1178,9 @@ namespace {
 
             // Also check if the blockchain has changed, in which case we stop and
             // restart Pulse stages.
-            if (context.wait_for_next_block.height !=
-                blockchain.get_current_blockchain_height(true /*lock*/))
+            std::pair<uint64_t, crypto::hash> tail = blockchain.get_tail_id();
+            const crypto::hash& top_hash = tail.second;
+            if (context.wait_for_next_block.top_hash != top_hash)
                 return goto_wait_for_next_block_and_clear_round_data(context);
 
             // 'queue_for_next_round' is set when an intermediate Pulse stage has failed
@@ -1298,12 +1301,15 @@ namespace {
     }
 
     round_state wait_for_round(round_context& context, cryptonote::Blockchain const& blockchain) {
-        const auto curr_height = blockchain.get_current_blockchain_height(true /*lock*/);
-        if (context.wait_for_next_block.height != curr_height) {
+        std::pair<uint64_t, crypto::hash> tail = blockchain.get_tail_id();
+        const crypto::hash& top_hash = tail.second;
+        if (context.wait_for_next_block.top_hash != top_hash) {
             log::debug(
                     logcat,
-                    "{}Block height changed whilst waiting for round {}, restarting Pulse stages",
+                    "{}Top block changed (from {} to {}) whilst waiting for round {}, restarting Pulse stages",
                     log_prefix(context),
+                    context.wait_for_next_block.top_hash,
+                    top_hash,
                     +context.prepare_for_round.round);
             return goto_wait_for_next_block_and_clear_round_data(context);
         }
