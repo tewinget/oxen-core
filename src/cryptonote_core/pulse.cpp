@@ -1110,7 +1110,6 @@ namespace {
     }
 
     round_state wait_for_next_block(
-            uint64_t hf16_height,
             round_context& context,
             cryptonote::Blockchain const& blockchain) {
         //
@@ -1223,8 +1222,7 @@ namespace {
                             : (now - context.wait_for_next_block.round_0_start_time);
             size_t round_usize = time_since_block / conf.PULSE_ROUND_TIMEOUT;
 
-            if (round_usize > 255)  // Network stalled
-            {
+            if (round_usize > 255) { // Network stalled
                 log::info(
                         logcat,
                         "{}Pulse has timed out, reverting to accepting miner blocks only.",
@@ -2057,7 +2055,7 @@ void main(void* quorumnet_state, cryptonote::core& core) {
             case round_state::null_state: context.state = round_state::wait_for_next_block; break;
 
             case round_state::wait_for_next_block:
-                context.state = wait_for_next_block(*hf16, context, blockchain);
+                context.state = wait_for_next_block(context, blockchain);
                 break;
 
             case round_state::prepare_for_round:
