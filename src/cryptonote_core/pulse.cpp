@@ -440,7 +440,6 @@ namespace {
     bool enforce_validator_participation_and_timeouts(
             round_context const& context,
             pulse_wait_stage const& stage,
-            service_nodes::service_node_list& node_list,
             bool timed_out,
             bool all_received) {
         assert(context.state > round_state::wait_for_handshake_bitsets);
@@ -1450,12 +1449,7 @@ namespace {
         }
     }
 
-    round_state wait_for_handshake_bitsets(
-            round_context& context,
-            service_nodes::service_node_list& node_list,
-            void* quorumnet_state,
-            service_nodes::service_node_keys const& key,
-            cryptonote::Blockchain& blockchain) {
+    round_state wait_for_handshake_bitsets(round_context& context, void* quorumnet_state) {
         handle_messages_received_early_for(
                 context.transient.wait_for_handshake_bitsets.stage, quorumnet_state);
         pulse_wait_stage const& stage = context.transient.wait_for_handshake_bitsets.stage;
@@ -1632,9 +1626,7 @@ namespace {
     round_state wait_for_block_template(
             round_context& context,
             service_nodes::service_node_list& node_list,
-            void* quorumnet_state,
-            service_nodes::service_node_keys const& key,
-            cryptonote::Blockchain& blockchain) {
+            void* quorumnet_state) {
         handle_messages_received_early_for(
                 context.transient.wait_for_block_template.stage, quorumnet_state);
         pulse_wait_stage const& stage = context.transient.wait_for_block_template.stage;
@@ -1777,14 +1769,13 @@ namespace {
                 context.transient.random_value_hashes.wait.stage, quorumnet_state);
         pulse_wait_stage const& stage = context.transient.random_value_hashes.wait.stage;
 
-        auto const& quorum = context.transient.random_value_hashes.wait.data;
         bool const timed_out = pulse::clock::now() >= stage.end_time;
         bool const all_hashes =
                 stage.bitset == context.transient.wait_for_handshake_bitsets.best_bitset;
 
         if (timed_out || all_hashes) {
             if (!enforce_validator_participation_and_timeouts(
-                        context, stage, node_list, timed_out, all_hashes))
+                        context, stage, timed_out, all_hashes))
                 return goto_preparing_for_next_round(context);
 
             log::info(
@@ -1837,7 +1828,7 @@ namespace {
 
         if (timed_out || all_values) {
             if (!enforce_validator_participation_and_timeouts(
-                        context, stage, node_list, timed_out, all_values))
+                        context, stage, timed_out, all_values))
                 return goto_preparing_for_next_round(context);
 
             // Generate Final Random Value
@@ -1942,8 +1933,7 @@ namespace {
                 stage.bitset >= context.transient.wait_for_handshake_bitsets.best_bitset;
 
         if (timed_out || enough) {
-            if (!enforce_validator_participation_and_timeouts(
-                        context, stage, node_list, timed_out, enough))
+            if (!enforce_validator_participation_and_timeouts(context, stage, timed_out, enough))
                 return goto_preparing_for_next_round(context);
 
             // Select signatures randomly so we don't always just take the first N required
@@ -2056,13 +2046,11 @@ void main(void* quorumnet_state, cryptonote::core& core) {
                 break;
 
             case round_state::wait_for_handshake_bitsets:
-                context.state = wait_for_handshake_bitsets(
-                        context, node_list, quorumnet_state, key, blockchain);
+                context.state = wait_for_handshake_bitsets(context, quorumnet_state);
                 break;
 
             case round_state::wait_for_block_template:
-                context.state = wait_for_block_template(
-                        context, node_list, quorumnet_state, key, blockchain);
+                context.state = wait_for_block_template(context, node_list, quorumnet_state);
                 break;
 
             case round_state::send_block_template:
