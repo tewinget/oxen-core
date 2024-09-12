@@ -1678,7 +1678,7 @@ void service_node_list::state_t::process_new_ethereum_tx(
                 cryptonote::print_money(val),
                 block_height);
     else
-        log::info(
+        log::debug(
                 logcat,
                 "New service node {} tx from ethereum: {} @ height: {}; awaiting confirmations",
                 type,
@@ -1740,7 +1740,7 @@ bool service_node_list::state_t::process_confirmed_event(
                     key,
                     height);
         else
-            log::info(
+            log::debug(
                     logcat,
                     "Confirmed service node registration from ethereum: {} on height: {}",
                     key,
@@ -1793,7 +1793,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 height,
                 unlock_height);
     else
-        log::info(
+        log::debug(
                 logcat,
                 "Service node exit initiated for {} @ height {}; exit height: {}",
                 snode_pk,
@@ -1970,7 +1970,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 cryptonote::print_money(new_staking_requirement),
                 height);
     } else {
-        log::info(
+        log::debug(
                 logcat,
                 fg(fmt::terminal_color::yellow),
                 "Confirmed a non-changing staking requirement transaction ({}) @ height {}",
