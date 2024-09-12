@@ -1834,9 +1834,9 @@ bool service_node_list::state_t::process_confirmed_event(
     } else if (oxen::log::get_level(logcat) <= oxen::log::Level::trace) {
         oxen::log::trace(
                 logcat,
-                "ETH exit event for BLS\nEvent\n{}\n\nRecently Removed Entry\n{}",
-                serialization::dump_json(*node),
-                serialization::dump_json(const_cast<eth::event::ServiceNodeExit&>(exit)));
+                "ETH exit event for BLS\nRecently Removed Entry\n{}\nExit\n{}",
+                serialization::dump_json(*node, 2),
+                serialization::dump_json(const_cast<eth::event::ServiceNodeExit&>(exit), 2));
     }
 
     // NOTE: Check that the amount to be refunded is well-formed
