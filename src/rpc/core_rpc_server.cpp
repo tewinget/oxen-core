@@ -2580,9 +2580,10 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
         serialization::json_archiver ar;
         serialize(ar, const_cast<node_t&>(elem));
         nlohmann::json serialized = std::move(ar).json();
+        nlohmann::json& sn_info = serialized["info"];
 
-        // NOTE: Remove implementation details from the output JSON
-        for (auto& contrib_it : serialized["contributors"]) {
+        // NOTE: Remove implementation details from the contributor JSON
+        for (auto& contrib_it : sn_info["contributors"]) {
             constexpr std::string_view ERASE_FIELDS_CONTRIBUTOR[] = {
                     "address",  // Cryptonote address  (not used in L2, use ETH addresses)
                     "locked_contributions",  // $OXEN contributions (not used in L2, use $SENT)
@@ -2593,9 +2594,27 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
                 assert(it != contrib_it.end());
                 contrib_it.erase(it);
             }
+
+            // NOTE: Remove operator cryptonote address and replace with ethereum address
+            std::string_view eth_address_key = "ethereum_address";
+            auto eth_address_it = contrib_it.find(eth_address_key);
+            if (eth_address_it != contrib_it.end()) {
+                auto eth_address = eth_address_it->template get<std::string>();
+                contrib_it.erase(eth_address_it);
+                contrib_it["address"] = eth_address;
+            }
         }
 
-        // NOTE: Remove implementation details from the contributor JSON
+        // NOTE: Remove operator cryptonote address and replace with ethereum address
+        std::string_view eth_address_key = "operator_ethereum_address";
+        auto eth_address_it = sn_info.find(eth_address_key);
+        if (eth_address_it != sn_info.end()) {
+            auto eth_address = eth_address_it->template get<std::string>();
+            sn_info.erase(eth_address_it);
+            sn_info["operator_address"] = eth_address;
+        }
+
+        // NOTE: Remove implementation details from the output JSON
         constexpr std::string_view ERASE_FIELDS[] = {
                 "public_ip",
                 "qnet_port",
