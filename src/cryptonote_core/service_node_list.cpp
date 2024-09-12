@@ -1665,23 +1665,26 @@ void service_node_list::state_t::process_new_ethereum_tx(
         log::info(
                 globallogcat,
                 fg(fmt::terminal_color::green),
-                "New service node {} tx from ethereum: {} (THIS NODE) @ height: {}; awaiting "
+                "New service node {} tx ({}) from ethereum: {} (THIS NODE) @ height: {}; awaiting "
                 "confirmations",
                 type,
+                cryptonote::get_transaction_hash(tx),
                 snpk,
                 block_height);
     else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated)
         log::info(
                 globallogcat,
-                "Service node staking requirement tx from ethereum changing to {} SENT @ height: "
+                "Service node staking requirement tx ({}) from ethereum changing to {} SENT @ height: "
                 "{}; awaiting confirmations",
                 cryptonote::print_money(val),
+                cryptonote::get_transaction_hash(tx),
                 block_height);
     else
         log::debug(
                 logcat,
-                "New service node {} tx from ethereum: {} @ height: {}; awaiting confirmations",
+                "New service node {} tx ({}) from ethereum: {} @ height: {}; awaiting confirmations",
                 type,
+                cryptonote::get_transaction_hash(tx),
                 snpk,
                 block_height);
 
