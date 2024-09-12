@@ -1788,14 +1788,14 @@ bool service_node_list::state_t::process_confirmed_event(
         log::info(
                 globallogcat,
                 fg(fmt::terminal_color::yellow),
-                "Service node unlock initiated for {} (THIS NODE) @ height {}; unlock height: {}",
+                "Service node exit initiated for {} (THIS NODE) @ height {}; exit height: {}",
                 snode_pk,
                 height,
                 unlock_height);
     else
         log::info(
                 logcat,
-                "Service node unlock initiated for {} @ height {}; unlock height: {}",
+                "Service node exit initiated for {} @ height {}; exit height: {}",
                 snode_pk,
                 height,
                 unlock_height);
@@ -1810,7 +1810,7 @@ bool service_node_list::state_t::process_confirmed_event(
         cryptonote::hf,
         uint64_t,
         uint32_t,
-        const service_node_keys*) {
+        const service_node_keys* my_keys) {
 
     // NOTE: Retrieve node from the staging area
     auto node = std::find_if(
@@ -1919,6 +1919,23 @@ bool service_node_list::state_t::process_confirmed_event(
         return false;
     }
     returned_stakes[0].amount -= slash_amount;
+
+    if (my_keys && my_keys->pub == node->pubkey)
+        log::info(
+                globallogcat,
+                fg(fmt::terminal_color::yellow),
+                "Service node exit confirmed for {} (THIS NODE) @ height {}; type: {}",
+                node->pubkey,
+                height,
+                slash_amount ? "liquidation" : "exit");
+    else
+        log::debug(
+                logcat,
+                "Service node exit confirmed for {} @ height {}; type: {}",
+                node->pubkey,
+                height,
+                slash_amount ? "liquidation" : "exit");
+
 
     // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation when
     // fully unlocked..
@@ -4662,7 +4679,12 @@ crypto::public_key service_node_list::public_key_lookup(
         for (const auto& [snpk, info] : m_state.service_nodes_infos)
             if (info->bls_public_key == bls_pubkey)
                 return snpk;
+
+        for (const auto& it : m_state.recently_removed_nodes)
+            if (it.bls_pubkey == bls_pubkey)
+                return it.pubkey;
     }
+
     throw oxen::traced<std::runtime_error>("Could not find SN for BLS key: {}"_format(bls_pubkey));
 }
 
