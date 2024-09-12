@@ -156,7 +156,6 @@ class BlockchainSQLite : public db::Database {
     // to be marked as paid in the paid_amounts vector. Block height will be added to the
     // batched_payments_paid database as height_paid.
     bool save_payments(uint64_t block_height, const std::vector<batch_sn_payment>& paid_amounts);
-    std::vector<cryptonote::batch_sn_payment> get_block_payments(uint64_t block_height);
     bool delete_block_payments(uint64_t block_height);
 
     uint64_t height;

@@ -779,13 +779,15 @@ class service_node_list {
 
         template <class Archive>
         void serialize_object(Archive& ar) {
-            uint8_t version = 0;
+            uint8_t version = 1;
             field_varint(ar, "version", version);
             field(ar, "pubkey", pubkey);
             field(ar, "bls_pubkey", bls_pubkey);
             field_varint(ar, "height", height);
             field_varint(ar, "liquidation_height", liquidation_height);
             field_varint(ar, "type", type);
+            if (version >= 1)
+                field_varint(ar, "staking_requirement", staking_requirement);
             field(ar, "contributors", contributors);
             field_varint(ar, "public_ip", public_ip);
             field_varint(ar, "qnet_port", qnet_port);

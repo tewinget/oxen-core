@@ -1895,7 +1895,7 @@ bool service_node_list::state_t::process_confirmed_event(
         // This leads us to storing a cryptonote address in the delayed payments which causes the
         // network to stall as code tries to deserialise that address into an eth address and fails.
         if (contributor.ethereum_address) {
-            returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
+            returned_stakes.emplace_back(contributor.ethereum_address, cryptonote::sql_db_money::coin_amount(contributor.amount));
         }
     }
 
@@ -1910,7 +1910,7 @@ bool service_node_list::state_t::process_confirmed_event(
     }
 
     // NOTE: Apply the slash penalty to the operator
-    if (slash_amount > returned_stakes[0].amount) {
+    if (slash_amount > returned_stakes[0].amount.to_coin()) {
         log::error(
                 logcat,
                 "ETH exit of BLS pubkey {} rejected: SN {} returned amount {} is less than the "
@@ -1918,10 +1918,10 @@ bool service_node_list::state_t::process_confirmed_event(
                 node->bls_pubkey,
                 node->pubkey,
                 slash_amount,
-                returned_stakes[0].amount);
+                returned_stakes[0].amount.to_coin());
         return false;
     }
-    returned_stakes[0].amount -= slash_amount;
+    returned_stakes[0].amount = cryptonote::sql_db_money::coin_amount(returned_stakes[0].amount.to_coin() - slash_amount);
 
     if (my_keys && my_keys->pub == node->pubkey)
         log::info(
@@ -3921,12 +3921,13 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
         } break;
 
         case verify_mode::batched_sn_rewards: {
-            // NB: this amount is in milli-atomics, not atomics
-            uint64_t total_payout_in_our_db = std::accumulate(
+            cryptonote::sql_db_money total_payout_in_our_db = std::accumulate(
                     batched_sn_payments.begin(),
                     batched_sn_payments.end(),
-                    uint64_t{0},
-                    [](auto&& a, auto&& b) { return a + b.amount; });
+                    cryptonote::sql_db_money{},
+                    [](auto&& a, auto&& b) {
+                        return cryptonote::sql_db_money::db_amount(a.to_db() + b.amount.to_db());
+                    });
 
             uint64_t total_payout_in_vouts = 0;
             const auto deterministic_keypair =
@@ -3945,12 +3946,12 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                     throw oxen::traced<std::runtime_error>{
                             "Batched reward payout invalid: exceeds maximum possible payout size"};
 
-                auto paid_amount = vout.amount * cryptonote::BATCH_REWARD_FACTOR;
-                total_payout_in_vouts += paid_amount;
+                auto paid_amount = cryptonote::sql_db_money::coin_amount(vout.amount);
+                total_payout_in_vouts += paid_amount.to_coin();
                 if (paid_amount != batch_payment.amount)
                     throw oxen::traced<std::runtime_error>{
                             "Batched reward payout incorrect: expected {}, not {}"_format(
-                                    batch_payment.amount, paid_amount)};
+                                    batch_payment.amount.to_coin(), paid_amount.to_coin())};
 
                 crypto::public_key out_eph_public_key{};
                 if (!cryptonote::get_deterministic_output_key(
@@ -3967,10 +3968,10 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                             "Output Ephermeral Public Key does not match (payment to wrong "
                             "recipient)"};
             }
-            if (total_payout_in_vouts != total_payout_in_our_db)
+            if (total_payout_in_vouts != total_payout_in_our_db.to_coin())
                 throw oxen::traced<std::runtime_error>{
                         "Total service node reward amount incorrect: expected {}, not {}"_format(
-                                total_payout_in_our_db, total_payout_in_vouts)};
+                                total_payout_in_our_db.to_coin(), total_payout_in_vouts)};
         } break;
 
         case verify_mode::arbitrum_rewards: {

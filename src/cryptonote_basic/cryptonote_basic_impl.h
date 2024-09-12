@@ -74,16 +74,37 @@ struct address_parse_info {
     KV_MAP_SERIALIZABLE
 };
 
+// Strongly-typed money amount used to interface with the SQL DB when inserting
+// money into the DB. Amounts stored in the DB use a higher precision by a
+// factor of `BATCH_REWARD_FACTOR`.
+struct sql_db_money {
+
+    // Construct a money value from an atomic $COIN amount.
+    static sql_db_money coin_amount(uint64_t amount) { return {.amount = amount * BATCH_REWARD_FACTOR}; }
+
+    // Construct a money value from an atomic $COIN amount denoted in DB units. DB units have more
+    // precision to minimise integer division errors.
+    static sql_db_money db_amount(uint64_t amount)   { return {.amount = amount}; }
+
+    uint64_t to_coin() const { return amount / BATCH_REWARD_FACTOR; }
+
+    uint64_t to_db() const { return amount; }
+
+    bool operator==(const sql_db_money& rhs) const { return amount == rhs.amount; }
+
+    uint64_t amount{0};
+};
+
 struct batch_sn_payment {
     cryptonote::address_parse_info address_info{};
     eth::address eth_address{};
-    uint64_t amount;
+    sql_db_money amount;
     batch_sn_payment() = default;
-    batch_sn_payment(const cryptonote::address_parse_info& addr_info, uint64_t amt) :
+    batch_sn_payment(const cryptonote::address_parse_info& addr_info, sql_db_money amt) :
             address_info{addr_info}, amount{amt} {}
-    batch_sn_payment(const cryptonote::account_public_address& addr, uint64_t amt) :
+    batch_sn_payment(const cryptonote::account_public_address& addr, sql_db_money amt) :
             address_info{addr, 0}, amount{amt} {}
-    batch_sn_payment(const eth::address& addr, uint64_t amt) :
+    batch_sn_payment(const eth::address& addr, sql_db_money amt) :
             eth_address{addr}, amount{amt} {}
 };
 
