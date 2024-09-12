@@ -847,7 +847,7 @@ bool BlockchainSQLite::validate_batch_payment(
             cryptonote::get_deterministic_keypair_from_height(block_height);
     for (size_t vout_index = 0; vout_index < miner_tx_vouts.size(); vout_index++) {
         const auto& [pubkey, amt] = miner_tx_vouts[vout_index];
-        auto amount = sql_db_money::db_amount(amt);
+        auto amount = sql_db_money::coin_amount(amt);
         const auto& from_db = calculated_payments_from_batching_db[vout_index];
         if (amount.to_db() != from_db.amount.to_db()) {
             log::error(
