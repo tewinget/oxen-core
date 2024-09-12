@@ -290,6 +290,8 @@ void BlockchainSQLite::reset_database() {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
 
     db.exec(R"(
+      DROP TABLE IF EXISTS delayed_payments;
+
       DROP TABLE IF EXISTS batched_payments_accrued;
 
       DROP TABLE IF EXISTS batched_payments_accrued_archive;
@@ -305,6 +307,7 @@ void BlockchainSQLite::reset_database() {
 
     create_schema();
     upgrade_schema();
+    update_height(0);
     log::debug(logcat, "Database reset complete");
 }
 
@@ -791,7 +794,8 @@ bool BlockchainSQLite::return_staked_amount_to_user(
         int64_t payout_height = height + (delay_blocks > 0 ? delay_blocks : 1);
         auto insert_payment = prepared_st(
                 "INSERT INTO delayed_payments (eth_address, amount, payout_height, entry_height) "
-                "VALUES (?, ?, ?, ?)");
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(eth_address, payout_height) DO UPDATE SET amount = (amount + excluded.amount);");
 
         for (auto& payment : payments) {
             auto amt = static_cast<int64_t>(payment.amount.to_db());
@@ -799,9 +803,11 @@ bool BlockchainSQLite::return_staked_amount_to_user(
             log::trace(
                     logcat,
                     "Adding delayed payment for SN reward contributor {} to database with amount "
-                    "{}",
+                    "{}; height {}; payout height {}",
                     address_str,
-                    amt);
+                    amt,
+                    height,
+                    payout_height);
             db::exec_query(
                     insert_payment, address_str, amt, payout_height, static_cast<int64_t>(height));
             insert_payment->reset();
