@@ -3406,7 +3406,7 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
             uint16_t port = 0;
             for (const service_nodes::service_node_list::recently_removed_node&
                          recently_removed_it : service_node_list.recently_removed_nodes()) {
-                if (it != recently_removed_it.bls_pubkey)
+                if (it != recently_removed_it.info.bls_public_key)
                     continue;
                 protocol_dereg =
                         recently_removed_it.type ==

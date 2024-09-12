@@ -1820,7 +1820,7 @@ bool service_node_list::state_t::process_confirmed_event(
             recently_removed_nodes.begin(),
             recently_removed_nodes.end(),
             [&exit](const auto& item) {
-                bool result = item.bls_pubkey == exit.bls_pubkey;
+                bool result = item.info.bls_public_key == exit.bls_pubkey;
                 return result;
             });
 
@@ -1840,20 +1840,20 @@ bool service_node_list::state_t::process_confirmed_event(
     }
 
     // NOTE: Check that the amount to be refunded is well-formed
-    if (exit.returned_amount > node->staking_requirement) {
+    if (exit.returned_amount > node->info.staking_requirement) {
         log::warning(
                 logcat,
                 "ETH exit event for BLS pubkey {}: SN {} is requesting to return more funds ({}) "
                 "than it staked ({}). Fixing up value",
                 exit.bls_pubkey,
-                node->pubkey,
+                node->service_node_pubkey,
                 exit.returned_amount,
-                node->staking_requirement);
+                node->info.staking_requirement);
         // NOTE: Value is fixed up below in `returned_amount`
     }
 
-    uint64_t const returned_amount = std::min(node->staking_requirement, exit.returned_amount);
-    uint64_t const slash_amount = node->staking_requirement - returned_amount;
+    uint64_t const returned_amount = std::min(node->info.staking_requirement, exit.returned_amount);
+    uint64_t const slash_amount = node->info.staking_requirement - returned_amount;
 
     // NOTE: Check if they're allowed to be slashed
     if (slash_amount > 0 && height < node->liquidation_height) {
@@ -1862,9 +1862,9 @@ bool service_node_list::state_t::process_confirmed_event(
                 "ETH exit event for BLS pubkey {}: SN {} has a slash amount ({}) for stake {} but "
                 "the node cannot be liquidated at height {} (liquidation height {}), skipping",
                 exit.bls_pubkey,
-                node->pubkey,
+                node->service_node_pubkey,
                 slash_amount,
-                node->staking_requirement,
+                node->info.staking_requirement,
                 height,
                 node->liquidation_height);
         return false;
@@ -1886,7 +1886,7 @@ bool service_node_list::state_t::process_confirmed_event(
 
     // NOTE: Enumerate the contributors to refund to
     std::vector<cryptonote::batch_sn_payment> returned_stakes;
-    for (const auto& contributor : node->contributors) {
+    for (const auto& contributor : node->info.contributors) {
         // TODO: Once merge code is in this can be re-evaluated. Right now in the localdev tests
         // we don't have migration code so we're putting in bad data into the DB. The DB checks if
         // the payment has an eth address defined, if it does it stores the delayed payment as an
@@ -1904,8 +1904,8 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "ETH exit event for BLS pubkey {}: SN {} has 0 contributors detected, null data "
                 "encountered, skipping",
-                node->pubkey,
-                node->bls_pubkey);
+                node->info.bls_public_key,
+                node->service_node_pubkey);
         return false;
     }
 
@@ -1915,27 +1915,27 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "ETH exit of BLS pubkey {} rejected: SN {} returned amount {} is less than the "
                 "operator contribution {}, skipping",
-                node->bls_pubkey,
-                node->pubkey,
+                node->info.bls_public_key,
+                node->service_node_pubkey,
                 slash_amount,
                 returned_stakes[0].amount.to_coin());
         return false;
     }
     returned_stakes[0].amount = cryptonote::sql_db_money::coin_amount(returned_stakes[0].amount.to_coin() - slash_amount);
 
-    if (my_keys && my_keys->pub == node->pubkey)
+    if (my_keys && my_keys->pub == node->service_node_pubkey)
         log::info(
                 globallogcat,
                 fg(fmt::terminal_color::yellow),
                 "Service node exit confirmed for {} (THIS NODE) @ height {}; type: {}",
-                node->pubkey,
+                node->service_node_pubkey,
                 height,
                 slash_amount ? "liquidation" : "exit");
     else
         log::debug(
                 logcat,
                 "Service node exit confirmed for {} @ height {}; type: {}",
-                node->pubkey,
+                node->service_node_pubkey,
                 height,
                 slash_amount ? "liquidation" : "exit");
 
@@ -4568,7 +4568,7 @@ void service_node_list::cleanup_proofs() {
 
         if (!still_storing_sn_info) {
             for (const auto& recently_removed_it : m_state.recently_removed_nodes) {
-                if (recently_removed_it.pubkey == pubkey) {
+                if (recently_removed_it.service_node_pubkey == pubkey) {
                     still_storing_sn_info = true;
                     break;
                 }
@@ -4600,9 +4600,9 @@ crypto::public_key service_node_list::get_pubkey_from_x25519(
         // NOTE: Try the recently removed list (linear scan but this list will
         // always be relatively tiny).
         for (const auto& it : m_state.recently_removed_nodes) {
-            crypto::x25519_public_key rederived_x25519 = snpk_to_xpk(it.pubkey);
+            crypto::x25519_public_key rederived_x25519 = snpk_to_xpk(it.service_node_pubkey);
             if (rederived_x25519 == x25519)
-                return it.pubkey;
+                return it.service_node_pubkey;
         }
     } else {
         std::shared_lock lock{m_x25519_map_mutex};
@@ -4685,8 +4685,8 @@ crypto::public_key service_node_list::public_key_lookup(
                 return snpk;
 
         for (const auto& it : m_state.recently_removed_nodes)
-            if (it.bls_pubkey == bls_pubkey)
-                return it.pubkey;
+            if (it.info.bls_public_key == bls_pubkey)
+                return it.service_node_pubkey;
     }
 
     throw oxen::traced<std::runtime_error>("Could not find SN for BLS key: {}"_format(bls_pubkey));
@@ -4952,15 +4952,13 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
 
         const auto& netconf = get_config(nettype);
         recently_removed_nodes.emplace_back(recently_removed_node{
-                .pubkey = snpk,
-                .bls_pubkey = it->second->bls_public_key,
                 .height = height,
                 .liquidation_height = height + netconf.ETH_EXIT_BUFFER,
                 .type = exit_type,
-                .staking_requirement = it->second->staking_requirement,
-                .contributors = it->second->contributors,
                 .public_ip = public_ip,
-                .qnet_port = qnet_port});
+                .qnet_port = qnet_port,
+                .service_node_pubkey = snpk,
+                .info = *it->second});
     }
 
     return service_nodes_infos.erase(it);
@@ -5005,16 +5003,21 @@ bool service_node_list::load(const uint64_t current_height) {
         return false;
     }
 
-    // NOTE: Temporary code for HF21 on Stagenet for when we introduce exits and liquidations. We
-    // need to populate the exits and liquidations list (e.g. the 'recently_removed_nodes') by
-    // rescanning the entire blockchain. Returning false here tells the SNL that loading failed and
-    // it'll regenerate the entire SNL and hence populate exits and liquidation data.
+    // NOTE: Temporary code for HF21 on Stagenet for when we introduce exits and liquidations. I
+    // introduced a bug where we didn't serialise the `staking_requirement` which meant on a restart
+    // nodes would reject some exit TXs. Simultaneously working on the staking backend and the APIs
+    // I've decided to snap a copy of the SN info on erase. This is _very_ useful for end-user
+    // applications consumption.
     //
-    // TODO: This doesn't work, it seems to always force a rescan. Is the version not being saved
-    // out correctly?
+    // Since this is a breaking change as nodes prior to the upgrade won't have this, we reset the
+    // SNL again and regenerate everything from block 0 to ensure all the `recently_removed_nodes`
+    // are initialised with the new SN info data when nodes transition from the SNL into the
+    // `recently_removed_nodes` buffer.
     if (blockchain.nettype() == cryptonote::network_type::STAGENET &&
-        data_in.version < data_for_serialization::version_t::version_1)
+        data_in.version < data_for_serialization::version_t::version_2_regen_recently_removed_nodes_w_sn_info) {
+        blockchain.sqlite_db().reset_database();
         return false;
+    }
 
     if (data_in.states.empty())
         return false;
