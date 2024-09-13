@@ -157,6 +157,13 @@ namespace {
         return (value + quantum - 1) / quantum * quantum;
     }
 
+    void rename_key(nlohmann::json& obj, std::string_view old_key, std::string_view new_key) {
+        if (auto it = obj.find(old_key); it != obj.end()) {
+            auto val = std::move(*it);
+            obj.erase(it);
+            obj[std::string{new_key}] = std::move(val);
+        }
+    }
 }  // namespace
 
 const std::unordered_map<std::string, std::shared_ptr<const rpc_command>> rpc_commands =
@@ -2596,23 +2603,11 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
             }
 
             // NOTE: Remove operator cryptonote address and replace with ethereum address
-            std::string_view eth_address_key = "ethereum_address";
-            auto eth_address_it = contrib_it.find(eth_address_key);
-            if (eth_address_it != contrib_it.end()) {
-                auto eth_address = eth_address_it->template get<std::string>();
-                contrib_it.erase(eth_address_it);
-                contrib_it["address"] = eth_address;
-            }
+            rename_key(contrib_it, "ethereum_address", "address");
         }
 
         // NOTE: Remove operator cryptonote address and replace with ethereum address
-        std::string_view eth_address_key = "operator_ethereum_address";
-        auto eth_address_it = sn_info.find(eth_address_key);
-        if (eth_address_it != sn_info.end()) {
-            auto eth_address = eth_address_it->template get<std::string>();
-            sn_info.erase(eth_address_it);
-            sn_info["operator_address"] = eth_address;
-        }
+        rename_key(sn_info, "operator_ethereum_address", "operator_address");
 
         // NOTE: Remove implementation details from the output JSON
         constexpr std::string_view ERASE_FIELDS[] = {
