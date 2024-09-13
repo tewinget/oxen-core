@@ -483,7 +483,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
         assert(hard_fork_version >= hf::hf19_reward_batching);
         for (const auto& reward : sn_rwds) {
             assert(reward.amount.to_db() % BATCH_REWARD_FACTOR == 0 && "Check that the thousandth's OXEN has been truncated off");
-            auto atomic_amt = reward.amount.to_coin();
+            auto atomic_amt = reward.coin_amount();
             rewards.emplace_back(reward_type::snode, reward.address_info.address, atomic_amt);
             total_sn_rewards += atomic_amt;
         }
@@ -564,7 +564,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
 
     block_rewards = std::accumulate(
             batched_rewards.begin(), batched_rewards.end(), uint64_t{0}, [](uint64_t x, auto&& y) {
-                return x + y.amount.to_coin();
+                return x + y.coin_amount();
             });
 
     // lock

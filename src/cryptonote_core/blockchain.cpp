@@ -1597,7 +1597,7 @@ bool Blockchain::validate_block_rewards(
                 batched_sn_payments.begin(),
                 batched_sn_payments.end(),
                 uint64_t{0},
-                [&](auto a, auto b) { return a + b.amount.to_coin(); });
+                [&](auto a, auto b) { return a + b.coin_amount(); });
     } else {
         max_base_reward += reward_parts.base_miner + reward_parts.service_node_total;
     }

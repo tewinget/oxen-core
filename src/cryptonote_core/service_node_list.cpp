@@ -1910,7 +1910,7 @@ bool service_node_list::state_t::process_confirmed_event(
     }
 
     // NOTE: Apply the slash penalty to the operator
-    if (slash_amount > returned_stakes[0].amount.to_coin()) {
+    if (slash_amount > returned_stakes[0].coin_amount()) {
         log::error(
                 logcat,
                 "ETH exit of BLS pubkey {} rejected: SN {} returned amount {} is less than the "
@@ -1918,10 +1918,10 @@ bool service_node_list::state_t::process_confirmed_event(
                 node->info.bls_public_key,
                 node->service_node_pubkey,
                 slash_amount,
-                returned_stakes[0].amount.to_coin());
+                returned_stakes[0].coin_amount());
         return false;
     }
-    returned_stakes[0].amount = cryptonote::reward_money::coin_amount(returned_stakes[0].amount.to_coin() - slash_amount);
+    returned_stakes[0].amount = cryptonote::reward_money::coin_amount(returned_stakes[0].coin_amount() - slash_amount);
 
     if (my_keys && my_keys->pub == node->service_node_pubkey)
         log::info(
@@ -3951,7 +3951,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 if (paid_amount != batch_payment.amount)
                     throw oxen::traced<std::runtime_error>{
                             "Batched reward payout incorrect: expected {}, not {}"_format(
-                                    batch_payment.amount.to_coin(), paid_amount.to_coin())};
+                                    batch_payment.coin_amount(), paid_amount.to_coin())};
 
                 crypto::public_key out_eph_public_key{};
                 if (!cryptonote::get_deterministic_output_key(

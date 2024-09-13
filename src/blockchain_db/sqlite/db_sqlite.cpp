@@ -840,7 +840,7 @@ bool BlockchainSQLite::validate_batch_payment(
             calculated_payments_from_batching_db.begin(),
             calculated_payments_from_batching_db.end(),
             uint64_t(0),
-            [](auto&& a, auto&& b) { return a + b.amount.to_coin(); });
+            [](auto&& a, auto&& b) { return a + b.coin_amount(); });
     uint64_t total_oxen_payout_in_vouts = 0;
     std::vector<batch_sn_payment> finalised_payments;
     cryptonote::keypair const deterministic_keypair =
