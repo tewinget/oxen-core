@@ -90,7 +90,7 @@ struct sql_db_money {
 
     uint64_t to_db() const { return amount; }
 
-    bool operator==(const sql_db_money& rhs) const { return amount == rhs.amount; }
+    constexpr auto operator<=>(const sql_db_money& rhs) const = default;
 
     uint64_t amount{0};
 };
