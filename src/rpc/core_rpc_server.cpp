@@ -157,6 +157,13 @@ namespace {
         return (value + quantum - 1) / quantum * quantum;
     }
 
+    void rename_key(nlohmann::json& obj, std::string_view old_key, std::string_view new_key) {
+        if (auto it = obj.find(old_key); it != obj.end()) {
+            auto val = std::move(*it);
+            obj.erase(it);
+            obj[std::string{new_key}] = std::move(val);
+        }
+    }
 }  // namespace
 
 const std::unordered_map<std::string, std::shared_ptr<const rpc_command>> rpc_commands =
@@ -2580,9 +2587,10 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
         serialization::json_archiver ar;
         serialize(ar, const_cast<node_t&>(elem));
         nlohmann::json serialized = std::move(ar).json();
+        nlohmann::json& sn_info = serialized["info"];
 
-        // NOTE: Remove implementation details from the output JSON
-        for (auto& contrib_it : serialized["contributors"]) {
+        // NOTE: Remove implementation details from the contributor JSON
+        for (auto& contrib_it : sn_info["contributors"]) {
             constexpr std::string_view ERASE_FIELDS_CONTRIBUTOR[] = {
                     "address",  // Cryptonote address  (not used in L2, use ETH addresses)
                     "locked_contributions",  // $OXEN contributions (not used in L2, use $SENT)
@@ -2593,9 +2601,15 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
                 assert(it != contrib_it.end());
                 contrib_it.erase(it);
             }
+
+            // NOTE: Remove operator cryptonote address and replace with ethereum address
+            rename_key(contrib_it, "ethereum_address", "address");
         }
 
-        // NOTE: Remove implementation details from the contributor JSON
+        // NOTE: Remove operator cryptonote address and replace with ethereum address
+        rename_key(sn_info, "operator_ethereum_address", "operator_address");
+
+        // NOTE: Remove implementation details from the output JSON
         constexpr std::string_view ERASE_FIELDS[] = {
                 "public_ip",
                 "qnet_port",

@@ -74,17 +74,41 @@ struct address_parse_info {
     KV_MAP_SERIALIZABLE
 };
 
+// Strongly-typed money amount used to calculate rewards at a higher precision by a factory of
+// `BATCH_REWARD_FACTOR`. Money amounts are stored at the higher precision in the DB.
+struct reward_money {
+
+    // Construct a money value from an atomic $COIN amount.
+    static reward_money coin_amount(uint64_t amount) { return {.amount = amount * BATCH_REWARD_FACTOR}; }
+
+    // Construct a money value from an atomic $COIN amount denoted with the extra precision
+    // (pre-multiplied with `BATCH_REWARD_FACTOR`) suitable for storing in the DB. There is more
+    // precision to minimise integer division errors in reward calculations.
+    static reward_money db_amount(uint64_t amount)   { return {.amount = amount}; }
+
+    uint64_t to_coin() const { return amount / BATCH_REWARD_FACTOR; }
+
+    uint64_t to_db() const { return amount; }
+
+    constexpr auto operator<=>(const reward_money& rhs) const = default;
+
+    uint64_t amount{0};
+};
+
 struct batch_sn_payment {
     cryptonote::address_parse_info address_info{};
     eth::address eth_address{};
-    uint64_t amount;
+    reward_money amount;
+
     batch_sn_payment() = default;
-    batch_sn_payment(const cryptonote::address_parse_info& addr_info, uint64_t amt) :
+    batch_sn_payment(const cryptonote::address_parse_info& addr_info, reward_money amt) :
             address_info{addr_info}, amount{amt} {}
-    batch_sn_payment(const cryptonote::account_public_address& addr, uint64_t amt) :
+    batch_sn_payment(const cryptonote::account_public_address& addr, reward_money amt) :
             address_info{addr, 0}, amount{amt} {}
-    batch_sn_payment(const eth::address& addr, uint64_t amt) :
+    batch_sn_payment(const eth::address& addr, reward_money amt) :
             eth_address{addr}, amount{amt} {}
+
+    uint64_t coin_amount() const { return amount.to_coin(); }
 };
 
 #pragma pack(push, 1)
@@ -100,13 +124,6 @@ struct public_integrated_address_outer_blob {
     uint8_t check_sum;
 };
 #pragma pack(pop)
-
-inline std::string return_first_address(
-        const std::string_view url, const std::vector<std::string>& addresses, bool dnssec_valid) {
-    if (addresses.empty())
-        return {};
-    return addresses[0];
-}
 
 /************************************************************************/
 /* Cryptonote helper functions                                          */

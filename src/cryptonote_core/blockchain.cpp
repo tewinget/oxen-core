@@ -1597,7 +1597,7 @@ bool Blockchain::validate_block_rewards(
                 batched_sn_payments.begin(),
                 batched_sn_payments.end(),
                 uint64_t{0},
-                [&](auto a, auto b) { return a + b.amount; });
+                [&](auto a, auto b) { return a + b.coin_amount(); });
     } else {
         max_base_reward += reward_parts.base_miner + reward_parts.service_node_total;
     }
@@ -3406,7 +3406,7 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
             uint16_t port = 0;
             for (const service_nodes::service_node_list::recently_removed_node&
                          recently_removed_it : service_node_list.recently_removed_nodes()) {
-                if (it != recently_removed_it.bls_pubkey)
+                if (it != recently_removed_it.info.bls_public_key)
                     continue;
                 protocol_dereg =
                         recently_removed_it.type ==
