@@ -452,7 +452,7 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint
 
     for (auto [address, amount] : accrued_amounts) {
         auto& p = payments.emplace_back();
-        p.amount = sql_db_money::db_amount(amount / BATCH_REWARD_FACTOR * BATCH_REWARD_FACTOR); /* truncate to atomic OXEN */
+        p.amount = reward_money::db_amount(amount / BATCH_REWARD_FACTOR * BATCH_REWARD_FACTOR); /* truncate to atomic OXEN */
         [[maybe_unused]] bool addr_ok =
                 cryptonote::get_account_address_from_str(p.address_info, m_nettype, address);
         assert(addr_ok);
@@ -847,7 +847,7 @@ bool BlockchainSQLite::validate_batch_payment(
             cryptonote::get_deterministic_keypair_from_height(block_height);
     for (size_t vout_index = 0; vout_index < miner_tx_vouts.size(); vout_index++) {
         const auto& [pubkey, amt] = miner_tx_vouts[vout_index];
-        auto amount = sql_db_money::coin_amount(amt);
+        auto amount = reward_money::coin_amount(amt);
         const auto& from_db = calculated_payments_from_batching_db[vout_index];
         if (amount.to_db() != from_db.amount.to_db()) {
             log::error(

@@ -1895,7 +1895,7 @@ bool service_node_list::state_t::process_confirmed_event(
         // This leads us to storing a cryptonote address in the delayed payments which causes the
         // network to stall as code tries to deserialise that address into an eth address and fails.
         if (contributor.ethereum_address) {
-            returned_stakes.emplace_back(contributor.ethereum_address, cryptonote::sql_db_money::coin_amount(contributor.amount));
+            returned_stakes.emplace_back(contributor.ethereum_address, cryptonote::reward_money::coin_amount(contributor.amount));
         }
     }
 
@@ -1921,7 +1921,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 returned_stakes[0].amount.to_coin());
         return false;
     }
-    returned_stakes[0].amount = cryptonote::sql_db_money::coin_amount(returned_stakes[0].amount.to_coin() - slash_amount);
+    returned_stakes[0].amount = cryptonote::reward_money::coin_amount(returned_stakes[0].amount.to_coin() - slash_amount);
 
     if (my_keys && my_keys->pub == node->service_node_pubkey)
         log::info(
@@ -3921,12 +3921,12 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
         } break;
 
         case verify_mode::batched_sn_rewards: {
-            cryptonote::sql_db_money total_payout_in_our_db = std::accumulate(
+            cryptonote::reward_money total_payout_in_our_db = std::accumulate(
                     batched_sn_payments.begin(),
                     batched_sn_payments.end(),
-                    cryptonote::sql_db_money{},
+                    cryptonote::reward_money{},
                     [](auto&& a, auto&& b) {
-                        return cryptonote::sql_db_money::db_amount(a.to_db() + b.amount.to_db());
+                        return cryptonote::reward_money::db_amount(a.to_db() + b.amount.to_db());
                     });
 
             uint64_t total_payout_in_vouts = 0;
@@ -3946,7 +3946,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                     throw oxen::traced<std::runtime_error>{
                             "Batched reward payout invalid: exceeds maximum possible payout size"};
 
-                auto paid_amount = cryptonote::sql_db_money::coin_amount(vout.amount);
+                auto paid_amount = cryptonote::reward_money::coin_amount(vout.amount);
                 total_payout_in_vouts += paid_amount.to_coin();
                 if (paid_amount != batch_payment.amount)
                     throw oxen::traced<std::runtime_error>{

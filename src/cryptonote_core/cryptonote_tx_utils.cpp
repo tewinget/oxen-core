@@ -406,7 +406,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
 
             if (hard_fork_version >= hf::hf19_reward_batching) {
                 for (size_t i = 0; i < p_payouts.size(); i++)
-                    batched_rewards.emplace_back(p_payouts[i].address, sql_db_money::coin_amount(split_rewards[i]));
+                    batched_rewards.emplace_back(p_payouts[i].address, reward_money::coin_amount(split_rewards[i]));
             } else {
                 for (size_t i = 0; i < p_payouts.size(); i++)
                     rewards.emplace_back(reward_type::snode, p_payouts[i].address, split_rewards[i]);
@@ -417,7 +417,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
                 leader.payouts, leader_reward, true /*distribute_remainder*/);
         if (hard_fork_version >= hf::hf19_reward_batching) {
             for (size_t i = 0; i < leader.payouts.size(); i++)
-                batched_rewards.emplace_back(leader.payouts[i].address, sql_db_money::coin_amount(split_rewards[i]));
+                batched_rewards.emplace_back(leader.payouts[i].address, reward_money::coin_amount(split_rewards[i]));
         } else {
             for (size_t i = 0; i < leader.payouts.size(); i++)
                 rewards.emplace_back(reward_type::snode, leader.payouts[i].address, split_rewards[i]);
@@ -433,7 +433,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
         if (uint64_t miner_amount = reward_parts.base_miner + reward_parts.miner_fee;
             miner_amount) {
             if (hard_fork_version >= hf::hf19_reward_batching) {
-                batched_rewards.emplace_back(miner_tx_context.miner_block_producer, sql_db_money::coin_amount(miner_amount));
+                batched_rewards.emplace_back(miner_tx_context.miner_block_producer, reward_money::coin_amount(miner_amount));
             } else {
                 rewards.emplace_back(reward_type::miner, miner_tx_context.miner_block_producer, miner_amount);
             }
@@ -446,7 +446,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
                     hard_fork_version >= hf::hf16_pulse /*distribute_remainder*/);
             if (hard_fork_version >= hf::hf19_reward_batching) {
                 for (size_t i = 0; i < leader.payouts.size(); i++)
-                    batched_rewards.emplace_back(leader.payouts[i].address, sql_db_money::coin_amount(split_rewards[i]));
+                    batched_rewards.emplace_back(leader.payouts[i].address, reward_money::coin_amount(split_rewards[i]));
             } else {
                 for (size_t i = 0; i < leader.payouts.size(); i++)
                     rewards.emplace_back(reward_type::snode, leader.payouts[i].address, split_rewards[i]);

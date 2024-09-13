@@ -74,23 +74,23 @@ struct address_parse_info {
     KV_MAP_SERIALIZABLE
 };
 
-// Strongly-typed money amount used to interface with the SQL DB when inserting
-// money into the DB. Amounts stored in the DB use a higher precision by a
-// factor of `BATCH_REWARD_FACTOR`.
-struct sql_db_money {
+// Strongly-typed money amount used to calculate rewards at a higher precision by a factory of
+// `BATCH_REWARD_FACTOR`. Money amounts are stored at the higher precision in the DB.
+struct reward_money {
 
     // Construct a money value from an atomic $COIN amount.
-    static sql_db_money coin_amount(uint64_t amount) { return {.amount = amount * BATCH_REWARD_FACTOR}; }
+    static reward_money coin_amount(uint64_t amount) { return {.amount = amount * BATCH_REWARD_FACTOR}; }
 
-    // Construct a money value from an atomic $COIN amount denoted in DB units. DB units have more
-    // precision to minimise integer division errors.
-    static sql_db_money db_amount(uint64_t amount)   { return {.amount = amount}; }
+    // Construct a money value from an atomic $COIN amount denoted with the extra precision
+    // (pre-multiplied with `BATCH_REWARD_FACTOR`) suitable for storing in the DB. There is more
+    // precision to minimise integer division errors in reward calculations.
+    static reward_money db_amount(uint64_t amount)   { return {.amount = amount}; }
 
     uint64_t to_coin() const { return amount / BATCH_REWARD_FACTOR; }
 
     uint64_t to_db() const { return amount; }
 
-    constexpr auto operator<=>(const sql_db_money& rhs) const = default;
+    constexpr auto operator<=>(const reward_money& rhs) const = default;
 
     uint64_t amount{0};
 };
@@ -98,13 +98,13 @@ struct sql_db_money {
 struct batch_sn_payment {
     cryptonote::address_parse_info address_info{};
     eth::address eth_address{};
-    sql_db_money amount;
+    reward_money amount;
     batch_sn_payment() = default;
-    batch_sn_payment(const cryptonote::address_parse_info& addr_info, sql_db_money amt) :
+    batch_sn_payment(const cryptonote::address_parse_info& addr_info, reward_money amt) :
             address_info{addr_info}, amount{amt} {}
-    batch_sn_payment(const cryptonote::account_public_address& addr, sql_db_money amt) :
+    batch_sn_payment(const cryptonote::account_public_address& addr, reward_money amt) :
             address_info{addr, 0}, amount{amt} {}
-    batch_sn_payment(const eth::address& addr, sql_db_money amt) :
+    batch_sn_payment(const eth::address& addr, reward_money amt) :
             eth_address{addr}, amount{amt} {}
 };
 
