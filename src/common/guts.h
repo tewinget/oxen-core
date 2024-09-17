@@ -60,14 +60,14 @@ std::string hex_guts(const T& val) {
 /// divides T.
 template <safe_to_memcpy S, safe_to_memcpy T>
     requires(sizeof(T) % sizeof(S) == 0 && alignof(S) < alignof(T))
-std::span<S> span_guts(T& val) {
-    return {reinterpret_cast<S*>(&val), sizeof(val)};
+constexpr auto span_guts(T& val) {
+    return std::span<S, sizeof(T) / sizeof(S)>{reinterpret_cast<S*>(&val), sizeof(val)};
 }
 /// const version of the above, return a span<const S>
 template <safe_to_memcpy S, safe_to_memcpy T>
     requires(sizeof(T) % sizeof(S) == 0 && alignof(S) < alignof(T))
-std::span<const S> span_guts(const T& val) {
-    return {reinterpret_cast<const S*>(&val), sizeof(val)};
+constexpr auto span_guts(const T& val) {
+    return std::span<const S, sizeof(T) / sizeof(S)>{reinterpret_cast<const S*>(&val), sizeof(val)};
 }
 
 /// Function to reverse the above functions (not including hex_guts); takes anything byte spannable
