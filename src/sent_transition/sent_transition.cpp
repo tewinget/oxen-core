@@ -1,14 +1,18 @@
 #include "sent_transition.h"
+#include "detail.h"
 
 #include <ranges>
 
+#include "logging/oxen_logger.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 
 namespace oxen::sent {
 
-using addrmap_t = std::unordered_map<cryptonote::account_public_address, eth::address>;
+inline auto logcat = oxen::log::Cat("sent_transition");
+
+using addrmap_t = std::unordered_map<std::string, eth::address>;
 using conv_ratio_t = std::pair<std::uint8_t, std::uint8_t>;
 using bonus_map_t = std::unordered_map<eth::address, std::uint64_t>;
 using proper_ed_keys_t = std::unordered_map<crypto::public_key, crypto::ed25519_public_key>;
@@ -35,34 +39,48 @@ namespace mainnet {
     const conv_ratio_t conv_ratio;
     const bonus_map_t transition_bonus;
 }  // namespace mainnet
+/*
+namespace localdev {
+    const addrmap_t addresses;
+    const proper_ed_keys_t proper_ed_keys;
+    const bls_keys_t bls_keys;
+    const conv_ratio_t conv_ratio;
+    const bonus_map_t transition_bonus;
+}  // namespace localdev
+*/
 
 const conv_ratio_t& conversion_ratio(network_type net) {
     return net == network_type::DEVNET  ? devnet::conv_ratio
          : net == network_type::TESTNET ? testnet::conv_ratio
+         : net == network_type::LOCALDEV ? localdev::conv_ratio
                                         : mainnet::conv_ratio;
 }
 
 const addrmap_t& addresses(network_type net) {
     return net == network_type::DEVNET  ? devnet::addresses
          : net == network_type::TESTNET ? testnet::addresses
+         : net == network_type::LOCALDEV ? localdev::addresses
                                         : mainnet::addresses;
 }
 
 const bonus_map_t& transition_bonus(network_type net) {
     return net == network_type::DEVNET  ? devnet::transition_bonus
          : net == network_type::TESTNET ? testnet::transition_bonus
+         : net == network_type::LOCALDEV ? localdev::transition_bonus
                                         : mainnet::transition_bonus;
 }
 
 const proper_ed_keys_t proper_ed_keys(network_type net) {
     return net == network_type::DEVNET  ? devnet::proper_ed_keys
          : net == network_type::TESTNET ? testnet::proper_ed_keys
+         : net == network_type::LOCALDEV ? localdev::proper_ed_keys
                                         : mainnet::proper_ed_keys;
 }
 
 const bls_keys_t bls_keys(network_type net) {
     return net == network_type::DEVNET  ? devnet::bls_keys
          : net == network_type::TESTNET ? testnet::bls_keys
+         : net == network_type::LOCALDEV ? localdev::bls_keys
                                         : mainnet::bls_keys;
 }
 
@@ -70,8 +88,29 @@ void transition(
         service_nodes::service_node_list::state_t& snl_state,
         cryptonote::BlockchainSQLite& sql,
         network_type net) {
+
+    auto address_info_from_str = [](network_type network, const std::string& addr) {
+        cryptonote::address_parse_info api;
+        if (!get_account_address_from_str(api, network, addr) || api.has_payment_id ||
+            api.is_subaddress)
+            throw std::runtime_error{fmt::format(
+                    "Unable to perform SENT transition: batching database contains invalid, "
+                    "unparseable, or non-OXEN address '{}'",
+                    addr)};
+        return api;
+    };
     const auto& conv_ratio = conversion_ratio(net);
-    const auto& sent_addrs = addresses(net);
+
+    const auto& unparsed_sent_addrs = addresses(net);
+    log::warning(logcat, "oxen -> sent addr map size: {}", unparsed_sent_addrs.size());
+    std::unordered_map<cryptonote::account_public_address, eth::address> sent_addrs;
+    for (const auto& [o, s] : unparsed_sent_addrs) {
+        auto parsed_addr_info = address_info_from_str(net, o);
+        auto addr = cryptonote::get_account_address_as_str(net, false, parsed_addr_info.address);
+        log::warning(logcat, "{} {} {}", o, o == addr ? "==" : "!=", addr);
+        sent_addrs[parsed_addr_info.address] = s;
+    }
+
     const auto& remap_ed_keys = proper_ed_keys(net);
     const auto& node_bls_keys = bls_keys(net);
 
@@ -96,13 +135,7 @@ void transition(
         auto& addr = accrued_addr[i];
         auto& val = accrued_value[i];
 
-        cryptonote::address_parse_info api;
-        if (!get_account_address_from_str(api, net, addr) || api.has_payment_id ||
-            api.is_subaddress)
-            throw std::runtime_error{fmt::format(
-                    "Unable to perform SENT transition: batching database contains invalid, "
-                    "unparseable, or non-OXEN address '{}'",
-                    addr)};
+        auto api = address_info_from_str(net, addr);
         const auto& oxen_addr = api.address;
 
         auto it = sent_addrs.find(oxen_addr);
@@ -111,6 +144,7 @@ void transition(
 
         const auto& eth_addr = it->second;
         unallocated[eth_addr] += oxen_to_sent(val);
+        log::warning(logcat, "oxen -> sent ({} -> {}) accrued unpaid oxen rewards: {}", addr, eth_addr, val);
         converted_rewards.emplace_back(oxen_addr, val);
     }
 
@@ -123,6 +157,7 @@ void transition(
     for (const auto& [pubkey, info] : snl_state.service_nodes_infos) {
         auto& old_stakes = std::get<std::vector<service_nodes::service_node_info::oxen_contributor>>(info->contributors);
         for (auto& contributor : old_stakes) {
+            auto addr = cryptonote::get_account_address_as_str(net, false, contributor.address);
             if (auto it = sent_addrs.find(contributor.address); it != sent_addrs.end()) {
                 // Although the sum of .locked_contributions.amount is *usually* the same as
                 // .amount, it's possible for a small over-contribution to have been accepted which
@@ -132,7 +167,10 @@ void transition(
                 for (const auto& lc : contributor.locked_contributions)
                     total += lc.amount;
                 unallocated[it->second] += oxen_to_sent(total);
+                log::warning(logcat, "old stake from {} of amount {} -> SENT {} of amount {}, SENT balance {}", addr, total, it->second, oxen_to_sent(total), unallocated[it->second]);
             }
+            else
+                log::warning(logcat, "no SENT address for OXEN wallet {}", addr);
         }
     }
 
@@ -243,6 +281,7 @@ void transition(
                     sent_required = sent_required * extra_ratio->first / extra_ratio->second;
 
                 sent_stake[it->second] += sent_required;
+                log::warning(logcat, "have {} from SENT {} for node {}", sent_required, it->second, pk);
             }
         }
 
@@ -276,6 +315,7 @@ void transition(
                     zombie = true;
                     break;
                 }
+                log::warning(logcat, "allocated {} from SENT {} for node {}, new SENT balance {}", reqd, eth, pk, unallocated[eth]);
             }
         }
 

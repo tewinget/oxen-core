@@ -42,7 +42,7 @@ static_assert(
         std::numeric_limits<uint64_t>::max() / 100'000000000);
 
 /// Returns the mapping of OXEN -> SENT addresses for the given network type.
-const std::unordered_map<cryptonote::account_public_address, eth::address>& addresses(
+const std::unordered_map<std::string, eth::address>& addresses(
         network_type net);
 
 /// Returns the OXEN -> SENT conversion ratio to apply to conversion-registered wallets at the
