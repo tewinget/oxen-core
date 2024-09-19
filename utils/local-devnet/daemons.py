@@ -79,6 +79,7 @@ class RPCDaemon:
 
     def stop(self):
         """Tries stopping with a term at first, then a kill if the term hasn't worked after 10s"""
+        print(f"RPCDaemon::stop called on {self.name}")
         if self.proc:
             self.terminate()
             try:
@@ -318,7 +319,8 @@ class Wallet(RPCDaemon):
             datadir=None,
             listen_ip=None,
             rpc_port=None,
-            log_level=4):
+            log_level=4,
+            existing_wallet=False):
 
         self.listen_ip = listen_ip or LISTEN_IP
         self.rpc_port = rpc_port or next_port()
@@ -339,6 +341,7 @@ class Wallet(RPCDaemon):
                 '--wallet-dir={}'.format(self.walletdir),
                 )
         self.wallet_address = None
+        self.existing_wallet = existing_wallet
 
 
     def ready(self, wallet="wallet", existing=False):
@@ -350,7 +353,7 @@ class Wallet(RPCDaemon):
             self.start()
 
         self.wallet_filename = wallet
-        if existing:
+        if existing or self.existing_wallet:
             r = self.wait_for_json_rpc("open_wallet", {"filename": wallet, "password": ""})
         else:
             r = self.wait_for_json_rpc("create_wallet", {"filename": wallet, "password": "", "language": "English"})
@@ -388,9 +391,13 @@ class Wallet(RPCDaemon):
         """Returns (total, unlocked) balances.  Can optionally refresh first."""
         if refresh:
             self.refresh()
-        b = self.json_rpc("get_balance").json()['result']
-        return (b['balance'], b['unlocked_balance'])
-
+        try:
+            resp = self.json_rpc("get_balance").json()
+            b = resp['result']
+            return (b['balance'], b['unlocked_balance'])
+        except Exception as e:
+            print(f"get_balance response: {resp}")
+            raise e
 
     def transfer(self, to, amount=None, *, priority=None, sweep=False):
         """Attempts a transfer.  Throws TransferFailed if it gets rejected by the daemon, otherwise

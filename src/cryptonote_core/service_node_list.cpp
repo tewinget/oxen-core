@@ -3324,7 +3324,38 @@ void service_node_list::state_t::update_from_block(
     // On first block of hf21, do hf21 transition.
     if (auto hf21_height = hard_fork_begins(nettype, hf::hf21_eth); height == *hf21_height)
     {
+        auto print_sns = [&]() {
+            log::warning(logcat, "Printing service node list:\n\n");
+            for (const auto& info : service_nodes_infos) {
+                std::string op_addr;
+                std::string op_addr_eth;
+                std::vector<std::string> contributors;
+                for (const auto& c : info.second->contributors) {
+                    auto a = cryptonote::get_account_address_as_str(nettype, 0, c.address);
+                    contributors.emplace_back(fmt::format("{} eth ({}) bene ({}): {}", a, c.ethereum_address, c.ethereum_beneficiary, c.amount));
+                }
+                op_addr = cryptonote::get_account_address_as_str(nettype, 0, info.second->operator_address);
+                op_addr += fmt::format(" eth({})", info.second->operator_ethereum_address);
+
+                auto f = fmt::format("\noperator: {}\ncontributors:[", op_addr);
+                for (const auto& c : contributors) {
+                    f += "\n\t";
+                    f += c;
+                }
+                f += "\n]";
+                f += fmt::format("\ntotal_contributed: {}", info.second->total_contributed);
+                f += fmt::format("\nstaking_requirement: {}", info.second->staking_requirement);
+                f += fmt::format("\ned_pubkey: {}", info.first);
+                f += fmt::format("\nbls_pubkey: {}", info.second->bls_public_key);
+                log::warning(logcat, "{}", f);
+            }
+            log::warning(logcat, "\n\nFinished printing service node list.");
+        };
+
+        log::warning(logcat, "Beginning hf21 transition, height = {}, nettype = {}", height, (uint8_t)nettype);
+        print_sns();
         oxen::sent::transition(*this, sqlite_db, nettype);
+        print_sns();
     }
 
     //
@@ -5278,6 +5309,7 @@ service_node_list::state_t::state_t(service_node_list& snl, state_serialized&& s
             // Nothing to do here (leave consensus reasons as 0s)
             info.version = version_t::v7_decommission_reason;
         }
+
         if (info.version < version_t::v8_ethereum_address) {
             // Nothing to do here
             info.version = version_t::v8_ethereum_address;
@@ -5874,6 +5906,11 @@ bool service_node_info::can_transition_to_state(
 payout service_node_payout_portions(const crypto::public_key& key, const service_node_info& info) {
     service_nodes::payout result = {};
     result.key = key;
+
+    // FIXME: this function shouldn't be called on "zombie" post-eth-bls nodes,
+    //        but early return here if it is
+    if (info.staking_requirement == 0)
+        return result;
 
     // Add contributors and their portions to winners.
     result.payouts.reserve(info.contributors.size());
