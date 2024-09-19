@@ -700,8 +700,7 @@ class service_node_list {
             uint16_t storage_omq_port,
             std::array<uint16_t, 3> ss_version,
             uint16_t quorumnet_port,
-            std::array<uint16_t, 3> lokinet_version,
-            const eth::BLSSigner& signer) const;
+            std::array<uint16_t, 3> lokinet_version) const;
 
     bool handle_uptime_proof(
             std::unique_ptr<uptime_proof::Proof> proof,

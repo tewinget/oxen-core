@@ -58,13 +58,13 @@ std::string hex_guts(const T& val) {
 /// Returns a span<S> over the data of the given object.  Like view_guts, this required a trivial
 /// type.  This additionally requires that S have alignment no more strict than T, and that S evenly
 /// divides T.
-template <safe_to_memcpy S, safe_to_memcpy T>
+template <safe_to_memcpy S = uint8_t, safe_to_memcpy T>
     requires(sizeof(T) % sizeof(S) == 0 && alignof(S) < alignof(T))
 constexpr auto span_guts(T& val) {
     return std::span<S, sizeof(T) / sizeof(S)>{reinterpret_cast<S*>(&val), sizeof(val)};
 }
 /// const version of the above, return a span<const S>
-template <safe_to_memcpy S, safe_to_memcpy T>
+template <safe_to_memcpy S = uint8_t, safe_to_memcpy T>
     requires(sizeof(T) % sizeof(S) == 0 && alignof(S) < alignof(T))
 constexpr auto span_guts(const T& val) {
     return std::span<const S, sizeof(T) / sizeof(S)>{reinterpret_cast<const S*>(&val), sizeof(val)};

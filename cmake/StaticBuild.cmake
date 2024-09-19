@@ -108,6 +108,42 @@ set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
 set(OPENSSL_HASH SHA256=23c666d0edf20f14249b3d8f0368acaee9ab585b09e1de82107c66e1f3ec9533
     CACHE STRING "openssl source hash")
 
+set(LIBICONV_VERSION 1.17 CACHE STRING "libiconv version")
+set(LIBICONV_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libiconv
+    CACHE STRING "libiconv mirror(s)")
+set(LIBICONV_SOURCE libiconv-${LIBICONV_VERSION}.tar.gz)
+set(LIBICONV_HASH SHA512=18a09de2d026da4f2d8b858517b0f26d853b21179cf4fa9a41070b2d140030ad9525637dc4f34fc7f27abca8acdc84c6751dfb1d426e78bf92af4040603ced86
+    CACHE STRING "libiconv source hash")
+
+set(LIBUNISTRING_VERSION 1.1 CACHE STRING "libunistring version")
+set(LIBUNISTRING_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libunistring
+    CACHE STRING "libunistring mirror(s)")
+set(LIBUNISTRING_SOURCE libunistring-${LIBUNISTRING_VERSION}.tar.xz)
+set(LIBUNISTRING_HASH SHA512=01a4267bbd301ea5c389b17ee918ae5b7d645da8b2c6c6f0f004ff2dead9f8e50cda2c6047358890a5fceadc8820ffc5154879193b9bb8970f3fb1fea1f411d6
+    CACHE STRING "libunistring source hash")
+
+set(LIBIDN2_VERSION 2.3.4 CACHE STRING "libidn2 version")
+set(LIBIDN2_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libidn
+    CACHE STRING "libidn2 mirror(s)")
+set(LIBIDN2_SOURCE libidn2-${LIBIDN2_VERSION}.tar.gz)
+set(LIBIDN2_HASH SHA512=a6e90ccef56cfd0b37e3333ab3594bb3cec7ca42a138ca8c4f4ce142da208fa792f6c78ca00c01001c2bc02831abcbaf1cf9bcc346a5290fd7b30708f5a462f3
+    CACHE STRING "libidn2 source hash")
+
+set(LIBTASN1_VERSION 4.19.0 CACHE STRING "libtasn1 version")
+set(LIBTASN1_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libtasn1
+    CACHE STRING "libtasn1 mirror(s)")
+set(LIBTASN1_SOURCE libtasn1-${LIBTASN1_VERSION}.tar.gz)
+set(LIBTASN1_HASH SHA512=287f5eddfb5e21762d9f14d11997e56b953b980b2b03a97ed4cd6d37909bda1ed7d2cdff9da5d270a21d863ab7e54be6b85c05f1075ac5d8f0198997cf335ef4
+    CACHE STRING "libtasn1 source hash")
+
+set(GMP_VERSION 6.3.0 CACHE STRING "gmp version")
+set(GMP_MIRROR ${LOCAL_MIRROR} https://gmplib.org/download/gmp
+    CACHE STRING "gmp mirror(s)")
+set(GMP_SOURCE gmp-${GMP_VERSION}.tar.xz)
+set(GMP_HASH SHA512=e85a0dab5195889948a3462189f0e0598d331d3457612e2d3350799dba2e244316d256f8161df5219538eb003e4b5343f989aaa00f96321559063ed8c8f29fd2
+    CACHE STRING "gmp source hash")
+
+
 include(ExternalProject)
 
 set(DEPS_DESTDIR ${CMAKE_BINARY_DIR}/static-deps)
@@ -183,6 +219,47 @@ elseif(CMAKE_CROSSCOMPILING)
       set(cross_extra "WINDRES=${CMAKE_RC_COMPILER}")
     endif()
   endif()
+endif()
+
+set(apple_cflags_arch)
+set(apple_cxxflags_arch)
+set(apple_ldflags_arch)
+set(build_host "${cross_host}")
+if(APPLE AND CMAKE_CROSSCOMPILING)
+    if(build_host MATCHES "^(.*-.*-)ios([0-9.]+)(-.*)?$")
+        set(build_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
+    endif()
+    if(build_host MATCHES "^(.*-.*-.*)-simulator$")
+        set(build_host "${CMAKE_MATCH_1}")
+    endif()
+
+    set(apple_arch)
+    if(ARCH_TRIPLET MATCHES "^(arm|aarch)64.*")
+        set(apple_arch "arm64")
+    elseif(ARCH_TRIPLET MATCHES "^x86_64.*")
+        set(apple_arch "x86_64")
+    else()
+        message(FATAL_ERROR "Don't know how to specify -arch for GMP for ${ARCH_TRIPLET} (${APPLE_TARGET_TRIPLE})")
+    endif()
+
+    set(apple_cflags_arch " -arch ${apple_arch}")
+    set(apple_cxxflags_arch " -arch ${apple_arch}")
+    if(CMAKE_OSX_DEPLOYMENT_TARGET)
+      if (SDK_NAME)
+        set(apple_ldflags_arch " -m${SDK_NAME}-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+      elseif(CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(apple_ldflags_arch " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+      endif()
+    endif()
+    set(apple_ldflags_arch "${apple_ldflags_arch} -arch ${apple_arch}")
+
+    if(CMAKE_OSX_SYSROOT)
+      foreach(f c cxx ld)
+        set(apple_${f}flags_arch "${apple_${f}flags_arch} -isysroot ${CMAKE_OSX_SYSROOT}")
+      endforeach()
+    endif()
+elseif(build_host STREQUAL "" AND CMAKE_LIBRARY_ARCHITECTURE)
+    set(build_host "--build=${CMAKE_LIBRARY_ARCHITECTURE}")
 endif()
 
 
@@ -569,6 +646,52 @@ target_link_libraries(OpenSSL::SSL INTERFACE OpenSSL::Crypto)
 set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include)
 set(OPENSSL_ROOT_DIR ${DEPS_DESTDIR})
 
+
+set(libtasn_extra_cflags)
+if(CMAKE_C_COMPILER_ID STREQUAL GNU)
+    # libtasn1 under current GCC produces some incredibly verbose warnings; disable them:
+    set(libtasn_extra_cflags " -Wno-analyzer-null-dereference -Wno-analyzer-use-of-uninitialized-value")
+endif()
+
+build_external(libtasn1
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}"
+        "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
+        "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc}
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libtasn1.a ${DEPS_DESTDIR}/include/libtasn1.h)
+add_static_target(libtasn1::libtasn1 libtasn1_external libtasn1.a)
+
+build_external(libiconv
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc}
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libiconv.a ${DEPS_DESTDIR}/include/iconv.h)
+add_static_target(libiconv::libiconv libiconv_external libiconv.a)
+
+build_external(libunistring
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc}
+    DEPENDS libiconv_external
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libunistring.a ${DEPS_DESTDIR}/include/unistr.h)
+add_static_target(libunistring::libunistring libunistring_external libunistring.a libiconv::libiconv)
+
+build_external(libidn2
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}" ${cross_rc}
+    DEPENDS libunistring_external
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libidn2.a ${DEPS_DESTDIR}/include/idn2.h)
+add_static_target(libidn2::libidn2 libidn2_external libidn2.a libunistring::libunistring)
+
+build_external(gmp
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
+        "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc} CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
+    DEPENDS libidn2_external libtasn1_external
+)
+add_static_target(gmp::gmp gmp_external libgmp.a libidn2::libidn2 libtasn1::libtasn1)
+
 set(curl_extra)
 if(WIN32)
   set(curl_ssl_opts --with-schannel)
@@ -618,7 +741,7 @@ foreach(curl_arch ${curl_arches})
     --disable-smtp --disable-gopher --disable-manual --disable-libcurl-option --enable-http
     --enable-ipv6 --disable-threaded-resolver --disable-pthreads --disable-verbose --disable-sspi
     --enable-crypto-auth --disable-ntlm-wb --disable-tls-srp --disable-unix-sockets --disable-cookies
-    --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
+    --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --with-libidn2
     --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
     --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
     --without-zsh-functions-dir --without-fish-functions-dir --without-zstd --without-libpsl
@@ -647,8 +770,8 @@ if(IOS AND num_arches GREATER 1)
     DEPENDS ${curl_lib_targets})
 endif()
 
-add_static_target(CURL::libcurl curl_external libcurl.a)
-set(libcurl_link_libs OpenSSL::SSL zlib)
+add_static_target(CURL::libcurl curl_external libcurl.a )
+set(libcurl_link_libs OpenSSL::SSL zlib libidn2::libidn2)
 if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
   list(APPEND libcurl_link_libs ws2_32)
 elseif(APPLE)

@@ -40,7 +40,7 @@
 
 #include "blockchain.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
-#include "bls/bls_signer.h"
+#include "bls/bls_crypto.h"
 #include "common/exception.h"
 #include "common/i18n.h"
 #include "common/lock.h"
@@ -4185,19 +4185,18 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
         uint16_t storage_omq_port,
         std::array<uint16_t, 3> ss_version,
         uint16_t quorumnet_port,
-        std::array<uint16_t, 3> lokinet_version,
-        const eth::BLSSigner& signer) const {
+        std::array<uint16_t, 3> lokinet_version) const {
     const auto& keys = *m_service_node_keys;
     return uptime_proof::Proof{
             hardfork,
+            blockchain.nettype(),
             public_ip,
             storage_https_port,
             storage_omq_port,
             ss_version,
             quorumnet_port,
             lokinet_version,
-            keys,
-            signer};
+            keys};
 }
 
 template <typename T>
@@ -4415,8 +4414,7 @@ bool service_node_list::handle_uptime_proof(
         }
 
         auto pop = tools::concat_guts<uint8_t>(proof->pubkey_bls, proof->pubkey);
-        if (!eth::BLSSigner::verifyMsg(
-                    blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop)) {
+        if (!eth::verify(blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop)) {
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: BLS proof of possession verification "
