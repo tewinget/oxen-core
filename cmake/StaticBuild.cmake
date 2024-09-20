@@ -28,7 +28,7 @@ set(READLINE_HASH SHA512=27790d0461da3093a7fee6e89a51dcab5dc61928ec42e9228ab3649
     CACHE STRING "readline source hash")
 
 set(SQLITE3_VERSION 3460100 CACHE STRING "sqlite3 version")
-set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2022
+set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2024
     CACHE STRING "sqlite3 download mirror(s)")
 set(SQLITE3_SOURCE sqlite-autoconf-${SQLITE3_VERSION}.tar.gz)
 set(SQLITE3_HASH SHA512=a5ba5af9c8d6440d39ba67e3d5903c165df3f1d111e299efbe7c1cca4876d4d5aecd722e0133670daa6eb5cbf8a85c6a3d9852ab507a393615fb5245a3e1a743
@@ -643,8 +643,8 @@ build_external(openssl
 add_static_target(OpenSSL::SSL openssl_external libssl.a)
 add_static_target(OpenSSL::Crypto openssl_external libcrypto.a)
 target_link_libraries(OpenSSL::SSL INTERFACE OpenSSL::Crypto)
-set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include)
-set(OPENSSL_ROOT_DIR ${DEPS_DESTDIR})
+set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include CACHE PATH "" FORCE)
+set(OPENSSL_ROOT_DIR ${DEPS_DESTDIR} CACHE PATH "" FORCE)
 
 
 set(libtasn_extra_cflags)
