@@ -1614,18 +1614,22 @@ static eth::event::StateChangeVariant get_event_from_tx(const cryptonote::transa
 // change
 static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
         hf hf_version, const service_node_list& snl, const cryptonote::transaction& tx) {
-    auto result = std::make_tuple(crypto::null<crypto::public_key>, "unknown", uint64_t{0});
+    auto result = std::make_tuple(crypto::null<crypto::public_key>, "unknown"s, uint64_t{0});
     auto& [pk, type, val] = result;
     if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
         type = "registration";
-        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx))
+        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx)) {
             pk = reg->service_node_pubkey;
+            if (reg->eth_contributions.size())
+                type += " (op: {})"_format(reg->eth_contributions.front().first);
+        }
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
         type = "unlock";
         if (eth::event::ServiceNodeExitRequest remreq;
             cryptonote::get_field_from_tx_extra(tx.extra, remreq))
             try {
                 pk = snl.public_key_lookup(remreq.bls_pubkey);
+                type += " (key: {})"_format(pk);
             } catch (...) {
             }
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit) {
@@ -1633,6 +1637,12 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
         if (eth::event::ServiceNodeExit exit; cryptonote::get_field_from_tx_extra(tx.extra, exit))
             try {
                 pk = snl.public_key_lookup(exit.bls_pubkey);
+                eth::address op = {};
+                for (auto it : snl.recently_removed_nodes()) {
+                    if (it.service_node_pubkey == pk && it.info.contributors.size())
+                        op = it.info.contributors.front().ethereum_address;
+                }
+                type += " (op: {}; key: {}; returned: {})"_format(op, pk, exit.returned_amount);
             } catch (...) {
             }
     } else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated) {
