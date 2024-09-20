@@ -125,14 +125,18 @@ TEST(BLS, signatures) {
 
     EXPECT_EQ(
             "{}"_format(sig1),
-            "0935f61237111bdf49d7b67232def51e267ff84a9c76503d95aee6ba3a94443c16558636a14f7ab3767cde"
-            "88e5b2021157888ca26908d0d052dfd44b3b8b5c6617a1f756b90523ecc8e9d9744b0e1f6a1ca310533227"
-            "378fd44012cdf44bbaf826559955b29a5fc7a5af1ff0f0318747ce80101abe9ed97ab256977b7c25a7d6");
+            "28dcb2b1512acd2eb2405c6e25cdfa3172b3f3244f4f13b32c5cb0a6e52de22f"
+            "1d1c84e8b728675709c43c53d465601fb7cde902470547fc92e39f47820a2cc3"
+            "25c76fabbab649f9e786d727cc4c5123e1ec677087b920cc3bcd7e6701ed3953"
+            "236410a224c9ba5eccf6189533838c9ef8e0b4354ae11556c705650b9d6a7cc6");
     EXPECT_TRUE(signer.verifyMsg(sig1, pk, hash1));
 
     auto sig2 = signer.signMsg(hash2);
     EXPECT_EQ(
             "{}"_format(sig2),
-            "0a6f2c1693aceac3220fb57277d33203022339b21fca05bd2751cfdf50359ad628d633ff8e214bfa1fed2334fd1d7db512fcd43bba173a84d443fe6d333d64540960da53f247c635af26128574190e91f40d899fefdda43b9f2c17fccf97cf062f82c037ba9e20e63e0bc72bc672e35643adad660e4afe60357c26c83bce7a2b");
+            "04da80bc677397dbd11c1a1a68ba0525e5e461c0eed3011af2445173c5331536"
+            "2f72a0cb8043ac3f5345b218e0cb4d5e2a76da9450d18eeccc8b10a0e97abed7"
+            "2bd7d00154ca33fa1491457dddfcd3874c2892a1e7bead5b4a9b8a588bb8edfe"
+            "23b92cef33ef5fe950f166b4902ac98d6b96c7bc6a537c275bc9044c6b42ff3d");
     EXPECT_TRUE(signer.verifyMsg(sig2, pk, hash2));
 }
