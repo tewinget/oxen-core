@@ -89,7 +89,7 @@ class L2Tracker {
     // is enough to have the last hour of history (for an L2 such as Arbitrum with its 0.25s block
     // time), plus a buffer so that pulse quorum nodes can properly recognize L2 events from the
     // past hour (for achieving pulse consensus).
-    size_t HIST_SIZE = 70min / 250ms;
+    uint64_t HIST_SIZE = 70min / 250ms;
 
     // How many blocks worth of logs we fetch at once.  Various providers impose various limits on
     // this based on the free/paid tier, and so there is no perfect default.  1000 blocks at once
