@@ -106,7 +106,7 @@ namespace epee
       const_cast<t_arg&>(out_struct).store(stg);//TODO: add true const support to searilzation
       std::string buff_to_send;
       stg.store_to_binary(buff_to_send);
-      int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb, command](int code, const epee::span<const uint8_t> buff, typename t_transport::connection_context& context)->bool 
+      int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb](int code, const epee::span<const uint8_t> buff, typename t_transport::connection_context& context)
       {
         t_result result_struct{};
         if( code <=0 )

@@ -56,11 +56,6 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   if (target_hf == hf::none)
     target_hf = cryptonote::hf_max;
   // NOTE: Monero tests use multiple null terminated entries in their arrays
-  {
-    int amounts_paid_len = 0;
-    for (int i = 0; amounts_paid[i] != (uint64_t)-1; ++i)
-      ++amounts_paid_len;
-  }
 
   std::vector<cryptonote::hard_fork> hard_forks = {
     {hf::hf7,0,0}, {hf::hf8,0,1}, {target_hf, 0, NUM_UNLOCKED_BLOCKS + MINED_MONEY_UNLOCK_WINDOW + 1},

@@ -1644,11 +1644,6 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
     return result;
 }
 
-static uint32_t initial_score(const cryptonote::pulse_header& pulse) {
-    return service_node_list::unconfirmed_l2_tx::FULL_SCORE /
-           (static_cast<uint32_t>(pulse.round) + 1);
-}
-
 void service_node_list::state_t::process_new_ethereum_tx(
         const cryptonote::block& block,
         const cryptonote::transaction& tx,

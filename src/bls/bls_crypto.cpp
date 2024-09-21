@@ -381,11 +381,6 @@ namespace {
         load_u256(s, from_big);
         return s;
     }
-    // This writes *to* a 32-byte, big-endian encoded value buffer from a bn256 quad array
-    constexpr void write_u256(std::span<uint8_t, 32> to_big, const std::array<uint64_t, 4> from) {
-        for (size_t i = 0; i < 4; i++)
-            oxenc::write_host_as_big(from[i], to_big.data() + (3 - i) * 8);
-    }
 
     // bn256's unmarshal code expects the final limb pairs to be in x/y order, but what we have from
     // the smart contract stores these as what bn256 considers to be y/x order.  This swaps each

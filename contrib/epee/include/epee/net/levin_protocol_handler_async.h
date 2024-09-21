@@ -180,7 +180,7 @@ public:
       if(m_con.start_outer_call())
       {
         m_timer.expires_from_now(std::chrono::milliseconds(timeout));
-        m_timer.async_wait([&con, command, cb, timeout](const boost::system::error_code& ec)
+        m_timer.async_wait([&con, cb](const boost::system::error_code& ec)
         {
           if(ec == boost::asio::error::operation_aborted)
             return;
@@ -240,9 +240,8 @@ public:
       {
         callback_t& cb = m_cb;
         async_protocol_handler& con = m_con;
-        int command = m_command;
         m_timer.expires_from_now(m_timeout);
-        m_timer.async_wait([&con, cb, command, timeout=m_timeout](const boost::system::error_code& ec)
+        m_timer.async_wait([&con, cb](const boost::system::error_code& ec)
         {
           if(ec == boost::asio::error::operation_aborted)
             return;
