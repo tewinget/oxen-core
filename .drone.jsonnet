@@ -135,7 +135,7 @@ local distro_build_env(distro, deb_suffix_base) = {
   DEBIAN_CODENAME: distro,
   DEBIAN_SUFFIX: deb_suffix_base + distro_deb_suffix[distro],
 } + (if distro_fmtspdsecp(distro) then { WITH_FMT: 1, WITH_SPD: 1, WITH_SECP: 1 } else {}) + (
-  if distro == 'focal' then { OXEN_APPEND_DEPS: ', g++-10', OXEN_DEB_CMAKE_EXTRA: '-DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 -DC_SUPPORTS__WCONDITIONAL_UNINITIALIZED=FALSE -DC_SUPPORTS__WRESERVED_IDENTIFIER=FALSE' } else {}
+  if distro == 'focal' then { OXEN_APPEND_DEPS: ', g++-10', OXEN_DEB_CMAKE_EXTRA: '-DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10' } else {}
 );
 
 local snapshot_deb(distro, deb_suffix_base='-1', buildarch='amd64', debarch='amd64', jobs=6, repo_suffix='/staging') = {
