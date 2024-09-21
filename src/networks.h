@@ -1,6 +1,5 @@
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
 #include <string_view>
 
 #include "common/exception.h"
