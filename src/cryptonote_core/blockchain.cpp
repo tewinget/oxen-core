@@ -4940,11 +4940,10 @@ bool Blockchain::basic_block_checks(cryptonote::block const& blk, bool alt_block
             log::warning(
                     globallogcat,
                     fg(fmt::terminal_color::red),
-                    "Block with id: {}, has invalid version {}.{}; current: {}.{} for height {}",
+                    "Block with id: {}, has invalid version {}.{}; current: {}.x for height {}",
                     blk_hash,
                     static_cast<int>(blk.major_version),
                     +blk.minor_version,
-                    static_cast<int>(required_major_version),
                     static_cast<int>(required_major_version),
                     blk_height);
             return false;

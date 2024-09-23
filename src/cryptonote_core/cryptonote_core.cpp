@@ -702,7 +702,8 @@ bool core::init(
             sqliteDB.release(),
             m_l2_tracker.get(),
             m_offline,
-            m_nettype == network_type::FAKECHAIN ? &regtest_test_options : test_options,
+            (m_nettype == network_type::FAKECHAIN && !test_options) ? &regtest_test_options
+                                                                    : test_options,
             command_line::get_arg(vm, arg_fixed_difficulty),
             get_checkpoints,
             abort);

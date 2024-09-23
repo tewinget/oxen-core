@@ -778,7 +778,7 @@ class service_node_list {
         void serialize_object(Archive& ar) {
             uint8_t version = 1;
             field_varint(ar, "version", version);
-            if (version == 0) { // NOTE: v0 we completely discard and force a full-rescan
+            if (version == 0) {  // NOTE: v0 we completely discard and force a full-rescan
                 crypto::public_key pubkey;
                 eth::bls_public_key bls_pubkey;
                 field(ar, "pubkey", pubkey);
@@ -960,7 +960,9 @@ class service_node_list {
             version_2_regen_recently_removed_nodes_w_sn_info,
             count,
         };
-        static version_t get_version(cryptonote::hf /*hf_version*/) { return version_t::version_2_regen_recently_removed_nodes_w_sn_info; }
+        static version_t get_version(cryptonote::hf /*hf_version*/) {
+            return version_t::version_2_regen_recently_removed_nodes_w_sn_info;
+        }
 
         version_t version{version_t::version_2_regen_recently_removed_nodes_w_sn_info};
         std::vector<quorum_for_serialization> quorum_states;
@@ -1017,8 +1019,8 @@ class service_node_list {
 
         service_node_list* sn_list;
 
-        state_t(service_node_list* snl) : sn_list{snl} {}
-        state_t(service_node_list* snl, state_serialized&& state);
+        explicit state_t(service_node_list* snl) : sn_list{snl} {}
+        state_t(service_node_list& snl, state_serialized&& state);
 
         friend bool operator<(const state_t& a, const state_t& b) { return a.height < b.height; }
         friend bool operator<(const state_t& s, block_height h) { return s.height < h; }
@@ -1152,7 +1154,15 @@ class service_node_list {
         // returns the primary quorum, `round=17` returns the 17th backup quorum.  Returns nullopt
         // if the next block cannot be a pulse block (e.g. because of insufficient active nodes to
         // form a full pulse quorum).
-        std::optional<quorum> get_next_pulse_quorum(cryptonote::hf hf_version, uint8_t round) const;
+        //
+        // `bdb` and `nettype` are usually just the values from sn_list, but can be provided
+        // separately (this is mainly for use in the test suite that manipulates state_t's without
+        // having a service node list).
+        std::optional<quorum> get_next_pulse_quorum(
+                cryptonote::hf hf_version,
+                uint8_t round,
+                const cryptonote::BlockchainDB& bdb,
+                cryptonote::network_type nettype) const;
 
         // Returns the pulse quorum that actually produced this block.  In contrast to
         // `get_block_leader()`, this returns the leader of the actual pulse quorum, which could be

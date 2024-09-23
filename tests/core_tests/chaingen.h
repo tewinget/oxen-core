@@ -974,9 +974,8 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
 //--------------------------------------------------------------------------
 template<typename t_test_class>
 struct get_test_options {
-  std::vector<cryptonote::hard_fork> hard_forks = {{cryptonote::hf::hf7, 0, 0, 0}};
   const cryptonote::test_options test_options = {
-      std::move(hard_forks), 0
+      std::vector<cryptonote::hard_fork>{{cryptonote::hf::hf7, 0, 0, 0}}, 0
   };
 };
 //--------------------------------------------------------------------------
@@ -1416,7 +1415,9 @@ public:
 
 void fill_nonce_with_oxen_generator(struct oxen_chain_generator const *generator, cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height);
 void oxen_register_callback(std::vector<test_event_entry> &events, std::string const &callback_name, oxen_callback callback);
-std::vector<cryptonote::hard_fork> oxen_generate_hard_fork_table(cryptonote::hf hf_version = cryptonote::hf_max, uint64_t pos_delay = 60);
+std::vector<cryptonote::hard_fork> oxen_generate_hard_fork_table(
+        cryptonote::hf hf_version = cryptonote::hf::hf19_reward_batching /* Oxen regs disallowed at HF20+ */,
+        uint64_t pos_delay = 60);
 
 struct oxen_blockchain_entry
 {

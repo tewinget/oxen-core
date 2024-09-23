@@ -620,13 +620,21 @@ bool BlockchainSQLite::reward_handler(
         if (block_reward < base_sn_reward)
             throw oxen::traced<std::logic_error>{"Invalid payment: block reward is too small"};
         if (uint64_t tx_fees = block_reward - base_sn_reward; tx_fees > 0 && block.has_pulse()) {
-            if (auto pulse_leader = service_nodes_state.get_block_producer()) {
+            auto pulse_leader = service_nodes_state.get_block_producer();
+            if (!pulse_leader && !service_nodes_state.sn_list)
+                // No sn_list means we're in the test suite, so to make this work, we'll use the
+                // block_leader.  (NOTE: this will break if some new core_tests tries expects to
+                // award batched backup pulse quorum tx fees as they'll go to the first round
+                // leader, rather than the actual producer, but it isn't worth adding to every
+                // single state_t to avoid that).
+                pulse_leader = service_nodes_state.block_leader;
+
+            if (pulse_leader)
                 add_rewards(
                         block.major_version,
                         tx_fees,
                         *service_nodes_state.service_nodes_infos.at(pulse_leader),
                         payments);
-            }
         }
         block_reward = base_sn_reward;
     }

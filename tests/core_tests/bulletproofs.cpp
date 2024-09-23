@@ -54,7 +54,10 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
 
   if (target_hf == hf::none)
-    target_hf = cryptonote::hf_max;
+    // FIXME: core_tests currently doesn't properly create HF21+ blocks, so cap this at HF20 for
+    // now.  (see also TODO-HF21-plus-reward-generation in chaingen.cpp)
+    target_hf = cryptonote::hf::hf20_eth_transition;
+
   // NOTE: Monero tests use multiple null terminated entries in their arrays
 
   std::vector<cryptonote::hard_fork> hard_forks = {
