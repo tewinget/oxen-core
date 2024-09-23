@@ -329,22 +329,25 @@ uint64_t Blockchain::get_current_blockchain_height(bool lock) const {
 }
 //------------------------------------------------------------------
 bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort) {
+    constexpr auto no_hf_height = std::numeric_limits<uint64_t>::max();
     std::vector<uint64_t> start_height_options;
     uint64_t snl_height = std::max(
-            hard_fork_begins(m_nettype, hf::hf9_service_nodes).value_or(0),
+            hard_fork_begins(m_nettype, hf::hf9_service_nodes).value_or(no_hf_height),
             service_node_list.height() + 1);
-    uint64_t const ons_height =
-            std::max(hard_fork_begins(m_nettype, hf::hf15_ons).value_or(0), m_ons_db.height() + 1);
+    uint64_t const ons_height = std::max(
+            hard_fork_begins(m_nettype, hf::hf15_ons).value_or(no_hf_height),
+            m_ons_db.height() + 1);
     start_height_options.push_back(ons_height);
-    uint64_t sqlite_height = 0;
+    uint64_t sqlite_height;
     if (m_sqlite_db) {
         sqlite_height = std::max(
-                hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0) - 1,
+                hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(no_hf_height) - 1,
                 m_sqlite_db->height + 1);
         start_height_options.push_back(sqlite_height);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
             throw oxen::traced<std::logic_error>("Blockchain missing SQLite Database");
+        sqlite_height = no_hf_height;
     }
     // If the batching database falls behind it NEEDS the service node list information at that
     // point in time
