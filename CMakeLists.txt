@@ -260,9 +260,6 @@ enable_testing()
 
 option(BUILD_DOCUMENTATION "Build the Doxygen documentation." ON)
 option(BUILD_TESTS "Build tests." OFF)
-if (BUILD_TESTS)
-  add_definitions(-DUNIT_TEST)
-endif()
 
 OPTION(USE_DEVICE_TREZOR "Build Trezor support (currently non-functional)" OFF)
 
