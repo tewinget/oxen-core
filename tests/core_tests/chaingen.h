@@ -1216,11 +1216,11 @@ inline bool do_replay_file(const std::string& filename)
     cryptonote::core core;                                                                                             \
     if (generated && do_replay_events_get_core<generator_class>(events, &core, generator_class_instance))              \
     {                                                                                                                  \
-      oxen::log::info(globallogcat, fg(fmt::terminal_color::green), "#TEST# Succeeded {}", #generator_class);\
+      oxen::log::info(globallogcat, fg(fmt::terminal_color::green) | fmt::emphasis::bold, "#TEST# Succeeded {}", #generator_class);\
     }                                                                                                                  \
     else                                                                                                               \
     {                                                                                                                  \
-      oxen::log::error(globallogcat, "#TEST# Failed {}", #generator_class);                                            \
+      oxen::log::error(globallogcat, fg(fmt::terminal_color::red) | fmt::emphasis::bold, "#TEST# Failed {}", #generator_class);\
       failed_tests.push_back(#generator_class);                                                                        \
     }                                                                                                                  \
     core.deinit();                                                                                                     \
@@ -1231,11 +1231,11 @@ inline bool do_replay_file(const std::string& filename)
     if (generated &&                                                                                                   \
         replay_events_through_core_plain<generator_class>(events, CORE, generator_class_instance, false /*reinit*/))   \
     {                                                                                                                  \
-      oxen::log::info(globallogcat, fg(fmt::terminal_color::green), "#TEST# Succeeded {}", #generator_class);\
+      oxen::log::info(globallogcat, fg(fmt::terminal_color::green) | fmt::emphasis::bold, "#TEST# Succeeded {}", #generator_class);\
     }                                                                                                                  \
     else                                                                                                               \
     {                                                                                                                  \
-      oxen::log::error(globallogcat, "{}{}", , "#TEST# Failed ", #generator_class);                                    \
+      oxen::log::error(globallogcat, "{}{}", fg(fmt::terminal_color::red) | fmt::emphasis::bold, "#TEST# Failed ", #generator_class);\
       failed_tests.push_back(#generator_class);                                                                        \
     }                                                                                                                  \
   }
