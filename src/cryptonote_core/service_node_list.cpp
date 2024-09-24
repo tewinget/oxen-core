@@ -3063,7 +3063,7 @@ void service_node_list::state_t::update_from_block(
             logcat,
             "Updating state_t{} from block for height {}",
             sn_list ? "" : " (without sn_list yet)",
-            height);
+            height + 1);
     bool need_swarm_update = false;
     assert(block.get_height() == height + 1);
     quorums = {};
