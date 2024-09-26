@@ -129,13 +129,8 @@ endif()
 
 set(CPR_FORCE_OPENSSL_BACKEND ON CACHE BOOL "" FORCE)
 set(ethyl_ENABLE_CRYPTO_LIBRARY FALSE CACHE BOOL "" FORCE)
+set(ethyl_ENABLE_SIGNER FALSE CACHE BOOL "" FORCE)
 set(ethyl_ENABLE_LTO FALSE CACHE BOOL "" FORCE)
-if(CMAKE_C_COMPILER STREQUAL GNU AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11)
-    # Hack around a bug in ethyl/external/secp256k1's supported flag detection that somehow detects
-    # these flags as supported on focal with gcc-10:
-    set(C_SUPPORTS__WCONDITIONAL_UNINITIALIZED FALSE CACHE BOOL "" FORCE)
-    set(C_SUPPORTS__WRESERVED_IDENTIFIER FALSE CACHE BOOL "" FORCE)
-endif()
 add_subdirectory(ethyl EXCLUDE_FROM_ALL)
 oxen_install_library(ethyl)
 oxen_install_library(cpr)  # comes via ethyl
