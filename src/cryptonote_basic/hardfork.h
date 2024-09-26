@@ -30,6 +30,7 @@
 
 #include <cstdint>
 #include <ctime>
+#include <optional>
 #include <span>
 #include <vector>
 
