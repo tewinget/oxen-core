@@ -95,9 +95,10 @@ static std::string log_new_service_node_tx(
         const auto& contributor = item.contributors[index];
         fmt::format_to(
                 std::back_inserter(buffer),
-                "  - {:02} [address: {}, amount: {}]\n",
+                "  - {:02} [address: {}, beneficiary: {}, amount: {}]\n",
                 index,
                 contributor.address,
+                contributor.beneficiary,
                 contributor.amount);
     }
 
@@ -211,7 +212,7 @@ static std::string log_service_node_blob(const ContractServiceNode& blob, std::s
     return result;
 }
 
-event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::LogEntry& log) {
+event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_t chain_id, const ethyl::LogEntry& log) {
     event::StateChangeVariant result;
     const uint64_t l2_height = log.blockNumber.value_or(0);
     if (l2_height == 0) {
@@ -221,6 +222,15 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 
     switch (get_log_type(log)) {
         case EventType::NewServiceNode: {
+            // TODO: We can't just update the NewServiceNode event with new fields without
+            // versioning otherwise nodes won't be able to parse old L2 TXs at the boundary of a
+            // smart contract upgrade.
+            //
+            // There are hacks around this, like currently if no L2 is set, we sync unconditionally-
+            // or pausing the contract around the upgrade so that nodes only observe the new
+            // structure. But this all breaks if you sync the chain with an archive node, and so the
+            // below code needs to be version aware to parse the blob correctly.
+
             // event NewServiceNode(
             //      uint64 indexed serviceNodeID,
             //      address initiator,
@@ -230,7 +240,15 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             //          (uint256,uint256) serviceNodeSignature,
             //          uint256 fee,
             //      },
-            //      Contributors[] contributors);
+            //      [ // Contributors contributors[]
+            //        {
+            //          { // struct Staker
+            //            address addr,
+            //            address beneficiary,
+            //          }
+            //          uint256 stakeAmount,
+            //        }
+            //      ]
             //
             // Note:
             // - address is 32 bytes, the first 12 of which are padding
@@ -321,11 +339,11 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             // TODO: Validate the amount, can't be 0, should be min contribution. Is this done in
             // the SNL? Maybe.
             for (size_t index = 0; index < num_contributors; index++) {
-                auto& [addr, amt] = item.contributors.emplace_back();
+                auto& [version, addr, beneficiary, amt] = item.contributors.emplace_back();
+                version = event::Contributor::hardfork_to_version(hf_version);
                 u256 amt256;
-                std::tie(addr, amt256, contrib_hex) =
-                        tools::split_hex_into<skip<12>, eth::address, u256, std::string_view>(
-                                contrib_hex);
+                std::tie(addr, beneficiary, amt256, contrib_hex) =
+                        tools::split_hex_into<skip<12>, eth::address, eth::address, u256, std::string_view>(contrib_hex);
                 amt = tools::decode_integer_be(amt256);
             }
 
@@ -586,10 +604,10 @@ ContractServiceNode RewardsContract::service_nodes(
 
     for (size_t i = 0; i < result.contributorsSize; i++) {
         try {
-            auto& [addr, amount] = result.contributors[i];
+            auto& [version, addr, beneficiary, amount] = result.contributors[i];
             u256 amt;
-            std::tie(addr, amt, contrib_data) =
-                    tools::split_hex_into<skip<12>, eth::address, u256, std::string_view>(
+            std::tie(addr, beneficiary, amt, contrib_data) =
+                    tools::split_hex_into<skip<12>, eth::address, eth::address, u256, std::string_view>(
                             contrib_data);
             amount = tools::decode_integer_be(amt);
         } catch (const std::exception& e) {

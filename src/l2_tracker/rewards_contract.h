@@ -17,7 +17,7 @@ struct LogEntry;
 
 namespace eth {
 
-event::StateChangeVariant get_log_event(uint64_t chain_id, const ethyl::LogEntry& log);
+event::StateChangeVariant get_log_event(cryptonote::hf hf_version, uint64_t chain_id, const ethyl::LogEntry& log);
 inline bool is_state_change(const event::StateChangeVariant& v) {
     return v.index() > 0;
 }

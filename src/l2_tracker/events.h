@@ -7,9 +7,11 @@
 #include <vector>
 
 #include "common/formattable.h"
+#include "common/util.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "cryptonote_basic/txtypes.h"
+#include "cryptonote_basic/hardfork.h"
 
 using namespace std::literals;
 
@@ -27,15 +29,62 @@ struct L2StateChange {
 };
 
 struct Contributor {
+    enum class Version {
+        version_invalid,
+        version_0,
+        version_1_beneficiary,
+        count,
+    };
+
+    Version      version;
     eth::address address;
-    uint64_t amount;
+    eth::address beneficiary;
+    uint64_t     amount;
 
     auto operator<=>(const Contributor& o) const = default;
+
+    static Version hardfork_to_version(cryptonote::hf hf_version) {
+        auto result = Version::version_0;
+        if (hf_version >= cryptonote::hf::hf22_eth_beneficiary)
+            result = Version::version_1_beneficiary;
+        return result;
+    }
 
     template <class Archive>
     void serialize_object(Archive& ar) {
         field(ar, "address", address);
         field_varint(ar, "amount", amount);
+
+        // TODO: These comments are only valid for stagenet, mainnet will launch without these
+        // problems. We can remove these chunks and serialize the version, reset it back to 0 when
+        // we relaunch stagenet.
+        if (Archive::is_serializer) {
+            // NOTE: Trying to serialize a invalidly initialised contributor object!
+            // Make sure contributor `version` is serialized with correct value for the current
+            // hardfork.
+            assert(version != Version::version_invalid);
+        }
+
+        // NOTE: Initial release of L2 network did not serialise a version.
+        // The absence of a version is identified as v0. Since `NewServiceNode`
+        // is a `tx_extra` field and it uses `Contributor` this structure is
+        // sensitive to serialisation in order to maintain consensus.
+        //
+        // After V0 we serialise the version such that we can synchronise to a
+        // hardfork when new fields are to be added used in consensus whilst
+        // retaining backwards compatibility.
+        try {
+            field_varint(ar, "version", version, [](auto v) { return v < Version::count; });
+        } catch(...) {
+            version = Version::version_0;
+        }
+
+        if (version == Version::version_0)
+            beneficiary = address;
+
+        if (version >= Version::version_1_beneficiary) {
+            field(ar, "beneficiary", beneficiary);
+        }
     }
 };
 

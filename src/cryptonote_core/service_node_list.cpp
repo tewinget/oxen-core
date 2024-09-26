@@ -397,13 +397,14 @@ static std::string log_registration_details(
             reg.eth_contributions.size());
 
     for (size_t index = 0; index < reg.eth_contributions.size(); index++) {
-        const eth_contribution& contrib = reg.eth_contributions[index];
+        const eth::event::Contributor& contrib = reg.eth_contributions[index];
         fmt::format_to(
                 std::back_inserter(buffer),
-                "  - {:02} [{}, {}]\n",
+                "  - {:02} [{}, {}, {}]\n",
                 index,
-                contrib.first,
-                contrib.second);
+                contrib.address,
+                contrib.beneficiary,
+                contrib.amount);
     }
 
     fmt::format_to(std::back_inserter(buffer), "- BLS Pubkey:      {}\n", reg.bls_pubkey);
@@ -417,16 +418,11 @@ static registration_details eth_reg_details(
     registration_details reg{};
     reg.service_node_pubkey = registration.sn_pubkey;
     reg.bls_pubkey = registration.bls_pubkey;
-
-    for (const auto& contributor : registration.contributors)
-        reg.eth_contributions.emplace_back(contributor.address, contributor.amount);
-
+    reg.eth_contributions = registration.contributors;
     reg.hf = static_cast<uint64_t>(hf_version);
     reg.uses_portions = false;
-
     reg.fee = registration.fee;
     reg.ed_signature = registration.ed_signature;
-
     return reg;
 }
 
@@ -483,7 +479,7 @@ void validate_registration(
                 reg.eth_contributions.begin(),
                 reg.eth_contributions.end(),
                 std::back_inserter(extracted_amounts),
-                [](const std::pair<eth::address, uint64_t>& pair) { return pair.second; });
+                [](const eth::event::Contributor& item) { return item.amount; });
     } else {
         if (reg.reserved.empty())
             throw invalid_registration{"No operator contribution given"};
@@ -1462,7 +1458,7 @@ validate_ethereum_registration(
     auto& info = *result.second;
     info.recommission_credit = get_config(nettype).BLOCKS_IN(DECOMMISSION_INITIAL_CREDIT);
     info.staking_requirement = staking_requirement;
-    info.operator_ethereum_address = reg.eth_contributions[0].first;
+    info.operator_ethereum_address = reg.eth_contributions[0].address;
     info.bls_public_key = reg.bls_pubkey;
     assert(!reg.uses_portions);
     info.portions_for_operator =
@@ -1476,19 +1472,19 @@ validate_ethereum_registration(
     info.last_ip_change_height = block_height;
 
     for (auto it = reg.eth_contributions.begin(); it != reg.eth_contributions.end(); ++it) {
-        auto& [addr, amount] = *it;
         for (auto it2 = std::next(it); it2 != reg.eth_contributions.end(); ++it2)
-            if (it2->first == addr)
+            if (it2->address == it->address)
                 throw oxen::traced<std::runtime_error>(
                         "Invalid registration: Duplicate reserved address in registration for "
                         "SN {}:\n{}"_format(
                                 new_sn.sn_pubkey, log_registration_details(nettype, reg)));
 
         auto& contributor = info.contributors.emplace_back();
-        contributor.reserved = amount;
-        contributor.amount = amount;
+        contributor.reserved = it->amount;
+        contributor.amount = it->amount;
 
-        contributor.ethereum_address = addr;
+        contributor.ethereum_address = it->address;
+        contributor.ethereum_beneficiary = it->beneficiary;
         info.total_reserved += contributor.reserved;
         info.total_contributed += contributor.reserved;
     }
@@ -5014,8 +5010,7 @@ bool service_node_list::load(const uint64_t current_height) {
     // are initialised with the new SN info data when nodes transition from the SNL into the
     // `recently_removed_nodes` buffer.
     if (blockchain.nettype() == cryptonote::network_type::STAGENET &&
-        data_in.version < data_for_serialization::version_t::
-                                  version_2_regen_recently_removed_nodes_w_sn_info) {
+        data_in.version < data_for_serialization::version_t::version_3_eth_beneficiary) {
         blockchain.sqlite_db().reset_database();
         return false;
     }

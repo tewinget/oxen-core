@@ -466,13 +466,43 @@ void L2Tracker::update_logs() {
                                     std::chrono::steady_clock::now() - started}
                                     .count());
 
+                    // TODO: Each node is going to observe L2 transactions at a different time from
+                    // each other (even in normal network operating conditions) network latency in
+                    // Oxen block propagation or getting caught in a small network partition e.t.c
+                    //
+                    // This would mean that the HF version we snap at the time we generate a log
+                    // event _may_ differ from other nodes that parsed logs earlier/later. This will
+                    // cause L2 events to potentially be serialised differently into a transaction.
+                    //
+                    // I think this is problematic in edge cases where the blockchain straddles a
+                    // hardforking height, some see HF+0, and slower nodes see HF-1.
+                    //
+                    // In those instances, the slower nodes may serialise the tx_extra differently,
+                    // generate a different hash and if they're in the quorum for the next block
+                    // they would fail to produce a block.
+                    //
+                    // The network will roll through the quorums until a sufficient majority of
+                    // those that observed logs with a matching HF are met and they generate a
+                    // block.
+                    //
+                    // Does the network recover from this? Or, if the slower nodes receive a block
+                    // that they don't have TX for, do they request the TX (the correctly serialised
+                    // L2 log event/tx_extra) from the P2P layer? If that's the case then this
+                    // situation would be so rare that it's not a problem, network is generally
+                    // resilient to it with time.
+                    //
+                    // In our pre-existing TX extra `tx_extra_service_node_state_change` has a
+                    // version field but I think it too also just accepts that, that, is a even more
+                    // rare case so it doesn't seem like we handle it.
+                    auto hf_version = core.blockchain.get_network_version();
+
                     for (const auto& log : *logs) {
                         if (!log.blockNumber) {
                             log::error(logcat, "Log item from L2 provider without a blockNumber!");
                             continue;
                         }
                         try {
-                            auto tx = get_log_event(chain_id, log);
+                            auto tx = get_log_event(hf_version, chain_id, log);
                             add_to_mempool(tx);
                             if (auto* reg = std::get_if<event::NewServiceNode>(&tx))
                                 recent_regs.add(std::move(*reg), *log.blockNumber);
