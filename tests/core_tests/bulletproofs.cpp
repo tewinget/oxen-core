@@ -251,10 +251,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
       // unique).
       for (size_t i = 0; i < 8; i++)
         tx_hash[i] = 0x01 + (0x22 * i);
-      static std::mt19937_64 rng{std::random_device{}()};
-      std::uniform_int_distribution<char> unif{std::numeric_limits<char>::min()};
-      for (size_t i = 8; i < tx_hash.size(); i++)
-        tx_hash[i] = unif(rng);
+      crypto::rand(24, tx_hash.data() + 8);
     }
     starting_rct_tx_hashes.push_back(tx_hash);
     oxen::log::warning(globallogcat, "Test tx: {}", obj_to_json_str(rct_txes.back()));
