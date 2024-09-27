@@ -182,6 +182,7 @@ local mac_builder(name,
                   lto=false,
                   werror=false,  // FIXME
                   build_tests=true,
+                  test_oxend=true,
                   run_tests=false,
                   cmake_extra='',
                   extra_cmds=[],
@@ -211,6 +212,10 @@ local mac_builder(name,
         cmake_extra,
         'ninja -j' + jobs + ' -v',
       ] + (
+        if test_oxend then [
+          '(sleep 3; echo "status\ndiff\nexit") | TERM=xterm ./bin/oxend --offline --data-dir=startuptest',
+        ] else []
+      ) + (
         if run_tests then [
           'mkdir -v -p $$HOME/.oxen',
           'GTEST_COLOR=1 ctest --output-on-failure -j' + jobs,
@@ -369,9 +374,9 @@ local gui_wallet_step_darwin = {
   ),
 
   // Macos builds:
-  mac_builder('macOS (Release, ARM)', run_tests=true, arch='arm64'),
+  mac_builder('macOS (Release, ARM) w/ tests', run_tests=true, arch='arm64'),
   mac_builder('macOS (Debug, ARM)', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON', arch='arm64'),
-  mac_builder('macOS (Release, Intel)', run_tests=true, arch='amd64'),
+  mac_builder('macOS (Release, Intel) w/ tests', run_tests=true, arch='amd64'),
 
   mac_builder('macOS (Static, ARM)',
               cmake_extra='-DBUILD_STATIC_DEPS=ON',
