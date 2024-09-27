@@ -251,7 +251,7 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
   'cd build-' + android_abi,
   'cmake .. -DCMAKE_CXX_FLAGS=-fdiagnostics-color=always -DCMAKE_C_FLAGS=-fdiagnostics-color=always ' +
   '-DCMAKE_BUILD_TYPE=Release ' +
-  '-DCMAKE_TOOLCHAIN_FILE=/usr/lib/android-sdk/ndk-bundle/build/cmake/android.toolchain.cmake ' +
+  '-DCMAKE_TOOLCHAIN_FILE=/usr/lib/android-ndk/build/cmake/android.toolchain.cmake ' +
   '-DANDROID_PLATFORM=' + android_platform + ' -DANDROID_ABI=' + android_abi + ' ' +
   cmake_options({ MONERO_SLOW_HASH: true, WARNINGS_AS_ERRORS: false, BUILD_TESTS: false }) +
   '-DLOCAL_MIRROR=https://builds.lokinet.dev/deps ' +
@@ -404,12 +404,11 @@ local gui_wallet_step_darwin = {
         image: docker_base + 'android',
         environment: { SSH_KEY: { from_secret: 'SSH_KEY' } },
         commands: [
-                    'echo deb http://deb.debian.org/debian sid contrib >/etc/apt/sources.list.d/sid-contrib.list',
                     apt_get_quiet + ' update',
                     apt_get_quiet + ' install -y eatmydata',
                     'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
                     'eatmydata ' + apt_get_quiet + ' install -y --no-install-recommends '
-                    + 'cmake g++ git ninja-build ccache tar xz-utils google-android-ndk-installer '
+                    + 'cmake g++ git ninja-build ccache tar xz-utils google-android-ndk-r26c-installer '
                     + std.join(' ', static_build_deps),
                   ]
                   + android_build_steps('armeabi-v7a', cmake_extra='-DARCH=armv7-a -DARCH_ID=arm32')
