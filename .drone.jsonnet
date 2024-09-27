@@ -427,27 +427,30 @@ local gui_wallet_step_darwin = {
     kind: 'pipeline',
     type: 'exec',
     platform: { os: 'darwin', arch: 'amd64' },
-    steps: [{
-      name: 'build',
-      environment: { SSH_KEY: { from_secret: 'SSH_KEY' } },
-      commands: submodules_commands + [
-        'mkdir -p build/{arm64,sim64}',
-        'cd build/arm64',
-        'cmake ../.. -G Ninja ' +
-        '-DCMAKE_TOOLCHAIN_FILE=../../cmake/ios.toolchain.cmake -DPLATFORM=OS -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
-        '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
-        '-DRANDOMX_ENABLE_JIT=OFF -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
-        'ninja -j6 -v wallet_merged',
-        'cd ../sim64',
-        'cmake ../.. -G Ninja ' +
-        '-DCMAKE_TOOLCHAIN_FILE=../../cmake/ios.toolchain.cmake -DPLATFORM=SIMULATOR64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
-        '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
-        '-DRANDOMX_ENABLE_JIT=OFF -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
-        'ninja -j6 -v wallet_merged',
-        'cd ../..',
-        './utils/build_scripts/drone-ios-static-upload.sh',
-      ],
-    }],
+    steps: [
+      { name: 'submodules', commands: submodules_commands },
+      {
+        name: 'build',
+        environment: { SSH_KEY: { from_secret: 'SSH_KEY' } },
+        commands: submodules_commands + [
+          'mkdir -p build/{arm64,sim64}',
+          'cd build/arm64',
+          'cmake ../.. -G Ninja ' +
+          '-DCMAKE_TOOLCHAIN_FILE=../../cmake/ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
+          '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
+          '-DRANDOMX_ENABLE_JIT=OFF -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
+          'ninja -j6 -v wallet_merged',
+          'cd ../sim64',
+          'cmake ../.. -G Ninja ' +
+          '-DCMAKE_TOOLCHAIN_FILE=../../cmake/ios.toolchain.cmake -DPLATFORM=SIMULATOR64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
+          '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
+          '-DRANDOMX_ENABLE_JIT=OFF -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
+          'ninja -j6 -v wallet_merged',
+          'cd ../..',
+          './utils/build_scripts/drone-ios-static-upload.sh',
+        ],
+      },
+    ],
   },
 
 ]

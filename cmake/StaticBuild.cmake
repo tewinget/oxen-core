@@ -219,25 +219,24 @@ if (ANDROID)
   set(cross_extra "LD=${ANDROID_TOOLCHAIN_ROOT}/bin/${CMAKE_LIBRARY_ARCHITECTURE}-ld" "RANLIB=${CMAKE_RANLIB}" "AR=${CMAKE_AR}")
 elseif(CMAKE_CROSSCOMPILING)
   if(APPLE)
-    set(cross_host "--host=${APPLE_TARGET_TRIPLE}")
-  else()
-    set(cross_host "--host=${ARCH_TRIPLET}")
-    if (ARCH_TRIPLET MATCHES mingw AND CMAKE_RC_COMPILER)
-      set(cross_extra "WINDRES=${CMAKE_RC_COMPILER}")
-    endif()
+    set(ARCH_TRIPLET "${APPLE_TARGET_TRIPLE}")
+  endif()
+  set(cross_host "--host=${ARCH_TRIPLET}")
+  if (ARCH_TRIPLET MATCHES mingw AND CMAKE_RC_COMPILER)
+    set(cross_extra "WINDRES=${CMAKE_RC_COMPILER}")
   endif()
 endif()
 
 set(apple_cflags_arch)
 set(apple_cxxflags_arch)
 set(apple_ldflags_arch)
-set(build_host "${cross_host}")
+set(gmp_build_host "${cross_host}")
 if(APPLE AND CMAKE_CROSSCOMPILING)
     if(build_host MATCHES "^(.*-.*-)ios([0-9.]+)(-.*)?$")
-        set(build_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
+        set(gmp_build_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
     endif()
-    if(build_host MATCHES "^(.*-.*-.*)-simulator$")
-        set(build_host "${CMAKE_MATCH_1}")
+    if(gmp_build_host MATCHES "^(.*-.*-.*)-simulator$")
+        set(gmp_build_host "${CMAKE_MATCH_1}")
     endif()
 
     set(apple_arch)
@@ -703,7 +702,7 @@ build_external(libidn2
 add_static_target(libidn2::libidn2 libidn2_external libidn2.a libunistring::libunistring)
 
 build_external(gmp
-    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
         "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
     DEPENDS libidn2_external libtasn1_external
