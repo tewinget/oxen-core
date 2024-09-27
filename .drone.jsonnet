@@ -426,7 +426,7 @@ local gui_wallet_step_darwin = {
     name: 'iOS wallet_api',
     kind: 'pipeline',
     type: 'exec',
-    platform: { os: 'darwin', arch: 'amd64' },
+    platform: { os: 'darwin', arch: 'arm64' },
     steps: [
       { name: 'submodules', commands: submodules_commands },
       {
