@@ -96,7 +96,14 @@ file(COPY uWebSockets/src/ DESTINATION uWebSockets/uWebSockets FILES_MATCHING PA
 add_library(uWebSockets INTERFACE)
 target_include_directories(uWebSockets INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/uWebSockets)
 target_link_libraries(uWebSockets INTERFACE uSockets)
-target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK UWS_NO_ZLIB)
+target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK)
+if(TARGET zlib)
+    target_link_libraries(uWebSockets INTERFACE zlib)
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(ZLIB zlib REQUIRED IMPORTED_TARGET)
+    target_link_libraries(uWebSockets INTERFACE PkgConfig::ZLIB)
+endif()
 
 
 # Hack around SQLiteCpp's attempts to locate sqlite3 because we *don't* want to link against the
