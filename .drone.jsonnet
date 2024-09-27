@@ -370,14 +370,21 @@ local gui_wallet_step_darwin = {
 
   // Macos builds:
   mac_builder('macOS (Release, ARM)', run_tests=true, arch='arm64'),
+  mac_builder('macOS (Debug, ARM)', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON', arch='arm64'),
+  mac_builder('macOS (Release, Intel)', run_tests=true, arch='amd64'),
+
   mac_builder('macOS (Static, ARM)',
-              cmake_extra='-DBUILD_STATIC_DEPS=ON -DARCH=core2 -DARCH_ID=amd64',
+              cmake_extra='-DBUILD_STATIC_DEPS=ON',
               build_tests=false,
               lto=true,
               arch='arm64',
               extra_cmds=static_check_and_upload,/*extra_steps=[gui_wallet_step_darwin]*/),
-  mac_builder('macOS (Debug, ARM)', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON', arch='arm64'),
-  mac_builder('macOS (Release, Intel)', run_tests=true, arch='amd64'),
+  mac_builder('macOS (Static, Intel)',
+              cmake_extra='-DBUILD_STATIC_DEPS=ON -DARCH=core2 -DARCH_ID=amd64',
+              build_tests=false,
+              lto=true,
+              arch='amd64',
+              extra_cmds=static_check_and_upload,/*extra_steps=[gui_wallet_step_darwin]*/),
 
   // Android builds; we do them all in one image because the android NDK is huge
   {
