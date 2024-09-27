@@ -796,3 +796,7 @@ endif()
 set_target_properties(CURL::libcurl PROPERTIES
   INTERFACE_LINK_LIBRARIES "${libcurl_link_libs}"
   INTERFACE_COMPILE_DEFINITIONS "CURL_STATICLIB")
+
+
+list(INSERT CMAKE_MODULE_PATH 0
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/static-build-hacks")
