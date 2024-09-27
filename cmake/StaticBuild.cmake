@@ -195,6 +195,9 @@ function(add_static_target target ext_target libname)
   set_target_properties(${target} PROPERTIES
     IMPORTED_LOCATION ${DEPS_DESTDIR}/lib/${libname}
   )
+  if(ARGN)
+    target_link_libraries(${target} INTERFACE ${ARGN})
+  endif()
 endfunction()
 
 
@@ -619,32 +622,36 @@ set_target_properties(libzmq PROPERTIES
     INTERFACE_LINK_LIBRARIES "${libzmq_link_libs}"
     INTERFACE_COMPILE_DEFINITIONS "ZMQ_STATIC")
 
-set(openssl_configure ./config)
-set(openssl_system_env "")
-set(openssl_cc "${deps_cc}")
-if(CMAKE_CROSSCOMPILING)
-  if(ARCH_TRIPLET STREQUAL x86_64-w64-mingw32)
-    set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
-  elseif(ARCH_TRIPLET STREQUAL i686-w64-mingw32)
-    set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
-  endif()
+set(maybe_openssl)
+if(NOT APPLE AND NOT WIN32)
+    set(openssl_configure ./config)
+    set(openssl_system_env "")
+    set(openssl_cc "${deps_cc}")
+    if(CMAKE_CROSSCOMPILING)
+      if(ARCH_TRIPLET STREQUAL x86_64-w64-mingw32)
+        set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
+      elseif(ARCH_TRIPLET STREQUAL i686-w64-mingw32)
+        set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
+      endif()
+    endif()
+    build_external(openssl
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${openssl_cc} ${openssl_system_env} ${openssl_configure}
+        --prefix=${DEPS_DESTDIR} --libdir=lib ${openssl_extra_opts}
+        no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
+        no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
+        no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
+      INSTALL_COMMAND make install_sw
+      BUILD_BYPRODUCTS
+        ${DEPS_DESTDIR}/lib/libssl.a ${DEPS_DESTDIR}/lib/libcrypto.a
+        ${DEPS_DESTDIR}/include/openssl/ssl.h ${DEPS_DESTDIR}/include/openssl/crypto.h
+    )
+    add_static_target(OpenSSL::SSL openssl_external libssl.a)
+    add_static_target(OpenSSL::Crypto openssl_external libcrypto.a)
+    target_link_libraries(OpenSSL::SSL INTERFACE OpenSSL::Crypto)
+    set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include CACHE PATH "" FORCE)
+    set(OPENSSL_ROOT_DIR ${DEPS_DESTDIR} CACHE PATH "" FORCE)
+    set(maybe_openssl openssl_external)
 endif()
-build_external(openssl
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${openssl_cc} ${openssl_system_env} ${openssl_configure}
-    --prefix=${DEPS_DESTDIR} --libdir=lib ${openssl_extra_opts}
-    no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
-    no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
-    no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
-  INSTALL_COMMAND make install_sw
-  BUILD_BYPRODUCTS
-    ${DEPS_DESTDIR}/lib/libssl.a ${DEPS_DESTDIR}/lib/libcrypto.a
-    ${DEPS_DESTDIR}/include/openssl/ssl.h ${DEPS_DESTDIR}/include/openssl/crypto.h
-)
-add_static_target(OpenSSL::SSL openssl_external libssl.a)
-add_static_target(OpenSSL::Crypto openssl_external libcrypto.a)
-target_link_libraries(OpenSSL::SSL INTERFACE OpenSSL::Crypto)
-set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include CACHE PATH "" FORCE)
-set(OPENSSL_ROOT_DIR ${DEPS_DESTDIR} CACHE PATH "" FORCE)
 
 
 set(libtasn_extra_cflags)
@@ -693,6 +700,7 @@ build_external(gmp
 add_static_target(gmp::gmp gmp_external libgmp.a libidn2::libidn2 libtasn1::libtasn1)
 
 set(curl_extra)
+set(curl_ssl_backend)
 if(WIN32)
   set(curl_ssl_opts --with-schannel)
 elseif(APPLE)
@@ -704,6 +712,7 @@ elseif(APPLE)
 else()
   set(curl_ssl_opts --with-openssl=${DEPS_DESTDIR})
   set(curl_extra "LIBS=-pthread")
+  set(curl_ssl_backend OpenSSL::SSL)
 endif()
 
 set(curl_arches default)
@@ -734,7 +743,7 @@ foreach(curl_arch ${curl_arches})
 
   build_external(curl
     TARGET_SUFFIX ${curl_target_suffix}
-    DEPENDS openssl_external zlib_external
+    DEPENDS ${maybe_openssl} zlib_external
     CONFIGURE_COMMAND ./configure ${cross_host} ${cross_extra} --prefix=${curl_prefix} --disable-shared
     --enable-static --disable-ares --disable-ftp --disable-ldap --disable-laps --disable-rtsp
     --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smb
@@ -771,11 +780,11 @@ if(IOS AND num_arches GREATER 1)
 endif()
 
 add_static_target(CURL::libcurl curl_external libcurl.a )
-set(libcurl_link_libs OpenSSL::SSL zlib libidn2::libidn2)
+set(libcurl_link_libs ${curl_ssl_backend} zlib libidn2::libidn2)
 if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
   list(APPEND libcurl_link_libs ws2_32)
 elseif(APPLE)
-  list(APPEND libcurl_link_libs "-framework SystemConfiguration")
+  list(APPEND libcurl_link_libs "-framework SystemConfiguration -framework Security")
 endif()
 set_target_properties(CURL::libcurl PROPERTIES
   INTERFACE_LINK_LIBRARIES "${libcurl_link_libs}"
