@@ -492,7 +492,7 @@ if(NOT BUILD_STATIC_DEPS)
   add_library(SQLite::SQLite3 ALIAS PkgConfig::SQLITE3)
 
   pkg_check_modules(GMP REQUIRED gmp IMPORTED_TARGET GLOBAL)
-  message(STATUS "Found gmp ${GMPXX_VERSION}")
+  message(STATUS "Found gmp ${GMP_VERSION}")
   add_library(gmp::gmp ALIAS PkgConfig::GMP)
 endif()
 
