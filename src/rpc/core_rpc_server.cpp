@@ -773,6 +773,22 @@ namespace {
             }
             set("contributors", contributors);
         }
+        void operator()(const eth::event::NewServiceNodeV2& x) {
+            set("type", "ethereum_new_service_node_v2");
+            set("l2_height", x.l2_height);
+            set("bls_pubkey", x.bls_pubkey);
+            set("service_node_pubkey", x.sn_pubkey);
+            set("signature", x.ed_signature);
+            set("fee", x.fee);
+            auto contributors = json::array();
+            for (auto& contributor : x.contributors) {
+                auto& c = contributors.emplace_back();
+                json_binary_proxy{c["address"], format} = contributor.address;
+                json_binary_proxy{c["beneficiary"], format} = contributor.beneficiary;
+                c["amount"] = contributor.amount;
+            }
+            set("contributors", contributors);
+        }
         void operator()(const eth::event::ServiceNodeExitRequest& x) {
             set("type", "ethereum_service_node_exit_request");
             set("l2_height", x.l2_height);
@@ -3089,6 +3105,21 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
                                  (double)info.FULL_SCORE}};
 
                 if constexpr (std::is_same_v<Event, eth::event::NewServiceNode>) {
+                    sns.response["registrations"].push_back(std::move(entry));
+                    auto& res = sns.response["registrations"].back();
+                    auto res_hex = sns.response_hex["registrations"].back();
+                    res_hex["sn_pubkey"] = e.sn_pubkey;
+                    res_hex["bls_pubkey"] = e.bls_pubkey;
+                    res_hex["signature"] = e.ed_signature;
+                    res["fee"] = e.fee * 0.01;
+                    res["contributors"] = json::array();
+                    auto& contr = res["contributors"];
+                    auto contr_hex = res_hex["contributors"];
+                    for (const auto& it : e.contributors) {
+                        contr.push_back(json{{"amount", it.amount}});
+                        contr_hex.back()["address"] = it.address;
+                    }
+                } else if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
                     sns.response["registrations"].push_back(std::move(entry));
                     auto& res = sns.response["registrations"].back();
                     auto res_hex = sns.response_hex["registrations"].back();

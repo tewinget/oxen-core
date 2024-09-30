@@ -29,62 +29,15 @@ struct L2StateChange {
 };
 
 struct Contributor {
-    enum class Version {
-        version_invalid,
-        version_0,
-        version_1_beneficiary,
-        count,
-    };
-
-    Version      version;
     eth::address address;
-    eth::address beneficiary;
     uint64_t     amount;
 
     auto operator<=>(const Contributor& o) const = default;
-
-    static Version hardfork_to_version(cryptonote::hf hf_version) {
-        auto result = Version::version_0;
-        if (hf_version >= cryptonote::hf::hf22_eth_beneficiary)
-            result = Version::version_1_beneficiary;
-        return result;
-    }
 
     template <class Archive>
     void serialize_object(Archive& ar) {
         field(ar, "address", address);
         field_varint(ar, "amount", amount);
-
-        // TODO: These comments are only valid for stagenet, mainnet will launch without these
-        // problems. We can remove these chunks and serialize the version, reset it back to 0 when
-        // we relaunch stagenet.
-        if (Archive::is_serializer) {
-            // NOTE: Trying to serialize a invalidly initialised contributor object!
-            // Make sure contributor `version` is serialized with correct value for the current
-            // hardfork.
-            assert(version != Version::version_invalid);
-        }
-
-        // NOTE: Initial release of L2 network did not serialise a version.
-        // The absence of a version is identified as v0. Since `NewServiceNode`
-        // is a `tx_extra` field and it uses `Contributor` this structure is
-        // sensitive to serialisation in order to maintain consensus.
-        //
-        // After V0 we serialise the version such that we can synchronise to a
-        // hardfork when new fields are to be added used in consensus whilst
-        // retaining backwards compatibility.
-        try {
-            field_varint(ar, "version", version, [](auto v) { return v < Version::count; });
-        } catch(...) {
-            version = Version::version_0;
-        }
-
-        if (version == Version::version_0)
-            beneficiary = address;
-
-        if (version >= Version::version_1_beneficiary) {
-            field(ar, "beneficiary", beneficiary);
-        }
     }
 };
 
@@ -120,6 +73,63 @@ struct NewServiceNode : L2StateChange {
     static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node;
     static constexpr std::string_view description = "new SN"sv;
 };
+
+struct ContributorV2 {
+    enum class Version {
+        version_invalid,
+        version_0,
+        _count,
+    };
+
+    eth::address address;
+    eth::address beneficiary;
+    uint64_t     amount;
+
+    auto operator<=>(const ContributorV2& o) const = default;
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        auto version = tools::enum_top<Version>;
+        field_varint(ar, "version", version, [](auto v) { return v < Version::_count; });
+        field(ar, "address", address);
+        field_varint(ar, "amount", amount);
+        field(ar, "beneficiary", beneficiary);
+    }
+};
+
+struct NewServiceNodeV2 : L2StateChange {
+    crypto::public_key sn_pubkey = crypto::null<crypto::public_key>;
+    bls_public_key bls_pubkey = crypto::null<bls_public_key>;
+    crypto::ed25519_signature ed_signature = crypto::null<crypto::ed25519_signature>;
+    uint64_t fee = 0;
+    std::vector<ContributorV2> contributors;
+
+    explicit NewServiceNodeV2(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+            L2StateChange{chain_id, l2_height} {}
+
+    std::string to_string() const {
+        return "{} [sn_pubkey={}, bls_pubkey={}]"_format(description, sn_pubkey, bls_pubkey);
+    }
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        [[maybe_unused]] uint8_t version = 0;
+        field_varint(ar, "version", version);
+        field_varint(ar, "chain_id", chain_id);
+        field_varint(ar, "l2_height", l2_height);
+        field(ar, "service_node_pubkey", sn_pubkey);
+        field(ar, "bls_pubkey", bls_pubkey);
+        field(ar, "signature", ed_signature);
+        field_varint(ar, "fee", fee);
+        field(ar, "contributors", contributors);
+    }
+
+    std::strong_ordering operator<=>(const NewServiceNodeV2& o) const = default;
+
+    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node;
+    static constexpr std::string_view description = "new SNv2"sv;
+};
+
 
 struct ServiceNodeExitRequest : L2StateChange {
     bls_public_key bls_pubkey = crypto::null<bls_public_key>;
@@ -200,6 +210,7 @@ struct StakingRequirementUpdated : L2StateChange {
 using StateChangeVariant = std::variant<
         std::monostate,
         NewServiceNode,
+        NewServiceNodeV2,
         ServiceNodeExitRequest,
         ServiceNodeExit,
         StakingRequirementUpdated>;

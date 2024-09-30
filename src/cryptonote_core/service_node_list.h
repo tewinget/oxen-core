@@ -1109,6 +1109,13 @@ class service_node_list {
                 uint32_t index,
                 const service_node_keys* my_keys);
         bool process_confirmed_event(
+                const eth::event::NewServiceNodeV2& new_sn,
+                cryptonote::network_type nettype,
+                cryptonote::hf hf_version,
+                uint64_t height,
+                uint32_t index,
+                const service_node_keys* my_keys);
+        bool process_confirmed_event(
                 const eth::event::ServiceNodeExitRequest& rem_req,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
@@ -1342,7 +1349,7 @@ struct registration_details {
         crypto::signature signature;
         crypto::ed25519_signature ed_signature;
     };
-    std::vector<eth::event::Contributor> eth_contributions;
+    std::vector<eth::event::ContributorV2> eth_contributions;
     eth::bls_public_key bls_pubkey;
 };
 

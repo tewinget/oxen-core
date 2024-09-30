@@ -397,7 +397,7 @@ static std::string log_registration_details(
             reg.eth_contributions.size());
 
     for (size_t index = 0; index < reg.eth_contributions.size(); index++) {
-        const eth::event::Contributor& contrib = reg.eth_contributions[index];
+        const eth::event::ContributorV2& contrib = reg.eth_contributions[index];
         fmt::format_to(
                 std::back_inserter(buffer),
                 "  - {:02} [{}, {}, {}]\n",
@@ -418,6 +418,21 @@ static registration_details eth_reg_details(
     registration_details reg{};
     reg.service_node_pubkey = registration.sn_pubkey;
     reg.bls_pubkey = registration.bls_pubkey;
+    reg.eth_contributions.reserve(registration.contributors.size());
+    for (const auto& contributor : registration.contributors)
+        reg.eth_contributions.emplace_back(contributor.address, contributor.address /*beneficiary*/, contributor.amount);
+    reg.hf = static_cast<uint64_t>(hf_version);
+    reg.uses_portions = false;
+    reg.fee = registration.fee;
+    reg.ed_signature = registration.ed_signature;
+    return reg;
+}
+
+static registration_details eth_reg_v2_details(
+        hf hf_version, const eth::event::NewServiceNodeV2& registration) {
+    registration_details reg{};
+    reg.service_node_pubkey = registration.sn_pubkey;
+    reg.bls_pubkey = registration.bls_pubkey;
     reg.eth_contributions = registration.contributors;
     reg.hf = static_cast<uint64_t>(hf_version);
     reg.uses_portions = false;
@@ -425,6 +440,7 @@ static registration_details eth_reg_details(
     reg.ed_signature = registration.ed_signature;
     return reg;
 }
+
 
 static std::optional<registration_details> eth_reg_tx_extract_fields(
         hf hf_version, const cryptonote::transaction& tx) {
@@ -479,7 +495,7 @@ void validate_registration(
                 reg.eth_contributions.begin(),
                 reg.eth_contributions.end(),
                 std::back_inserter(extracted_amounts),
-                [](const eth::event::Contributor& item) { return item.amount; });
+                [](const eth::event::ContributorV2& item) { return item.amount; });
     } else {
         if (reg.reserved.empty())
             throw invalid_registration{"No operator contribution given"};
@@ -1442,13 +1458,13 @@ bool is_registration_tx(
 
 static std::pair<crypto::public_key, std::shared_ptr<service_node_info>>
 validate_ethereum_registration(
-        const eth::event::NewServiceNode& new_sn,
+        const eth::event::NewServiceNodeV2& new_sn,
         cryptonote::network_type nettype,
         hf hf_version,
         uint64_t block_height,
         uint32_t index,
         uint64_t staking_requirement) {
-    auto reg = eth_reg_details(hf_version, new_sn);
+    auto reg = eth_reg_v2_details(hf_version, new_sn);
 
     validate_registration(
             hf_version, nettype, staking_requirement, 0 /*block_timestamp not used in HF19+*/, reg);
@@ -1701,6 +1717,29 @@ void service_node_list::state_t::process_new_ethereum_tx(
 
 bool service_node_list::state_t::process_confirmed_event(
         const eth::event::NewServiceNode& new_sn,
+        cryptonote::network_type nettype,
+        cryptonote::hf hf_version,
+        uint64_t height,
+        uint32_t index,
+        const service_node_keys* my_keys) {
+
+    // NOTE: Convert to V2
+    auto new_sn_v2 = eth::event::NewServiceNodeV2(new_sn.chain_id, new_sn.l2_height);
+    new_sn_v2.fee = new_sn.fee;
+    new_sn_v2.sn_pubkey = new_sn.sn_pubkey;
+    new_sn_v2.bls_pubkey = new_sn.bls_pubkey;
+    new_sn_v2.contributors.reserve(new_sn.contributors.size());
+    for (auto it : new_sn.contributors)
+        new_sn_v2.contributors.emplace_back(it.address /*address*/, it.address /*beneficiary*/, it.amount);
+    new_sn_v2.ed_signature = new_sn.ed_signature;
+
+    // NOTE: Process event as V2
+    bool result = process_confirmed_event(new_sn_v2, nettype, hf_version, height, index, my_keys);
+    return result;
+}
+
+bool service_node_list::state_t::process_confirmed_event(
+        const eth::event::NewServiceNodeV2& new_sn,
         cryptonote::network_type nettype,
         cryptonote::hf hf_version,
         uint64_t height,
