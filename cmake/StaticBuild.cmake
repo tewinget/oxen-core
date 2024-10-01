@@ -658,7 +658,7 @@ endif()
 set(libtasn_extra_cflags)
 if(CMAKE_C_COMPILER_ID STREQUAL GNU)
     # libtasn1 under current GCC produces some incredibly verbose warnings; disable them:
-    set(libtasn_extra_cflags " -Wno-analyzer-null-dereference -Wno-analyzer-use-of-uninitialized-value")
+    set(libtasn_extra_cflags " -Wno-analyzer-null-dereference -Wno-analyzer-use-of-uninitialized-value -Wno-analyzer-out-of-bounds")
 endif()
 
 build_external(libtasn1
