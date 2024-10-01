@@ -1109,8 +1109,7 @@ namespace {
     }
 
     round_state wait_for_next_block(
-            round_context& context,
-            cryptonote::Blockchain const& blockchain) {
+            round_context& context, cryptonote::Blockchain const& blockchain) {
         //
         // NOTE: If the top hash stored in the pulse context is the same as the top block's hash
         // then we've already attempted Pulse with the current state of the blockchain and
@@ -1123,7 +1122,8 @@ namespace {
             for (static crypto::hash last_hash = {}; last_hash != top_hash; last_hash = top_hash)
                 log::debug(
                         logcat,
-                        "{}Network is currently producing block {} (w/ parent {}), waiting until next block",
+                        "{}Network is currently producing block {} (w/ parent {}), "
+                        "waiting until next block",
                         log_prefix(context),
                         chain_height,
                         top_hash);
@@ -1199,7 +1199,7 @@ namespace {
                             : (now - context.wait_for_next_block.round_0_start_time);
             size_t round_usize = time_since_block / conf.PULSE_ROUND_TIMEOUT;
 
-            if (round_usize > 255) { // Network stalled
+            if (round_usize > 255) {  // Network stalled
                 log::info(
                         logcat,
                         "{}Pulse has timed out, reverting to accepting miner blocks only.",
@@ -1305,7 +1305,8 @@ namespace {
         if (context.wait_for_next_block.top_hash != top_hash) {
             log::debug(
                     logcat,
-                    "{}Top block changed (from {} to {}) whilst waiting for round {}, restarting Pulse stages",
+                    "{}Top block changed (from {} to {}) whilst waiting for round {}, "
+                    "restarting Pulse stages",
                     log_prefix(context),
                     context.wait_for_next_block.top_hash,
                     top_hash,
