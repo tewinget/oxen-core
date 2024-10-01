@@ -79,20 +79,39 @@ struct address_parse_info {
 struct reward_money {
 
     // Construct a money value from an atomic $COIN amount.
-    static reward_money coin_amount(uint64_t amount) { return {.amount = amount * BATCH_REWARD_FACTOR}; }
+    static reward_money coin_amount(uint64_t amount) {
+        return {._amount = amount * BATCH_REWARD_FACTOR};
+    }
 
     // Construct a money value from an atomic $COIN amount denoted with the extra precision
     // (pre-multiplied with `BATCH_REWARD_FACTOR`) suitable for storing in the DB. There is more
     // precision to minimise integer division errors in reward calculations.
-    static reward_money db_amount(uint64_t amount)   { return {.amount = amount}; }
+    static reward_money db_amount(uint64_t amount) { return {._amount = amount}; }
 
-    uint64_t to_coin() const { return amount / BATCH_REWARD_FACTOR; }
+    constexpr uint64_t to_coin() const { return _amount / BATCH_REWARD_FACTOR; }
 
-    uint64_t to_db() const { return amount; }
+    constexpr uint64_t to_db() const { return _amount; }
 
     constexpr auto operator<=>(const reward_money& rhs) const = default;
 
-    uint64_t amount{0};
+    constexpr reward_money operator+(const reward_money& rhs) const {
+        return {._amount = _amount + rhs._amount};
+    }
+    constexpr reward_money operator-(const reward_money& rhs) const {
+        return {._amount = _amount - rhs._amount};
+    }
+    constexpr reward_money& operator+=(const reward_money& rhs) {
+        _amount += rhs._amount;
+        return *this;
+    }
+    constexpr reward_money& operator-=(const reward_money& rhs) {
+        _amount -= rhs._amount;
+        return *this;
+    }
+
+    uint64_t _amount{0};
+
+    std::string to_string() const;
 };
 
 struct batch_sn_payment {
@@ -105,8 +124,7 @@ struct batch_sn_payment {
             address_info{addr_info}, amount{amt} {}
     batch_sn_payment(const cryptonote::account_public_address& addr, reward_money amt) :
             address_info{addr, 0}, amount{amt} {}
-    batch_sn_payment(const eth::address& addr, reward_money amt) :
-            eth_address{addr}, amount{amt} {}
+    batch_sn_payment(const eth::address& addr, reward_money amt) : eth_address{addr}, amount{amt} {}
 
     uint64_t coin_amount() const { return amount.to_coin(); }
 };
@@ -161,3 +179,6 @@ bool get_account_address_from_str(
 bool operator==(const cryptonote::transaction& a, const cryptonote::transaction& b);
 bool operator==(const cryptonote::block& a, const cryptonote::block& b);
 }  // namespace cryptonote
+
+template <>
+inline constexpr bool formattable::via_to_string<cryptonote::reward_money> = true;

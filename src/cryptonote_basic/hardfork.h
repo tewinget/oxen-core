@@ -30,10 +30,11 @@
 
 #include <cstdint>
 #include <ctime>
+#include <optional>
 #include <span>
 #include <vector>
 
-#include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_config.h"
 
 namespace cryptonote {
 
