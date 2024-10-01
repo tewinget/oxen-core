@@ -1,6 +1,15 @@
 from web3 import Web3
 import urllib.request
 import json
+from eth_typing import (
+    ChecksumAddress as EthChecksumAddress
+)
+from eth_account.types import (
+    PrivateKeyType as EthPrivateKeyType
+)
+from eth_account.signers.local import (
+    LocalAccount as EthLocalAccount,
+)
 
 PROVIDER_URL = "http://127.0.0.1:8545"
 
@@ -31,26 +40,22 @@ def evm_mine(web3):
     web3.provider.make_request('evm_mine', [])
 
 class ContractServiceNodeStaker:
-    def __init__(self):
-        self.addr          = None
-        self.beneficiary   = None
-
+    addr:        EthChecksumAddress
+    beneficiary: EthChecksumAddress
 
 class ContractServiceNodeContributor:
-    def __init__(self):
-        self.staker            = ContractServiceNodeStaker()
-        self.stakedAmount: int = 0
+    staker:       ContractServiceNodeStaker = ContractServiceNodeStaker()
+    stakedAmount: int = 0
 
 class ContractServiceNode:
-    def __init__(self):
-        self.next: int
-        self.prev: int
-        self.operator = None
-        self.pubkey_x = None
-        self.pubkey_y = None
-        self.leaveRequestTimestamp = None
-        self.deposit: int
-        self.contributors = []
+    next: int
+    prev: int
+    operator = None
+    pubkey_x = None
+    pubkey_y = None
+    leaveRequestTimestamp = None
+    deposit: int
+    contributors = []
 
 class ContractSeedServiceNode:
     def __init__(self, bls_pubkey_hex):
@@ -60,13 +65,16 @@ class ContractSeedServiceNode:
 
 class ServiceNodeRewardContract:
     def __init__(self):
-        self.provider_url = PROVIDER_URL
-        self.private_key  = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" # Hardhat account #0
-        self.web3         = Web3(Web3.HTTPProvider(self.provider_url))
+        self.provider_url  = PROVIDER_URL
+        self.web3          = Web3(Web3.HTTPProvider(self.provider_url))
 
         self.contract_address = self.getContractDeployedInLatestBlock()
         self.contract         = self.web3.eth.contract(address=self.contract_address, abi=contract_abi)
-        self.acc              = self.web3.eth.account.from_key(self.private_key)
+
+        self.hardhat_skey0:    EthPrivateKeyType = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+        self.hardhat_skey1:    EthPrivateKeyType = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
+        self.hardhat_account0: EthLocalAccount   = self.web3.eth.account.from_key(self.hardhat_skey0)
+        self.hardhat_account1: EthLocalAccount   = self.web3.eth.account.from_key(self.hardhat_skey1)
 
         self.foundation_pool_address  = self.contract.functions.foundationPool().call();
         self.foundation_pool_contract = self.web3.eth.contract(address=self.foundation_pool_address, abi=foundation_pool_abi)
@@ -77,20 +85,20 @@ class ServiceNodeRewardContract:
 
         # NOTE: Approve an amount to be sent from the hardhat account to the contract
         unsent_tx = self.erc20_contract.functions.approve(self.contract_address, 1_5001_000_000_000_000_000_000).build_transaction({
-            "from": self.acc.address,
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+            'from': self.hardhat_account0.address,
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash   = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
         # SENT Contract Address deployed to: 0x5FbDB2315678afecb367f032d93F642f64180aa3
-        address_check_err_msg = ("If this assert triggers, the rewards contract ABI has been "
-        "changed OR we're reusing a wallet and creating the contract with a different nonce. The "
-        "ABI in this script is hardcoded to the instance of the contract with that hash. Verify "
-        "and re-update the ABI if necessary and any auxiliary contracts if the ABI has changed or "
-        "that the wallets are _not_ being reused.")
+        address_check_err_msg = ('If this assert triggers, the rewards contract ABI has been '
+        'changed OR we\'re reusing a wallet and creating the contract with a different nonce. The '
+        'ABI in this script is hardcoded to the instance of the contract with that hash. Verify '
+        'and re-update the ABI if necessary and any auxiliary contracts if the ABI has changed or '
+        'that the wallets are _not_ being reused.')
 
-        assert self.contract_address.lower()        == "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707".lower(), (f"{address_check_err_msg}\n\nAddress was: {self.contract_address}")
-        assert self.foundation_pool_address.lower() == "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0".lower(), (f"{address_check_err_msg}\n\nAddress was: {self.foundation_pool_address}")
+        assert self.contract_address.lower()        == '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707'.lower(), (f'{address_check_err_msg}\n\nAddress was: {self.contract_address}')
+        assert self.foundation_pool_address.lower() == '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0'.lower(), (f'{address_check_err_msg}\n\nAddress was: {self.foundation_pool_address}')
 
     def call_function(self, function_name, *args, **kwargs):
         contract_function = self.contract.functions[function_name](*args)
@@ -98,9 +106,9 @@ class ServiceNodeRewardContract:
 
     def start(self):
         unsent_tx = self.contract.functions.start().build_transaction({
-            "from": self.acc.address,
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+            "from": self.hardhat_account0.address,
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
     # Add more methods as needed to interact with the smart contract
@@ -116,9 +124,6 @@ class ServiceNodeRewardContract:
                 continue
 
         raise RuntimeError("No contracts deployed in latest block")
-
-    def hardhatAccountAddress(self):
-        return self.acc.address
 
     def erc20balance(self, address):
         return self.erc20_contract.functions.balanceOf(Web3.to_checksum_address(address)).call()
@@ -151,31 +156,13 @@ class ServiceNodeRewardContract:
 
         return result
 
-    def addBLSPublicKey(self, args):
-        # function addBLSPublicKey(uint256 pkX, uint256 pkY, uint256 sigs0, uint256 sigs1, uint256 sigs2, uint256 sigs3, uint256 serviceNodePubkey, uint256 serviceNodeSignature) public {
+    def addBLSPublicKey(self, bls_pubkey, bls_sig, sn_params, contributors):
         # function addBLSPublicKey(BN256G1.G1Point blsPubkey, BLSSignatureParams blsSignature, ServiceNodeParams serviceNodeParams, Contributor[] contributors)
-        bls_param = {
-                'X': int(args["bls_pubkey"][:64], 16),
-                'Y': int(args["bls_pubkey"][64:128], 16),
-        }
-        sig_param = {
-                'sigs0': int(args["proof_of_possession"][:64], 16),
-                'sigs1': int(args["proof_of_possession"][64:128], 16),
-                'sigs2': int(args["proof_of_possession"][128:192], 16),
-                'sigs3': int(args["proof_of_possession"][192:256], 16),
-        }
-        service_node_params = {
-                'serviceNodePubkey': int(args["service_node_pubkey"], 16),
-                'serviceNodeSignature1': int(args["service_node_signature"][:64], 16),
-                'serviceNodeSignature2': int(args["service_node_signature"][64:128], 16),
-                'fee': int(0),
-                }
-        contributors = []
-        unsent_tx = self.contract.functions.addBLSPublicKey(bls_param, sig_param, service_node_params, contributors).build_transaction({
-                        "from": self.acc.address,
+        unsent_tx = self.contract.functions.addBLSPublicKey(bls_pubkey, bls_sig, sn_params, contributors).build_transaction({
+                        "from": self.hardhat_account0.address,
                         'gas': 2000000,
-                        'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+                        'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Add BLS public key", signed_tx)
         return tx_hash
 
@@ -183,10 +170,10 @@ class ServiceNodeRewardContract:
         # function initiateRemoveBLSPublicKey(uint64 serviceNodeID) public
         unsent_tx = self.contract.functions.initiateRemoveBLSPublicKey(service_node_id
                     ).build_transaction({
-                        "from": self.acc.address,
+                        "from": self.hardhat_account0.address,
                         'gas': 2000000,
-                        'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+                        'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Remove BLS public key", signed_tx)
         return tx_hash
 
@@ -204,21 +191,21 @@ class ServiceNodeRewardContract:
         }
 
         unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(bls_pubkey, timestamp, bls_signature, ids).build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Remove BLS public key w/ signature", signed_tx)
         return tx_hash
 
     def removeBLSPublicKeyAfterWaitTime(self, serviceNodeID: int):
         unsent_tx = self.contract.functions.removeBLSPublicKeyAfterWaitTime(serviceNodeID).build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Remove BLS public key after wait time", signed_tx)
         return tx_hash
 
@@ -241,11 +228,11 @@ class ServiceNodeRewardContract:
             contract_bls_sig,
             ids
         ).build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Liquidate BLS public key w/ signature", signed_tx)
         return tx_hash
 
@@ -283,11 +270,11 @@ class ServiceNodeRewardContract:
         print(contract_seed_nodes)
 
         unsent_tx = self.contract.functions.seedPublicKeyList(contract_seed_nodes).build_transaction({
-            "from":  self.acc.address,
+            "from":  self.hardhat_account0.address,
             'gas':   6000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash   = self.submitSignedTX("Seed public key list", signed_tx)
         return tx_hash
 
@@ -310,22 +297,22 @@ class ServiceNodeRewardContract:
             sig_param,
             ids
         ).build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Update rewards balance", signed_tx)
         return tx_hash
 
 
     def claimRewards(self):
         unsent_tx = self.contract.functions.claimRewards().build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 2000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Claim rewards", signed_tx)
         return tx_hash
 
