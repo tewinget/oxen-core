@@ -304,7 +304,8 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
     uint64_t staking_requirement = m_core.service_node_list.get_staking_requirement();
     info.response["staking_requirement"] = staking_requirement;
     info.response["max_contributors"] = oxen::MAX_CONTRIBUTORS_HF19;
-    info.response["min_operator_contribution"] = oxen::MINIMUM_OPERATOR_CONTRIBUTION(staking_requirement);
+    info.response["min_operator_contribution"] =
+            oxen::MINIMUM_OPERATOR_CONTRIBUTION(staking_requirement);
     info.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
