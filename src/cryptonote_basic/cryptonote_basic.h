@@ -691,7 +691,9 @@ inline txversion transaction_prefix::get_max_version_for_hf(hf hf_version) {
 
 constexpr txtype transaction_prefix::get_max_type_for_hf(hf hf_version) {
     txtype result = txtype::standard;
-    if (hf_version >= cryptonote::feature::ETH_BLS)
+    if (hf_version >= hf::hf22_eth_beneficiary)
+        result = txtype::ethereum_new_service_node_v2;
+    else if (hf_version >= cryptonote::feature::ETH_BLS)
         result = txtype::ethereum_staking_requirement_updated;
     else if (hf_version >= hf::hf15_ons)
         result = txtype::oxen_name_system;

@@ -27,7 +27,7 @@ namespace {
         Other
     };
 
-    EventType get_log_type(const ethyl::LogEntry& log, cryptonote::hf hf_version) {
+    EventType get_log_type(const ethyl::LogEntry& log) {
         if (log.topics.empty())
             throw std::runtime_error("No topics in log entry");
 
@@ -40,10 +40,8 @@ namespace {
             return EventType::ServiceNodeExit;
         if (event_sig == contract::event::StakingRequirementUpdated)
             return EventType::StakingRequirementUpdated;
-        if (hf_version >= cryptonote::hf::hf22_eth_beneficiary) {
-            if (event_sig == contract::event::NewServiceNodeV2)
-                return EventType::NewServiceNodeV2;
-        }
+        if (event_sig == contract::event::NewServiceNodeV2)
+            return EventType::NewServiceNodeV2;
         return EventType::Other;
     }
 
@@ -260,7 +258,7 @@ static std::string log_service_node_blob(const ContractServiceNode& blob, std::s
     return result;
 }
 
-event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_t chain_id, const ethyl::LogEntry& log) {
+event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::LogEntry& log) {
     event::StateChangeVariant result;
     const uint64_t l2_height = log.blockNumber.value_or(0);
     if (l2_height == 0) {
@@ -268,7 +266,7 @@ event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_
         return result;
     }
 
-    switch (get_log_type(log, hf_version)) {
+    switch (get_log_type(log)) {
         case EventType::NewServiceNode: {
             // event NewServiceNode(
             //      uint64 indexed serviceNodeID,
@@ -383,16 +381,6 @@ event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_
             }
 
             oxen::log::debug(logcat, "{}", log_new_service_node_tx(item, log.data));
-            if (hf_version >= cryptonote::hf::hf22_eth_beneficiary) { // NOTE: Upgrade to V2
-                auto v2 = event::NewServiceNodeV2(item.chain_id, item.l2_height);
-                v2.sn_pubkey = item.sn_pubkey;
-                v2.bls_pubkey = item.bls_pubkey;
-                v2.ed_signature = item.ed_signature;
-                v2.fee = item.fee;
-                v2.contributors.resize(item.contributors.size());
-                for (const auto& it : item.contributors)
-                    v2.contributors.emplace_back(it.address, it.address /*beneficiary*/, it.amount);
-            }
             break;
         }
 
@@ -446,7 +434,7 @@ event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_
             item.fee = tools::decode_integer_be(fee256);
             if (item.fee > cryptonote::STAKING_FEE_BASIS)
                 throw oxen::traced<std::invalid_argument>{
-                        "Invalid NewServiceNode data: fee must be in [0, {}]"_format(
+                        "Invalid NewServiceNodeV2 data: fee must be in [0, {}]"_format(
                                 cryptonote::STAKING_FEE_BASIS)};
 
             // NOTE: Verify that the number of contributors in the blob is
@@ -454,7 +442,7 @@ event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_
             uint64_t num_contributors = tools::decode_integer_be(c_len);
             if (num_contributors > oxen::MAX_CONTRIBUTORS_HF19) {
                 throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNode data: {}\n{}"_format(
+                        "Invalid NewServiceNodeV2 data: {}\n{}"_format(
                                 log_more_contributors_than_allowed(
                                         num_contributors,
                                         oxen::MAX_CONTRIBUTORS_HF19,
@@ -467,7 +455,7 @@ event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_
             // NOTE: Verify that there's atleast one contributor
             if (num_contributors <= 0) {
                 throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNode data: There must be atleast one contributor, "
+                        "Invalid NewServiceNodeV2 data: There must be atleast one contributor, "
                         "received 0\n{}"
                         ""_format(log_new_service_node_v2_tx(item, log.data)));
             }
@@ -480,7 +468,7 @@ event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_
                                                      32 /*SN Key*/ + 64 /*SN Sig*/ + 32 /*Fee*/;
             if (c_offset_value != expected_c_offset_value) {
                 throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNode data: The offset to the contributor payload ({} "
+                        "Invalid NewServiceNodeV2 data: The offset to the contributor payload ({} "
                         "bytes) did not match the offset we derived {}\n{}"
                         ""_format(
                                 c_offset_value,
@@ -490,10 +478,10 @@ event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_
 
             // NOTE: Verify the length of the contributor blob
             const size_t expected_contrib_hex_size =
-                    2 /*hex*/ * num_contributors * (/*address*/ 32 + /*amount*/ 32);
+                    2 /*hex*/ * num_contributors * (/*address*/ 32 + /*beneficiary*/ 32 + /*amount*/ 32);
             if (contrib_hex.size() != expected_contrib_hex_size) {
                 throw oxen::traced<std::invalid_argument>{
-                        "Invalid NewServiceNode data: The hex payload length ({}) derived for "
+                        "Invalid NewServiceNodeV2 data: The hex payload length ({}) derived for "
                         "{} contributors did not match the size we derived of {} hex characters\n"
                         "{}"_format(
                                 contrib_hex.size(),
@@ -508,7 +496,7 @@ event::StateChangeVariant get_log_event(cryptonote::hf hf_version, const uint64_
                 auto& [addr, beneficiary, amt] = item.contributors.emplace_back();
                 u256 amt256;
                 std::tie(addr, beneficiary, amt256, contrib_hex) =
-                        tools::split_hex_into<skip<12>, eth::address, eth::address, u256, std::string_view>(contrib_hex);
+                        tools::split_hex_into<skip<12>, eth::address, skip<12>, eth::address, u256, std::string_view>(contrib_hex);
                 amt = tools::decode_integer_be(amt256);
             }
 

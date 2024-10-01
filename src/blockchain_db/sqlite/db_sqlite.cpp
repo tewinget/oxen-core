@@ -568,9 +568,18 @@ void BlockchainSQLite::add_rewards(
 
     assert(operator_fee <= distribution_amount);
 
+    // NOTE: Localdev does not have a cryptonote->ETH address step, so, old pre-ETH SN nodes don't
+    // have an address assigned to it. This breaks tests that expect pre-ETH SN's to receive
+    // funds in order to proceed.
+    bool use_eth_address = hf_version >= hf::hf21_eth;
+    if (use_eth_address && m_nettype == network_type::LOCALDEV) {
+        if (!sn_info.operator_ethereum_address)
+            use_eth_address = false;
+    }
+
     // Pay the operator fee to the operator
     if (operator_fee > 0) {
-        if (hf_version >= hf::hf21_eth) {
+        if (use_eth_address) {
             assert(sn_info.contributors.size()); // NOTE: Be paranoid, check contributors size
             eth::address fee_recipient = sn_info.contributors.size()
                                                ? sn_info.contributors[0].ethereum_beneficiary
@@ -596,9 +605,8 @@ void BlockchainSQLite::add_rewards(
         if (c_reward > 0) {
             // NOTE: At minimum, when we parsed the contributor if no benficiary is set, it should
             // be assigned to the ethereum address by default.
-            assert(contributor.ethereum_beneficiary);
-            auto& balance = hf_version >= hf::hf21_eth ? payments[contributor.ethereum_beneficiary]
-                                                       : payments[contributor.address];
+            auto& balance = use_eth_address ? payments[contributor.ethereum_beneficiary]
+                                            : payments[contributor.address];
             balance += c_reward;
         }
     }

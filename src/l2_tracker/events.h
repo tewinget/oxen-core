@@ -92,8 +92,8 @@ struct ContributorV2 {
         auto version = tools::enum_top<Version>;
         field_varint(ar, "version", version, [](auto v) { return v < Version::_count; });
         field(ar, "address", address);
-        field_varint(ar, "amount", amount);
         field(ar, "beneficiary", beneficiary);
+        field_varint(ar, "amount", amount);
     }
 };
 
@@ -126,7 +126,7 @@ struct NewServiceNodeV2 : L2StateChange {
 
     std::strong_ordering operator<=>(const NewServiceNodeV2& o) const = default;
 
-    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node;
+    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node_v2;
     static constexpr std::string_view description = "new SNv2"sv;
 };
 

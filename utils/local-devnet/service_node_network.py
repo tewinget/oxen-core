@@ -299,8 +299,9 @@ class SNNetwork:
             total_staked = 0
 
             for entry in contributors:
-                contributor              = ContractServiceNodeContributor()
-                contributor.addr         = hardhat_account # Default to the hardhat account
+                contributor                    = ContractServiceNodeContributor()
+                contributor.staker.addr        = hardhat_account # Default to the hardhat account
+                contributor.staker.beneficiary = hardhat_account # Default to the hardhat account
 
                 # Use the oxen amount proportionally as the SENT amount
                 contributor.stakedAmount = int((entry["amount"] / oxen_staking_requirement * contract_staking_requirement))

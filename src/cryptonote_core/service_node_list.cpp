@@ -413,21 +413,6 @@ static std::string log_registration_details(
     return result;
 }
 
-static registration_details eth_reg_details(
-        hf hf_version, const eth::event::NewServiceNode& registration) {
-    registration_details reg{};
-    reg.service_node_pubkey = registration.sn_pubkey;
-    reg.bls_pubkey = registration.bls_pubkey;
-    reg.eth_contributions.reserve(registration.contributors.size());
-    for (const auto& contributor : registration.contributors)
-        reg.eth_contributions.emplace_back(contributor.address, contributor.address /*beneficiary*/, contributor.amount);
-    reg.hf = static_cast<uint64_t>(hf_version);
-    reg.uses_portions = false;
-    reg.fee = registration.fee;
-    reg.ed_signature = registration.ed_signature;
-    return reg;
-}
-
 static registration_details eth_reg_v2_details(
         hf hf_version, const eth::event::NewServiceNodeV2& registration) {
     registration_details reg{};
@@ -441,6 +426,25 @@ static registration_details eth_reg_v2_details(
     return reg;
 }
 
+static eth::event::NewServiceNodeV2 convert_eth_event_new_service_node_to_v2(const eth::event::NewServiceNode& value)
+{
+    auto result = eth::event::NewServiceNodeV2(value.chain_id, value.l2_height);
+    result.fee = value.fee;
+    result.sn_pubkey = value.sn_pubkey;
+    result.bls_pubkey = value.bls_pubkey;
+    result.contributors.reserve(value.contributors.size());
+    for (auto it : value.contributors)
+        result.contributors.emplace_back(it.address /*address*/, it.address /*beneficiary*/, it.amount);
+    result.ed_signature = value.ed_signature;
+    return result;
+}
+
+static registration_details eth_reg_details(
+        hf hf_version, const eth::event::NewServiceNode& registration) {
+    eth::event::NewServiceNodeV2 v2 = convert_eth_event_new_service_node_to_v2(registration);
+    registration_details result = eth_reg_v2_details(hf_version, v2);
+    return result;
+}
 
 static std::optional<registration_details> eth_reg_tx_extract_fields(
         hf hf_version, const cryptonote::transaction& tx) {
@@ -448,6 +452,14 @@ static std::optional<registration_details> eth_reg_tx_extract_fields(
     if (!cryptonote::get_field_from_tx_extra(tx.extra, registration))
         return std::nullopt;
     return eth_reg_details(hf_version, registration);
+}
+
+static std::optional<registration_details> eth_reg_v2_tx_extract_fields(
+        hf hf_version, const cryptonote::transaction& tx) {
+    eth::event::NewServiceNodeV2 registration;
+    if (!cryptonote::get_field_from_tx_extra(tx.extra, registration))
+        return std::nullopt;
+    return eth_reg_v2_details(hf_version, registration);
 }
 
 uint64_t offset_testing_quorum_height(quorum_type type, uint64_t height) {
@@ -1501,6 +1513,7 @@ validate_ethereum_registration(
 
         contributor.ethereum_address = it->address;
         contributor.ethereum_beneficiary = it->beneficiary;
+
         info.total_reserved += contributor.reserved;
         info.total_contributed += contributor.reserved;
     }
@@ -1607,6 +1620,9 @@ static eth::event::StateChangeVariant get_event_from_tx(const cryptonote::transa
     if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
         auto& new_sn = result.emplace<NewServiceNode>();
         success = cryptonote::get_field_from_tx_extra(tx.extra, new_sn);
+    } else if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2) {
+        auto& new_sn = result.emplace<NewServiceNodeV2>();
+        success = cryptonote::get_field_from_tx_extra(tx.extra, new_sn);
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
         auto& remreq = result.emplace<ServiceNodeExitRequest>();
         success = cryptonote::get_field_from_tx_extra(tx.extra, remreq);
@@ -1630,11 +1646,12 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
     auto& [pk, type, val] = result;
     if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
         type = "registration";
-        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx)) {
+        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx))
             pk = reg->service_node_pubkey;
-            if (reg->eth_contributions.size())
-                type += " (op: {})"_format(reg->eth_contributions.front().first);
-        }
+    } else if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2) {
+        type = "registration v2";
+        if (auto reg = eth_reg_v2_tx_extract_fields(hf_version, tx))
+            pk = reg->service_node_pubkey;
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
         type = "unlock";
         if (eth::event::ServiceNodeExitRequest remreq;
@@ -1722,18 +1739,10 @@ bool service_node_list::state_t::process_confirmed_event(
         uint64_t height,
         uint32_t index,
         const service_node_keys* my_keys) {
-
-    // NOTE: Convert to V2
-    auto new_sn_v2 = eth::event::NewServiceNodeV2(new_sn.chain_id, new_sn.l2_height);
-    new_sn_v2.fee = new_sn.fee;
-    new_sn_v2.sn_pubkey = new_sn.sn_pubkey;
-    new_sn_v2.bls_pubkey = new_sn.bls_pubkey;
-    new_sn_v2.contributors.reserve(new_sn.contributors.size());
-    for (auto it : new_sn.contributors)
-        new_sn_v2.contributors.emplace_back(it.address /*address*/, it.address /*beneficiary*/, it.amount);
-    new_sn_v2.ed_signature = new_sn.ed_signature;
-
-    // NOTE: Process event as V2
+    // NOTE: Convert to V2 and process it as a V2. Converting a V1 to V2 has no tangible
+    // side-effects other than setting the new 'beneficiary' field that results in the same
+    // behaviour as if V1 was processed but allows us to reuse V2 code to parse both payloads.
+    auto new_sn_v2 = convert_eth_event_new_service_node_to_v2(new_sn);
     bool result = process_confirmed_event(new_sn_v2, nettype, hf_version, height, index, my_keys);
     return result;
 }
@@ -3289,6 +3298,7 @@ void service_node_list::state_t::update_from_block(
                 process_key_image_unlock_tx(nettype, hf_version, height, tx);
                 break;
             case txtype::ethereum_new_service_node:
+            case txtype::ethereum_new_service_node_v2:
             case txtype::ethereum_service_node_exit:
             case txtype::ethereum_service_node_exit_request:
             case txtype::ethereum_staking_requirement_updated:

@@ -30,9 +30,15 @@ def evm_increaseTime(web3, seconds):
 def evm_mine(web3):
     web3.provider.make_request('evm_mine', [])
 
+class ContractServiceNodeStaker:
+    def __init__(self):
+        self.addr          = None
+        self.beneficiary   = None
+
+
 class ContractServiceNodeContributor:
     def __init__(self):
-        self.addr              = None
+        self.staker            = ContractServiceNodeStaker()
         self.stakedAmount: int = 0
 
 class ContractServiceNode:
@@ -255,10 +261,22 @@ class ServiceNodeRewardContract:
             }
 
             for contributor in item.contributors:
-                entry['contributors'].append({
-                    'addr':         contributor.addr,
-                    'stakedAmount': contributor.stakedAmount,
-                })
+                use_contributor_v1 = False
+
+                if use_contributor_v1:
+                    entry['contributors'].append({
+                        'addr':         contributor.staker.addr,
+                        'stakedAmount': contributor.stakedAmount,
+                    })
+
+                else:
+                    entry['contributors'].append({
+                        'staker': {
+                            'addr':        contributor.staker.addr,
+                            'beneficiary': contributor.staker.beneficiary,
+                        },
+                        'stakedAmount': contributor.stakedAmount,
+                    })
 
             contract_seed_nodes.append(entry)
 
@@ -451,6 +469,11 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "ClaimThresholdExceeded",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "ContractAlreadyStarted",
       "type": "error"
     },
@@ -489,7 +512,7 @@ contract_abi = json.loads("""
         },
         {
           "internalType": "address",
-          "name": "recipient",
+          "name": "contributor",
           "type": "address"
         }
       ],
@@ -545,6 +568,16 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "InsufficientContributors",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InsufficientNodes",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "InvalidBLSProofOfPossession",
       "type": "error"
     },
@@ -581,7 +614,22 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "LiquidatorRewardsTooLow",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "MaxClaimExceeded",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "MaxContributorsExceeded",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "MaxPubkeyAggregationsExceeded",
       "type": "error"
     },
     {
@@ -591,7 +639,12 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
-      "name": "NullRecipient",
+      "name": "NullAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NullPublicKey",
       "type": "error"
     },
     {
@@ -614,6 +667,11 @@ contract_abi = json.loads("""
         }
       ],
       "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "PositiveNumberRequirement",
       "type": "error"
     },
     {
@@ -694,7 +752,7 @@ contract_abi = json.loads("""
         },
         {
           "internalType": "address",
-          "name": "recipient",
+          "name": "contributor",
           "type": "address"
         }
       ],
@@ -719,12 +777,51 @@ contract_abi = json.loads("""
       "inputs": [
         {
           "indexed": false,
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "ClaimCycleUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newThreshold",
+          "type": "uint256"
+        }
+      ],
+      "name": "ClaimThresholdUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
           "internalType": "uint64",
           "name": "version",
           "type": "uint64"
         }
       ],
       "name": "Initialized",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "LiquidatorRewardRatioUpdated",
       "type": "event"
     },
     {
@@ -770,7 +867,7 @@ contract_abi = json.loads("""
         {
           "indexed": false,
           "internalType": "address",
-          "name": "recipient",
+          "name": "initiator",
           "type": "address"
         },
         {
@@ -822,9 +919,21 @@ contract_abi = json.loads("""
         {
           "components": [
             {
-              "internalType": "address",
-              "name": "addr",
-              "type": "address"
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "addr",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "beneficiary",
+                  "type": "address"
+                }
+              ],
+              "internalType": "struct IServiceNodeRewards.Staker",
+              "name": "staker",
+              "type": "tuple"
             },
             {
               "internalType": "uint256",
@@ -838,7 +947,7 @@ contract_abi = json.loads("""
           "type": "tuple[]"
         }
       ],
-      "name": "NewServiceNode",
+      "name": "NewServiceNodeV2",
       "type": "event"
     },
     {
@@ -890,6 +999,32 @@ contract_abi = json.loads("""
         }
       ],
       "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "PoolShareOfLiquidationRatioUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "RecipientRatioUpdated",
       "type": "event"
     },
     {
@@ -948,7 +1083,7 @@ contract_abi = json.loads("""
         {
           "indexed": false,
           "internalType": "address",
-          "name": "recipient",
+          "name": "operator",
           "type": "address"
         },
         {
@@ -985,7 +1120,7 @@ contract_abi = json.loads("""
         {
           "indexed": false,
           "internalType": "address",
-          "name": "recipient",
+          "name": "operator",
           "type": "address"
         },
         {
@@ -1028,7 +1163,7 @@ contract_abi = json.loads("""
         {
           "indexed": false,
           "internalType": "address",
-          "name": "recipient",
+          "name": "contributor",
           "type": "address"
         },
         {
@@ -1284,9 +1419,21 @@ contract_abi = json.loads("""
         {
           "components": [
             {
-              "internalType": "address",
-              "name": "addr",
-              "type": "address"
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "addr",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "beneficiary",
+                  "type": "address"
+                }
+              ],
+              "internalType": "struct IServiceNodeRewards.Staker",
+              "name": "staker",
+              "type": "tuple"
             },
             {
               "internalType": "uint256",
@@ -1300,122 +1447,6 @@ contract_abi = json.loads("""
         }
       ],
       "name": "addBLSPublicKey",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "components": [
-            {
-              "internalType": "uint256",
-              "name": "X",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "Y",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BN256G1.G1Point",
-          "name": "blsPubkey",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "uint256",
-              "name": "sigs0",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "sigs1",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "sigs2",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "sigs3",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct IServiceNodeRewards.BLSSignatureParams",
-          "name": "blsSignature",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "uint256",
-              "name": "serviceNodePubkey",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "serviceNodeSignature1",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "serviceNodeSignature2",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint16",
-              "name": "fee",
-              "type": "uint16"
-            }
-          ],
-          "internalType": "struct IServiceNodeRewards.ServiceNodeParams",
-          "name": "serviceNodeParams",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "address",
-              "name": "addr",
-              "type": "address"
-            },
-            {
-              "internalType": "uint256",
-              "name": "stakedAmount",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct IServiceNodeRewards.Contributor[]",
-          "name": "contributors",
-          "type": "tuple[]"
-        },
-        {
-          "internalType": "uint256",
-          "name": "deadline",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint8",
-          "name": "v",
-          "type": "uint8"
-        },
-        {
-          "internalType": "bytes32",
-          "name": "r",
-          "type": "bytes32"
-        },
-        {
-          "internalType": "bytes32",
-          "name": "s",
-          "type": "bytes32"
-        }
-      ],
-      "name": "addBLSPublicKeyWithPermit",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -1528,9 +1559,74 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "claimCycle",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
       "name": "claimRewards",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "claimRewards",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "claimThreshold",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "currentClaimCycle",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "currentClaimTotal",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -2009,9 +2105,21 @@ contract_abi = json.loads("""
             {
               "components": [
                 {
-                  "internalType": "address",
-                  "name": "addr",
-                  "type": "address"
+                  "components": [
+                    {
+                      "internalType": "address",
+                      "name": "addr",
+                      "type": "address"
+                    },
+                    {
+                      "internalType": "address",
+                      "name": "beneficiary",
+                      "type": "address"
+                    }
+                  ],
+                  "internalType": "struct IServiceNodeRewards.Staker",
+                  "name": "staker",
+                  "type": "tuple"
                 },
                 {
                   "internalType": "uint256",
@@ -2115,9 +2223,21 @@ contract_abi = json.loads("""
             {
               "components": [
                 {
-                  "internalType": "address",
-                  "name": "addr",
-                  "type": "address"
+                  "components": [
+                    {
+                      "internalType": "address",
+                      "name": "addr",
+                      "type": "address"
+                    },
+                    {
+                      "internalType": "address",
+                      "name": "beneficiary",
+                      "type": "address"
+                    }
+                  ],
+                  "internalType": "struct IServiceNodeRewards.Staker",
+                  "name": "staker",
+                  "type": "tuple"
                 },
                 {
                   "internalType": "uint256",
@@ -2160,6 +2280,71 @@ contract_abi = json.loads("""
         }
       ],
       "name": "setBLSNonSignerThresholdMax",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "setClaimCycle",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newMax",
+          "type": "uint256"
+        }
+      ],
+      "name": "setClaimThreshold",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "setLiquidatorRewardRatio",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "setPoolShareOfLiquidationRatio",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "setRecipientRatio",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -2252,6 +2437,13 @@ contract_abi = json.loads("""
     {
       "inputs": [],
       "name": "unpause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "updateAggregatePubkey",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
