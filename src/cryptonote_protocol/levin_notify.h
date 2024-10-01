@@ -33,9 +33,9 @@
 #include <vector>
 
 #include "epee/net/enums.h"
+#include "epee/net/net_utils_base.h"
 #include "epee/shared_sv.h"
 #include "epee/span.h"
-#include "epee/net/net_utils_base.h"
 
 namespace epee::levin {
 template <typename>

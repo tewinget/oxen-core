@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+
 #include "../cryptonote_config.h"
 
 namespace cryptonote {

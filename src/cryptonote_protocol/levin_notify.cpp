@@ -152,10 +152,7 @@ namespace {
     //! A queue of levin messages for a noise i2p/tor link
     struct noise_channel {
         explicit noise_channel(boost::asio::io_service& io_service) :
-                queue(),
-                strand(io_service),
-                next_noise(io_service),
-                connection{} {}
+                queue(), strand(io_service), next_noise(io_service), connection{} {}
 
         // `asio::io_service::strand` cannot be copied or moved
         noise_channel(const noise_channel&) = delete;
@@ -473,7 +470,8 @@ notify::notify(
         zone_(std::make_shared<detail::zone>(
                 service, std::move(p2p), std::move(noise), is_public)) {
     if (!zone_->p2p)
-        throw oxen::traced<std::logic_error>{"cryptonote::levin::notify cannot have nullptr p2p argument"};
+        throw oxen::traced<std::logic_error>{
+                "cryptonote::levin::notify cannot have nullptr p2p argument"};
 
     if (!zone_->noise.view.empty()) {
         const auto now = std::chrono::steady_clock::now();

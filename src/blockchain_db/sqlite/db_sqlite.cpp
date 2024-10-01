@@ -43,7 +43,8 @@ namespace cryptonote {
 
 static auto logcat = log::Cat("blockchain.db.sqlite");
 
-BlockchainSQLite::BlockchainSQLite(cryptonote::network_type nettype, std::filesystem::path db_path) :
+BlockchainSQLite::BlockchainSQLite(
+        cryptonote::network_type nettype, std::filesystem::path db_path) :
         db::Database(db_path, ""), m_nettype(nettype) {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
     height = 0;
@@ -312,7 +313,12 @@ void BlockchainSQLite::reset_database() {
 }
 
 void BlockchainSQLite::update_height(uint64_t new_height) {
-    log::trace(logcat, "BlockchainDB_SQLITE::{} Changing to height: {}, prev: {}", __func__, new_height, height);
+    log::trace(
+            logcat,
+            "BlockchainDB_SQLITE::{} Changing to height: {}, prev: {}",
+            __func__,
+            new_height,
+            height);
     height = new_height;
     prepared_exec("UPDATE batch_db_info SET height = ?", static_cast<int64_t>(height));
 }
@@ -452,7 +458,8 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint
 
     for (auto [address, amount] : accrued_amounts) {
         auto& p = payments.emplace_back();
-        p.amount = reward_money::db_amount(amount / BATCH_REWARD_FACTOR * BATCH_REWARD_FACTOR); /* truncate to atomic OXEN */
+        p.amount = reward_money::db_amount(
+                amount / BATCH_REWARD_FACTOR * BATCH_REWARD_FACTOR); /* truncate to atomic OXEN */
         [[maybe_unused]] bool addr_ok =
                 cryptonote::get_account_address_from_str(p.address_info, m_nettype, address);
         assert(addr_ok);
@@ -771,7 +778,8 @@ bool BlockchainSQLite::pop_block(
     try {
         SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
 
-        if (!reward_handler(block, service_nodes_state, /*add=*/false, get_delayed_payments(block_height)))
+        if (!reward_handler(
+                    block, service_nodes_state, /*add=*/false, get_delayed_payments(block_height)))
             return false;
 
         // Add back to the database payments that had been made in this block
@@ -803,7 +811,8 @@ bool BlockchainSQLite::return_staked_amount_to_user(
         auto insert_payment = prepared_st(
                 "INSERT INTO delayed_payments (eth_address, amount, payout_height, entry_height) "
                 "VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(eth_address, payout_height) DO UPDATE SET amount = (amount + excluded.amount);");
+                "ON CONFLICT(eth_address, payout_height) "
+                "DO UPDATE SET amount = (amount + excluded.amount);");
 
         for (auto& payment : payments) {
             auto amt = static_cast<int64_t>(payment.amount.to_db());

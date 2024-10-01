@@ -113,8 +113,7 @@ void get_excess_pool(
     }
 }
 
-void create_new_swarm_from_excess(
-        swarm_snode_map_t& swarm_to_snodes, std::mt19937_64& mt) {
+void create_new_swarm_from_excess(swarm_snode_map_t& swarm_to_snodes, std::mt19937_64& mt) {
     const bool has_starving_swarms = std::any_of(
             swarm_to_snodes.begin(),
             swarm_to_snodes.end(),

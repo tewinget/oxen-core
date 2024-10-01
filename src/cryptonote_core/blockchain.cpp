@@ -3358,22 +3358,25 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
         //
         // If the node gets denied, it will be removed from this list and never added to the SNL.
         service_node_list.for_each_pending_l2_state(
-            [&bls_pubkeys_in_snl]<typename Event>(const Event& e, const service_nodes::service_node_list::unconfirmed_l2_tx&) {
-                if constexpr  (std::is_same_v<Event, eth::event::NewServiceNode>) {
-                    bls_pubkeys_in_snl.push_back(e.bls_pubkey);
-                } else {
-                    static_assert(
-                            std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
-                            std::is_same_v<Event, eth::event::ServiceNodeExit> ||
-                            std::is_same_v<Event, eth::event::StakingRequirementUpdated>);
-                }
-        });
+                [&bls_pubkeys_in_snl]<typename Event>(
+                        const Event& e,
+                        const service_nodes::service_node_list::unconfirmed_l2_tx&) {
+                    if constexpr (std::is_same_v<Event, eth::event::NewServiceNode>) {
+                        bls_pubkeys_in_snl.push_back(e.bls_pubkey);
+                    } else {
+                        static_assert(
+                                std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
+                                std::is_same_v<Event, eth::event::ServiceNodeExit> ||
+                                std::is_same_v<Event, eth::event::StakingRequirementUpdated>);
+                    }
+                });
 
         // NOTE: Extract all service nodes from the smart contract
         eth::RewardsContract::ServiceNodeIDs smart_contract_ids =
                 m_l2_tracker->get_all_service_node_ids(std::nullopt);
         if (!smart_contract_ids.success)
-            throw oxen::traced<std::runtime_error>("Querying of service node IDs from smart contract failed");
+            throw oxen::traced<std::runtime_error>(
+                    "Querying of service node IDs from smart contract failed");
         bls_pubkeys_in_smart_contract = std::move(smart_contract_ids.bls_pubkeys);
     }
 

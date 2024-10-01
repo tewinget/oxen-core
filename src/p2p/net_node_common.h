@@ -66,8 +66,7 @@ struct i_p2p_endpoint {
     virtual uint64_t get_public_connections_count() = 0;
     virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f) = 0;
     virtual bool for_connection(
-            const connection_id_t&,
-            std::function<bool(t_connection_context&, peerid_type)> f) = 0;
+            const connection_id_t&, std::function<bool(t_connection_context&, peerid_type)> f) = 0;
     virtual bool block_host(
             const epee::net_utils::network_address& address, time_t seconds = 0) = 0;
     virtual bool unblock_host(const epee::net_utils::network_address& address) = 0;
