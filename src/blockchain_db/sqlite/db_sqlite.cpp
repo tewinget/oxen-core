@@ -561,8 +561,6 @@ void BlockchainSQLite::add_rewards(
         uint64_t distribution_amount,
         const service_nodes::service_node_info& sn_info,
         block_payments& payments) const {
-    log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
-
     // Find out how much is due for the operator: fee_portions/PORTIONS * reward
     assert(sn_info.portions_for_operator <= old::STAKING_PORTIONS);
     uint64_t operator_fee =
