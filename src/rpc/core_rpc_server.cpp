@@ -1768,10 +1768,12 @@ void core_rpc_server::invoke(GET_CONNECTIONS& get_connections, rpc_context) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, rpc_context) {
     const auto& blockchain = m_core.blockchain;
-    auto version = hfinfo.request.version > 0 ? static_cast<hf>(hfinfo.request.version)
-                 : hfinfo.request.height > 0 ? blockchain.get_network_version(hfinfo.request.height)
-                                             : blockchain.get_network_version();
-    hfinfo.response["version"] = version;
+    auto version =
+            hfinfo.request.version > 0
+                    ? hard_fork_ceil(m_core.get_nettype(), static_cast<hf>(hfinfo.request.version))
+            : hfinfo.request.height > 0 ? blockchain.get_network_version(hfinfo.request.height)
+                                        : blockchain.get_network_version();
+    hfinfo.response["version"] = static_cast<std::underlying_type_t<hf>>(version);
     hfinfo.response["enabled"] = blockchain.get_network_version() >= version;
     auto heights = get_hard_fork_heights(m_core.get_nettype(), version);
     if (heights.first)

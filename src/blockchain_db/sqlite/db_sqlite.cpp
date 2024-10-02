@@ -333,9 +333,10 @@ void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
             revert_to_height);
 
     if (!maybe_prev_interval) {
-        auto fork_height = cryptonote::get_hard_fork_heights(m_nettype, hf::hf19_reward_batching);
+        auto fork_height =
+                cryptonote::hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0);
         reset_database();
-        update_height(fork_height.first.value_or(0));
+        update_height(fork_height);
         return;
     }
     const auto prev_interval = *maybe_prev_interval;
@@ -442,8 +443,8 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint
     // block later on.  (This is a pretty slim edge case that happened on devnet and is probably
     // virtually impossible on mainnet).
     if (m_nettype != cryptonote::network_type::FAKECHAIN &&
-        block_height <= cryptonote::get_hard_fork_heights(m_nettype, hf::hf19_reward_batching)
-                                .first.value_or(0))
+        block_height <=
+                cryptonote::hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0))
         return {};
 
     const auto& conf = get_config(m_nettype);
@@ -698,8 +699,8 @@ bool BlockchainSQLite::add_block(
         return true;
     }
 
-    auto fork_height = cryptonote::get_hard_fork_heights(m_nettype, hf::hf19_reward_batching);
-    if (block_height == fork_height.first.value_or(0)) {
+    if (block_height ==
+        cryptonote::hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0)) {
         log::debug(logcat, "Batching of Service Node Rewards Begins");
         reset_database();
         update_height(block_height - 1);
