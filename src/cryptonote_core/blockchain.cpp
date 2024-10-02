@@ -2975,9 +2975,8 @@ bool Blockchain::find_blockchain_supplement(
     // how can we expect to sync from the client that the block list came from?
     if (qblock_ids.empty()) {
         log::info(
-                log::Cat("net.p2p"),
-                "Client sent wrong NOTIFY_REQUEST_CHAIN: m_block_ids.size()={}, dropping "
-                "connection",
+                logcat,
+                "Invalid blockchain supplement call: queried block ids is empty",
                 qblock_ids.size());
         return false;
     }
@@ -2988,9 +2987,9 @@ bool Blockchain::find_blockchain_supplement(
     auto gen_hash = m_db->get_block_hash_from_height(0);
     if (qblock_ids.back() != gen_hash) {
         log::info(
-                log::Cat("net.p2p"),
-                "Client sent wrong NOTIFY_REQUEST_CHAIN: genesis block mismatch: id: {}, expected: "
-                "{}, dropping connection",
+                logcat,
+                "Invalid blockchain supplement call: genesis block mismatch: "
+                "request {} != block genesis {}",
                 qblock_ids.back(),
                 gen_hash);
         return false;
@@ -3247,7 +3246,13 @@ bool Blockchain::find_blockchain_supplement(
     // if a specific start height has been requested
     if (req_start_block > 0) {
         // if requested height is higher than our chain, return false -- we can't help
-        if (req_start_block >= m_db->height()) {
+        if (auto bc_height = m_db->height(); req_start_block >= bc_height) {
+            log::debug(
+                    logcat,
+                    "Failed to find blockchain supplement: "
+                    "requested start height {} >= blockchain height {}",
+                    req_start_block,
+                    bc_height);
             return false;
         }
         start_height = req_start_block;

@@ -371,7 +371,7 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
         auto& out_ind = res.output_indices.emplace_back().indices;
         ntxes += bd.txs.size();
         out_ind.reserve(1 + bd.txs.size());
-        if (req.no_miner_tx)
+        if (req.no_miner_tx || !bd.miner_tx_hash)
             out_ind.emplace_back();
         res_b.txs.reserve(bd.txs.size());
         for (auto& [txhash, txdata] : bd.txs)
@@ -383,7 +383,7 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
             std::vector<std::vector<uint64_t>> indices;
             bool r = m_core.blockchain.get_tx_outputs_gindexs(
                     miner_tx ? bd.miner_tx_hash : bd.txs.front().first, n_txes_to_lookup, indices);
-            if (!r || indices.size() != n_txes_to_lookup || out_ind.size() != (miner_tx ? 0 : 1)) {
+            if (!r || indices.size() != n_txes_to_lookup) {
                 res.status = "Failed";
                 return res;
             }
