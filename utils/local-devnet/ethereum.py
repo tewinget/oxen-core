@@ -58,10 +58,12 @@ class ContractServiceNode:
     contributors = []
 
 class ContractSeedServiceNode:
-    def __init__(self, bls_pubkey_hex):
-        assert len(bls_pubkey_hex) == 128, "BLS pubkey must be 128 hex characters consisting of a 32 byte X & Y component"
-        self.pubkey       = bls_pubkey_hex
-        self.contributors = []
+    def __init__(self, bls_pubkey_hex, ed25519_pubkey):
+        assert len(bls_pubkey_hex) == 128, "BLS pubkey must be 128 hex characters consisting of a 64 byte X & Y component"
+        assert len(ed25519_pubkey) == 64, "Ed25519 pubkey must be 64 hex characters consisting of a 32 byte X & Y component"
+        self.bls_pubkey     = bls_pubkey_hex
+        self.ed25519_pubkey = ed25519_pubkey
+        self.contributors   = []
 
 class ServiceNodeRewardContract:
     def __init__(self):
@@ -240,10 +242,11 @@ class ServiceNodeRewardContract:
         contract_seed_nodes = []
         for item in seed_nodes:
             entry = {
-                'pubkey': {
-                    'X': int(item.pubkey[:64],    16),
-                    'Y': int(item.pubkey[64:128], 16),
+                'blsPubkey': {
+                    'X': int(item.bls_pubkey[:64],    16),
+                    'Y': int(item.bls_pubkey[64:128], 16),
                 },
+                'ed25519Pubkey': int(item.ed25519_pubkey[:32], 16),
                 'contributors': [],
             }
 
@@ -507,6 +510,17 @@ contract_abi = json.loads("""
       "type": "error"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "serviceNodeID",
+          "type": "uint64"
+        }
+      ],
+      "name": "Ed25519PubkeyAlreadyExists",
+      "type": "error"
+    },
+    {
       "inputs": [],
       "name": "EnforcedPause",
       "type": "error"
@@ -631,7 +645,12 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
-      "name": "NullPublicKey",
+      "name": "NullBLSPubkey",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NullEd25519Pubkey",
       "type": "error"
     },
     {
@@ -835,8 +854,14 @@ contract_abi = json.loads("""
           ],
           "indexed": false,
           "internalType": "struct BN256G1.G1Point",
-          "name": "pubkey",
+          "name": "blsPubkey",
           "type": "tuple"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "ed25519Pubkey",
+          "type": "uint256"
         }
       ],
       "name": "NewSeededServiceNode",
@@ -1281,50 +1306,6 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
-      "name": "_aggregatePubkey",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "X",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "Y",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "_lastHeightPubkeyWasAggregated",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "_numPubkeyAggregationsForHeight",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
       "name": "acceptOwnership",
       "outputs": [],
       "stateMutability": "nonpayable",
@@ -1630,6 +1611,25 @@ contract_abi = json.loads("""
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "ed25519Pubkey",
+          "type": "uint256"
+        }
+      ],
+      "name": "ed25519ToServiceNodeID",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "serviceNodeID",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "foundationPool",
       "outputs": [
@@ -1719,6 +1719,19 @@ contract_abi = json.loads("""
           "internalType": "bool",
           "name": "",
           "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "lastHeightPubkeyWasAggregated",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -1846,6 +1859,19 @@ contract_abi = json.loads("""
           "internalType": "uint64",
           "name": "",
           "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "numPubkeyAggregationsForHeight",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -2086,8 +2112,13 @@ contract_abi = json.loads("""
                 }
               ],
               "internalType": "struct BN256G1.G1Point",
-              "name": "pubkey",
+              "name": "blsPubkey",
               "type": "tuple"
+            },
+            {
+              "internalType": "uint256",
+              "name": "ed25519Pubkey",
+              "type": "uint256"
             },
             {
               "components": [
@@ -2133,7 +2164,7 @@ contract_abi = json.loads("""
       "inputs": [
         {
           "internalType": "bytes",
-          "name": "blsPublicKey",
+          "name": "blsPubkey",
           "type": "bytes"
         }
       ],
@@ -2189,7 +2220,7 @@ contract_abi = json.loads("""
                 }
               ],
               "internalType": "struct BN256G1.G1Point",
-              "name": "pubkey",
+              "name": "blsPubkey",
               "type": "tuple"
             },
             {
@@ -2235,6 +2266,11 @@ contract_abi = json.loads("""
               "internalType": "struct IServiceNodeRewards.Contributor[]",
               "name": "contributors",
               "type": "tuple[]"
+            },
+            {
+              "internalType": "uint256",
+              "name": "ed25519Pubkey",
+              "type": "uint256"
             }
           ],
           "internalType": "struct IServiceNodeRewards.ServiceNode",
@@ -2488,6 +2524,68 @@ contract_abi = json.loads("""
     {
       "inputs": [],
       "name": "updateServiceNodesLength",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "X",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "Y",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BN256G1.G1Point",
+          "name": "blsPubkey",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "sigs0",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs1",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs2",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs3",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct IServiceNodeRewards.BLSSignatureParams",
+          "name": "blsSignature",
+          "type": "tuple"
+        },
+        {
+          "internalType": "address",
+          "name": "caller",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "serviceNodePubkey",
+          "type": "uint256"
+        }
+      ],
+      "name": "validateProofOfPossession",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

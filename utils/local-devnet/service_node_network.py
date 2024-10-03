@@ -297,8 +297,7 @@ class SNNetwork:
         contract_staking_requirement = self.sn_contract.stakingRequirement()
         seed_node_list      = []
         for sn in self.sns:
-            node      = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey)
-            assert node.pubkey is not None
+            node         = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey, sn.get_service_keys().ed25519_pubkey)
             contributors = sn.sn_status()["service_node_state"]["contributors"]
             total_staked = 0
 
