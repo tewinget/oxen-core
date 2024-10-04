@@ -386,6 +386,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 
         case EventType::NewServiceNodeV2: {
             // event NewServiceNode(
+            //      uint8 version,
             //      uint64 indexed serviceNodeID,
             //      address initiator,
             //      { // struct ServiceNodeParams
@@ -410,9 +411,10 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 
             auto& item = result.emplace<event::NewServiceNodeV2>(chain_id, l2_height);
 
-            u256 fee256, c_offset, c_len;
+            u256 version256, fee256, c_offset, c_len;
             std::string_view contrib_hex;
             std::tie(
+                    version256,
                     item.bls_pubkey,
                     item.sn_pubkey,
                     item.ed_signature,
@@ -421,6 +423,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
                     c_len,
                     contrib_hex) =
                     tools::split_hex_into<
+                            u256,
                             skip<12 + 20>,
                             bls_public_key,
                             crypto::public_key,
@@ -429,6 +432,20 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
                             u256,
                             u256,
                             std::string_view>(log.data);
+
+            // NOTE: Decode version
+            uint8_t const top_version =
+                    static_cast<uint8_t>(tools::enum_top<event::NewServiceNodeV2::Version>);
+            uint8_t const version     = tools::decode_integer_be(version256);
+
+            if (version <= static_cast<uint8_t>(event::NewServiceNodeV2::Version::invalid) ||
+                version > top_version) {
+                throw oxen::traced<std::invalid_argument>{
+                        "Invalid NewServiceNodeV2 data: version {} out of bounds, must be between [0, {}]"_format(
+                                version,
+                                static_cast<uint8_t>(
+                                        tools::enum_count<event::NewServiceNodeV2::Version>))};
+            }
 
             // NOTE: Decode fee and that it is within acceptable range
             item.fee = tools::decode_integer_be(fee256);

@@ -105,6 +105,8 @@ struct ContributorV2 {
 };
 
 struct NewServiceNodeV2 : L2StateChange {
+    enum class Version { invalid = -1, v0, _count };
+    Version version = Version::v0;
     crypto::public_key sn_pubkey = crypto::null<crypto::public_key>;
     bls_public_key bls_pubkey = crypto::null<bls_public_key>;
     crypto::ed25519_signature ed_signature = crypto::null<crypto::ed25519_signature>;
