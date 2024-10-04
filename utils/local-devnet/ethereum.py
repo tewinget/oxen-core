@@ -871,6 +871,12 @@ contract_abi = json.loads("""
       "anonymous": false,
       "inputs": [
         {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "version",
+          "type": "uint8"
+        },
+        {
           "indexed": true,
           "internalType": "uint64",
           "name": "serviceNodeID",

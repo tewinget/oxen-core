@@ -1,5 +1,6 @@
 #include "rewards_contract.h"
 
+#include <common/formattable.h>
 #include <common/bigint.h>
 #include <common/guts.h>
 #include <common/string_util.h>
@@ -13,8 +14,6 @@
 
 #include "contracts.h"
 
-namespace eth {
-
 namespace {
     auto logcat = oxen::log::Cat("l2_tracker");
 
@@ -27,25 +26,42 @@ namespace {
         Other
     };
 
+    static constexpr std::string_view to_string(EventType type) {
+        switch (type) {
+            case EventType::NewServiceNode: return "NewServiceNode";
+            case EventType::NewServiceNodeV2: return "NewServiceNodeV2";
+            case EventType::ServiceNodeExitRequest: return "ServiceNodeExitRequest";
+            case EventType::ServiceNodeExit: return "ServiceNodeExit";
+            case EventType::StakingRequirementUpdated: return "StakingRequirementUpdated";
+            case EventType::Other: return "Other";
+        }
+        return "eth_event_type_ERROR";
+    }
+
     EventType get_log_type(const ethyl::LogEntry& log) {
         if (log.topics.empty())
             throw std::runtime_error("No topics in log entry");
 
         auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
-        if (event_sig == contract::event::NewServiceNode)
+        if (event_sig == eth::contract::event::NewServiceNode)
             return EventType::NewServiceNode;
-        if (event_sig == contract::event::ServiceNodeExitRequest)
+        if (event_sig == eth::contract::event::ServiceNodeExitRequest)
             return EventType::ServiceNodeExitRequest;
-        if (event_sig == contract::event::ServiceNodeExit)
+        if (event_sig == eth::contract::event::ServiceNodeExit)
             return EventType::ServiceNodeExit;
-        if (event_sig == contract::event::StakingRequirementUpdated)
+        if (event_sig == eth::contract::event::StakingRequirementUpdated)
             return EventType::StakingRequirementUpdated;
-        if (event_sig == contract::event::NewServiceNodeV2)
+        if (event_sig == eth::contract::event::NewServiceNodeV2)
             return EventType::NewServiceNodeV2;
         return EventType::Other;
     }
 
 }  // namespace
+
+template <>
+inline constexpr bool formattable::via_to_string<EventType> = true;
+
+namespace eth {
 
 using u256 = std::array<std::byte, 32>;
 using tools::skip;
@@ -266,7 +282,10 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
         return result;
     }
 
-    switch (get_log_type(log)) {
+    EventType event_type = get_log_type(log);
+    log::trace(logcat, "Parsing L2 log {} ({}) at height {}", event_type, log.topics[0], l2_height);
+
+    switch (event_type) {
         case EventType::NewServiceNode: {
             // event NewServiceNode(
             //      uint64 indexed serviceNodeID,
@@ -434,18 +453,19 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
                             std::string_view>(log.data);
 
             // NOTE: Decode version
-            uint8_t const top_version =
-                    static_cast<uint8_t>(tools::enum_top<event::NewServiceNodeV2::Version>);
-            uint8_t const version     = tools::decode_integer_be(version256);
+            int8_t const top_version =
+                    static_cast<int8_t>(tools::enum_top<event::NewServiceNodeV2::Version>);
+            int8_t const version     = tools::decode_integer_be(version256);
 
-            if (version <= static_cast<uint8_t>(event::NewServiceNodeV2::Version::invalid) ||
+            if (version <= static_cast<int8_t>(event::NewServiceNodeV2::Version::invalid) ||
                 version > top_version) {
                 throw oxen::traced<std::invalid_argument>{
                         "Invalid NewServiceNodeV2 data: version {} out of bounds, must be between [0, {}]"_format(
                                 version,
-                                static_cast<uint8_t>(
+                                static_cast<int8_t>(
                                         tools::enum_count<event::NewServiceNodeV2::Version>))};
             }
+            item.version = static_cast<event::NewServiceNodeV2::Version>(version);
 
             // NOTE: Decode fee and that it is within acceptable range
             item.fee = tools::decode_integer_be(fee256);
@@ -481,8 +501,9 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             // NOTE: Verify that the offset to the dynamic part of the
             // contributors array is correct.
             const uint64_t c_offset_value = tools::decode_integer_be(c_offset);
-            const uint64_t expected_c_offset_value = 32 /*ID*/ + 32 /*recipient*/ + 64 /*BLS Key*/ +
-                                                     32 /*SN Key*/ + 64 /*SN Sig*/ + 32 /*Fee*/;
+            const uint64_t expected_c_offset_value = 32 /*version*/ + 32 /*ID*/ + 32 /*recipient*/ +
+                                                     64 /*BLS Key*/ + 32 /*SN Key*/ +
+                                                     64 /*SN Sig*/ + 32 /*Fee*/;
             if (c_offset_value != expected_c_offset_value) {
                 throw oxen::traced<std::invalid_argument>(
                         "Invalid NewServiceNodeV2 data: The offset to the contributor payload ({} "
@@ -824,3 +845,6 @@ std::vector<uint64_t> RewardsContract::get_non_signers(
     return result;
 }
 }  // namespace eth
+
+
+

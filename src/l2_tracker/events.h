@@ -122,7 +122,6 @@ struct NewServiceNodeV2 : L2StateChange {
 
     template <class Archive>
     void serialize_object(Archive& ar) {
-        [[maybe_unused]] uint8_t version = 0;
         field_varint(ar, "version", version);
         field_varint(ar, "chain_id", chain_id);
         field_varint(ar, "l2_height", l2_height);
