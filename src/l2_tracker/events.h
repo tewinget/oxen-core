@@ -90,10 +90,12 @@ struct ContributorV2 {
     template <class Archive>
     void serialize_object(Archive& ar) {
         auto version = tools::enum_top<Version>;
-        field_varint(ar, "version", version, [](auto v) { return v < Version::_count; });
+        field_varint(ar, "version", version, [](auto v) { return v > Version::version_invalid && v < Version::_count; });
         field(ar, "address", address);
         field(ar, "beneficiary", beneficiary);
         field_varint(ar, "amount", amount);
+
+
     }
 };
 
