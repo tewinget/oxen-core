@@ -11,7 +11,7 @@
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "cryptonote_basic/txtypes.h"
-#include "cryptonote_basic/hardfork.h"
+#include "serialization/optional.h"
 
 using namespace std::literals;
 
@@ -92,10 +92,15 @@ struct ContributorV2 {
         auto version = tools::enum_top<Version>;
         field_varint(ar, "version", version, [](auto v) { return v > Version::version_invalid && v < Version::_count; });
         field(ar, "address", address);
-        field(ar, "beneficiary", beneficiary);
+
+        std::optional<eth::address> serialized_beneficiary;
+        if (Archive::is_serializer && beneficiary != address)
+            serialized_beneficiary = beneficiary;
+        field(ar, "beneficiary", serialized_beneficiary);
+        if (Archive::is_deserializer)
+            beneficiary = serialized_beneficiary ? *serialized_beneficiary : address;
+
         field_varint(ar, "amount", amount);
-
-
     }
 };
 
