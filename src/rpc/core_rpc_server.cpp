@@ -371,7 +371,7 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
         auto& out_ind = res.output_indices.emplace_back().indices;
         ntxes += bd.txs.size();
         out_ind.reserve(1 + bd.txs.size());
-        if (req.no_miner_tx)
+        if (req.no_miner_tx || !bd.miner_tx_hash)
             out_ind.emplace_back();
         res_b.txs.reserve(bd.txs.size());
         for (auto& [txhash, txdata] : bd.txs)
@@ -383,7 +383,7 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
             std::vector<std::vector<uint64_t>> indices;
             bool r = m_core.blockchain.get_tx_outputs_gindexs(
                     miner_tx ? bd.miner_tx_hash : bd.txs.front().first, n_txes_to_lookup, indices);
-            if (!r || indices.size() != n_txes_to_lookup || out_ind.size() != (miner_tx ? 0 : 1)) {
+            if (!r || indices.size() != n_txes_to_lookup) {
                 res.status = "Failed";
                 return res;
             }
@@ -1768,10 +1768,12 @@ void core_rpc_server::invoke(GET_CONNECTIONS& get_connections, rpc_context) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, rpc_context) {
     const auto& blockchain = m_core.blockchain;
-    auto version = hfinfo.request.version > 0 ? static_cast<hf>(hfinfo.request.version)
-                 : hfinfo.request.height > 0 ? blockchain.get_network_version(hfinfo.request.height)
-                                             : blockchain.get_network_version();
-    hfinfo.response["version"] = version;
+    auto version =
+            hfinfo.request.version > 0
+                    ? hard_fork_ceil(m_core.get_nettype(), static_cast<hf>(hfinfo.request.version))
+            : hfinfo.request.height > 0 ? blockchain.get_network_version(hfinfo.request.height)
+                                        : blockchain.get_network_version();
+    hfinfo.response["version"] = static_cast<std::underlying_type_t<hf>>(version);
     hfinfo.response["enabled"] = blockchain.get_network_version() >= version;
     auto heights = get_hard_fork_heights(m_core.get_nettype(), version);
     if (heights.first)
