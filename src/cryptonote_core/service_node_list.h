@@ -60,6 +60,7 @@
 namespace cryptonote {
 class Blockchain;
 class BlockchainDB;
+class BlockchainSQLite;
 struct checkpoint_t;
 };  // namespace cryptonote
 
@@ -1052,6 +1053,20 @@ class service_node_list {
                 uint64_t block_height) const;
         void update_from_block(
                 cryptonote::Blockchain& blockchain,
+                cryptonote::network_type nettype,
+                state_set const& state_history,
+                state_set const& state_archive,
+                std::unordered_map<crypto::hash, state_t> const& alt_states,
+                const cryptonote::block& block,
+                const std::vector<cryptonote::transaction>& txs,
+                const service_node_keys* my_keys);
+
+        // oxen_chain_generator in core_tests does not have a Blockchain,
+        // but we can't include db_sqlite header here because it includes us,
+        // so this overload is necessary.
+        void update_from_block(
+                const cryptonote::BlockchainDB& db,
+                cryptonote::BlockchainSQLite* sqlite_db,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
                 state_set const& state_archive,
