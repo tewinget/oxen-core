@@ -128,7 +128,7 @@ void transition(
     // batching db.  (If there is SENT left over at the end we'll put it back in, but under the
     // converted SENT address).
 
-    std::vector<cryptonote::batch_sn_payment> converted_rewards;
+    cryptonote::block_payments converted_rewards;
     auto [accrued_addr, accrued_value] = sql.get_all_accrued_rewards();
     assert(accrued_addr.size() == accrued_value.size());
     for (size_t i = 0; i < accrued_addr.size(); i++) {
@@ -145,7 +145,7 @@ void transition(
         const auto& eth_addr = it->second;
         unallocated[eth_addr] += oxen_to_sent(val);
         log::warning(logcat, "oxen -> sent ({} -> {}) accrued unpaid oxen rewards: {}", addr, eth_addr, val);
-        converted_rewards.emplace_back(oxen_addr, val);
+        converted_rewards[oxen_addr] = val;
     }
 
     // Clear out all the old OXEN rewards that we've now converted (into `unallocated`).  We'll add

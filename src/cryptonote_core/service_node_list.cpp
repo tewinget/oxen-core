@@ -3263,8 +3263,28 @@ void service_node_list::state_t::update_from_block(
         const cryptonote::block& block,
         const std::vector<cryptonote::transaction>& txs,
         const service_node_keys* my_keys) {
-    const auto& db = blockchain.get_db();
-    auto& sqlite_db = blockchain.sqlite_db();
+    update_from_block(
+            blockchain.db(),
+            &blockchain.sqlite_db(),
+            nettype,
+            state_history,
+            state_archive,
+            alt_states,
+            block,
+            txs,
+            my_keys);
+}
+
+void service_node_list::state_t::update_from_block(
+        const cryptonote::BlockchainDB& db,
+        cryptonote::BlockchainSQLite* sqlite_db_ptr,
+        cryptonote::network_type nettype,
+        state_set const& state_history,
+        state_set const& state_archive,
+        std::unordered_map<crypto::hash, state_t> const& alt_states,
+        const cryptonote::block& block,
+        const std::vector<cryptonote::transaction>& txs,
+        const service_node_keys* my_keys) {
 
     log::trace(
             logcat,
@@ -3322,8 +3342,9 @@ void service_node_list::state_t::update_from_block(
     }
 
     // On first block of hf21, do hf21 transition.
-    if (auto hf21_height = hard_fork_begins(nettype, hf::hf21_eth); height == *hf21_height)
-    {
+    // TODO: chaingen doesn't have a BlockchainSQLite so it can't test this correctly.
+    auto hf21_height = hard_fork_begins(nettype, hf::hf21_eth);
+    if (hf21_height && height == *hf21_height && sqlite_db_ptr) {
         auto print_sns = [&]() {
             log::warning(logcat, "Printing service node list:\n\n");
             for (const auto& info : service_nodes_infos) {
@@ -3354,6 +3375,7 @@ void service_node_list::state_t::update_from_block(
 
         log::warning(logcat, "Beginning hf21 transition, height = {}, nettype = {}", height, (uint8_t)nettype);
         print_sns();
+        auto& sqlite_db = *sqlite_db_ptr;
         oxen::sent::transition(*this, sqlite_db, nettype);
         print_sns();
     }
