@@ -554,13 +554,30 @@ class service_node_list {
             f(it->second);
     }
 
-    /// Returns the (monero curve) pubkey associated with a x25519 pubkey.  Returns a null public
-    /// key if not found.  (Note: this is just looking up the association, not derivation).
+    /// Returns the primary SN pubkey associated with a x25519 pubkey.  Returns a null public key if
+    /// not found.  (Note: this is just looking up the association, not derivation).
     ///
     /// As of feature::SN_PK_IS_ED25519 this is looked up in the state and will always be present
     /// (if the given pubkey actually belongs to an active service node).  Before that HF, the
     /// pubkey will only be available if a recent proof has been received from the SN.
-    crypto::public_key get_pubkey_from_x25519(const crypto::x25519_public_key& x25519) const;
+    ///
+    /// Note that, as of feature::ETH_BLS, this will return a match for recently removed nodes and
+    /// so a non-null return does not necessarily mean the node is currently registered.
+    crypto::public_key find_public_key(const crypto::x25519_public_key& x25519) const;
+
+    /// Returns the primary SN pubkey associated with the given BLS pubkey (HF21+).  Returns a null
+    /// public key if not found.  Note that this returns a pubkey for both current and recently
+    /// removed nodes, so a non-null return here does *not* necessarily mean the pubkey belongs to
+    /// an active node.
+    ///
+    /// Requires HF21+; earlier versions always return a null key.
+    crypto::public_key find_public_key(const eth::bls_public_key& bls_pubkey) const;
+
+    /// Works like `find_public_key`, except that it only returns the SN pubkey if the node is a
+    /// currently registered service node on the Oxen chain (i.e. active or decommissioned, but
+    /// *not* recently removed), whereas find_public_key will return the pubkey for either
+    /// registered or recently removed nodes.  Requires HF21+; earlier versions always return null.
+    crypto::public_key find_public_key_registered(const eth::bls_public_key& bls_pubkey) const;
 
     // Returns a pubkey of a random service node in the service node list
     crypto::public_key get_random_pubkey();
@@ -706,8 +723,6 @@ class service_node_list {
             std::unique_ptr<uptime_proof::Proof> proof,
             bool& my_uptime_proof_confirmation,
             crypto::x25519_public_key& x25519_pkey);
-
-    crypto::public_key public_key_lookup(const eth::bls_public_key& bls_pubkey) const;
 
     void record_checkpoint_participation(
             crypto::public_key const& pubkey, uint64_t height, bool participated);
@@ -992,6 +1007,7 @@ class service_node_list {
         service_nodes_infos_t service_nodes_infos;
         std::vector<key_image_blacklist_entry> key_image_blacklist;
         std::unordered_map<crypto::x25519_public_key, crypto::public_key> x25519_map;
+        std::unordered_map<eth::bls_public_key, crypto::public_key> bls_map;
         block_height height{0};
         // Mutable because we are allowed to (and need to) change it via std::set iterator:
         mutable quorum_manager quorums;
@@ -1041,6 +1057,11 @@ class service_node_list {
                 uint64_t height, cryptonote::network_type nettype)
                 const;  // return: All nodes that are active and have been online for a period
                         // greater than SERVICE_NODE_PAYABLE_AFTER_BLOCKS
+
+        // Takes a BLS pubkey, returns the SN pubkey if known, otherwise null.  Note that "known"
+        // here includes both registered SNs and SNs in the recently expired list (i.e. left oxend,
+        // but not yet confirmed gone from the contract).
+        crypto::public_key find_public_key(const eth::bls_public_key& bls_pubkey) const;
 
         std::vector<crypto::public_key> get_expired_nodes(
                 cryptonote::BlockchainDB const& db,
@@ -1181,9 +1202,9 @@ class service_node_list {
         uint64_t get_staking_requirement(cryptonote::network_type nettype) const;
 
       private:
-        // Rebuilds the x25519_map from the list of service nodes.  Does nothing if the
-        // feature::SN_PK_IS_ED25519 fork hasn't happened for this state height.
-        void initialize_xpk_map();
+        // Rebuilds the x25519_map and bls_map from the list of service nodes and recently removed
+        // nodes.  Does nothing if the feature::ETH_BLS fork hasn't happened for this state height.
+        void initialize_alt_pk_maps();
 
         mutable std::optional<service_nodes::payout> next_block_leader_cache;
     };

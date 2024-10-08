@@ -2434,7 +2434,7 @@ void core::do_uptime_proof_call() {
             if ((uint64_t)std::time(nullptr) < next_proof_time)
                 return;
 
-            auto pubkey = service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
+            auto pubkey = service_node_list.find_public_key(m_service_keys.pub_x25519);
             if (pubkey && pubkey != m_service_keys.pub &&
                 service_node_list.is_service_node(pubkey, false /*don't require active*/)) {
                 log::error(
