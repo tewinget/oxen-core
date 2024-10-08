@@ -789,6 +789,11 @@ namespace {
             set("l2_height", x.l2_height);
             set("staking_requirement", x.staking_requirement);
         }
+        void operator()(const eth::event::ServiceNodePurge& x) {
+            set("type", "ethereum_service_node_purge");
+            set("l2_height", x.l2_height);
+            set("bls_pubkey", x.bls_pubkey);
+        }
 
         // Ignore these fields:
         void operator()(const tx_extra_padding&) {}

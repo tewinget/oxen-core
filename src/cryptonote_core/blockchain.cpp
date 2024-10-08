@@ -3349,7 +3349,8 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
                         static_assert(
                                 std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
                                 std::is_same_v<Event, eth::event::ServiceNodeExit> ||
-                                std::is_same_v<Event, eth::event::StakingRequirementUpdated>);
+                                std::is_same_v<Event, eth::event::StakingRequirementUpdated> ||
+                                std::is_same_v<Event, eth::event::ServiceNodePurge>);
                     }
                 });
 

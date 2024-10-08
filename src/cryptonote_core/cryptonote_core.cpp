@@ -1178,7 +1178,7 @@ bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
     // list, it's been deregistered from _OR_ it voluntarily exited the SNL.
     uint64_t height = blockchain.get_current_blockchain_height();
     bool result = false;
-    service_node_list.for_each_recently_removed_node([&] (const auto& node) {
+    service_node_list.for_each_recently_removed_node([&](const auto& node) {
         assert(node.info.bls_public_key &&
                "Invalid null key got inserted into the recently removed list");
         if (node.info.bls_public_key == node_bls_pubkey) {

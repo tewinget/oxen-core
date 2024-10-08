@@ -29,14 +29,17 @@
 #pragma once
 
 #include <chrono>
+#include <concepts>
 #include <iterator>
 #include <limits>
 #include <mutex>
 #include <shared_mutex>
 #include <string_view>
+#include <type_traits>
 
 #include "common/util.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/hardfork.h"
@@ -612,6 +615,32 @@ class service_node_list {
         }
     }
 
+    /// Loops through all registered service nodes and calls `f` with the pubkey and basic service
+    /// node info.  The SN lock is held while iterating, so the "something" should be quick.  If the
+    /// callback returns bool then `true` means stop iterating (i.e. you'd found what you wanted),
+    /// `false` means continue.  (Any other return type ignores the return value).
+    template <std::invocable<const crypto::public_key&, const service_node_info&> Func>
+    void for_each_service_node(Func f) const {
+        std::lock_guard lock{m_sn_mutex};
+        for (const auto& [pk, sni] : m_state.service_nodes_infos) {
+            if constexpr (std::is_same_v<bool, decltype(f(pk, *sni))>) {
+                if (f(pk, *sni))
+                    break;
+            } else {
+                f(pk, *sni);
+            }
+        }
+    }
+
+    /// If the given pubkey is a registered service node then call f with its current info (with the
+    /// service node lock held).  Doesn't call f if not a registered service node.
+    template <std::invocable<const service_node_info&> Func>
+    void if_service_node(const crypto::public_key& pk, Func f) const {
+        std::lock_guard lock{m_sn_mutex};
+        if (auto it = m_state.service_nodes_infos.find(pk); it != m_state.service_nodes_infos.end())
+            f(*it->second);
+    }
+
     struct recently_removed_node;
 
     /// Loops through all recently removed nodes, invoking the callback (with the SN list lock held)
@@ -622,7 +651,7 @@ class service_node_list {
     void for_each_recently_removed_node(Func f) const {
         std::lock_guard lock{m_sn_mutex};
         for (const auto& node : m_state.recently_removed_nodes) {
-            if constexpr (std::is_same_v<bool, std::invoke_result_t<Func, const recently_removed_node&>>) {
+            if constexpr (std::is_same_v<bool, decltype(f(node))>) {
                 if (f(node))
                     break;
             } else {
@@ -721,6 +750,7 @@ class service_node_list {
     }
 
     std::vector<pubkey_and_sninfo> active_service_nodes_infos() const {
+        std::unique_lock lock{m_sn_mutex};
         return m_state.active_service_nodes_infos();
     }
 
@@ -798,6 +828,7 @@ class service_node_list {
         enum struct type_t : uint8_t {
             voluntary_exit,
             deregister,
+            purged,
         };
 
         uint64_t height;              // Height at which the SN exited/deregistered
@@ -1159,6 +1190,13 @@ class service_node_list {
                 const service_node_keys* my_keys);
         bool process_confirmed_event(
                 const eth::event::StakingRequirementUpdated& req_change,
+                cryptonote::network_type nettype,
+                cryptonote::hf hf_version,
+                uint64_t height,
+                uint32_t index,
+                const service_node_keys*);
+        bool process_confirmed_event(
+                const eth::event::ServiceNodePurge& purge,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
                 uint64_t height,

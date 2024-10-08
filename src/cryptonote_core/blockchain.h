@@ -1151,6 +1151,11 @@ class Blockchain {
     /// to be set.
     eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
 
+    /// Returns a pointer to the L2 tracker; this will be nullptr if no L2 tracker is configured (an
+    /// L2 tracker is required for service nodes, and optional for nodes not running in service node
+    /// mode).
+    eth::L2Tracker* maybe_l2_tracker() { return m_l2_tracker; }
+
     /**
      * @brief flush the invalid blocks set
      */
