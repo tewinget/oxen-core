@@ -612,6 +612,25 @@ class service_node_list {
         }
     }
 
+    struct recently_removed_node;
+
+    /// Loops through all recently removed nodes, invoking the callback (with the SN list lock held)
+    /// for each one.  If the function has a bool return then the return value indicates whether the
+    /// invoker is done, i.e. returning true once you have found what you want to break the
+    /// iteration.
+    template <std::invocable<const recently_removed_node&> Func>
+    void for_each_recently_removed_node(Func f) const {
+        std::lock_guard lock{m_sn_mutex};
+        for (const auto& node : m_state.recently_removed_nodes) {
+            if constexpr (std::is_same_v<bool, std::invoke_result_t<Func, const recently_removed_node&>>) {
+                if (f(node))
+                    break;
+            } else {
+                f(node);
+            }
+        }
+    }
+
     /// Copies x25519 pubkeys (as strings) of all currently registered SNs into the given output
     /// iterator.  (Before the feature::SN_PK_IS_ED25519 hardfork this only includes SNs with known
     /// proofs.)
@@ -814,10 +833,6 @@ class service_node_list {
             }
         }
     };
-
-    std::span<const recently_removed_node> recently_removed_nodes() const {
-        return m_state.recently_removed_nodes;
-    }
 
   private:
     bool set_peer_reachable(bool storage_server, crypto::public_key const& pubkey, bool value);

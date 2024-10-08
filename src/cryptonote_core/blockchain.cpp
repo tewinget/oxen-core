@@ -3392,18 +3392,17 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
             std::optional<uint64_t> unlock_or_dereg_height = {};
             uint32_t ip = 0;
             uint16_t port = 0;
-            for (const service_nodes::service_node_list::recently_removed_node&
-                         recently_removed_it : service_node_list.recently_removed_nodes()) {
-                if (it != recently_removed_it.info.bls_public_key)
-                    continue;
+            service_node_list.for_each_recently_removed_node([&](const auto& node) {
+                if (it != node.info.bls_public_key)
+                    return false;
                 protocol_dereg =
-                        recently_removed_it.type ==
+                        node.type ==
                         service_nodes::service_node_list::recently_removed_node::type_t::deregister;
-                unlock_or_dereg_height = recently_removed_it.height;
-                ip = recently_removed_it.public_ip;
-                port = recently_removed_it.qnet_port;
-                break;
-            }
+                unlock_or_dereg_height = node.height;
+                ip = node.public_ip;
+                port = node.qnet_port;
+                return true;
+            });
 
             // NOTE: Generate a reason string
             std::string removable_reason;

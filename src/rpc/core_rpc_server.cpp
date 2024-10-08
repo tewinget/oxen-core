@@ -2589,7 +2589,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
     auto list = nlohmann::json::array();
     using node_t = service_nodes::service_node_list::recently_removed_node;
-    for (const node_t& elem : m_core.service_node_list.recently_removed_nodes()) {
+    m_core.service_node_list.for_each_recently_removed_node([&list](const node_t& elem) {
         // NOTE: Serialise to JSON
         serialization::json_archiver ar;
         serialize(ar, const_cast<node_t&>(elem));
@@ -2631,18 +2631,15 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
 
         // NOTE: Assign the type
         switch (elem.type) {
-            case service_nodes::service_node_list::recently_removed_node::type_t::voluntary_exit:
-                serialized["type"] = "exit";
-                break;
-
-            case service_nodes::service_node_list::recently_removed_node::type_t::deregister:
-                serialized["type"] = "deregister";
-                break;
+            case node_t::type_t::voluntary_exit: serialized["type"] = "exit"; break;
+            case node_t::type_t::deregister: serialized["type"] = "deregister"; break;
+            case node_t::type_t::purged:
+                assert(!"Internal error: found invalid purged node in recently_removed_nodes");
         }
 
         // NOTE: Store the object into the RPC response array
-        list.emplace_back(std::move(serialized));
-    }
+        list.push_back(std::move(serialized));
+    });
 
     rpc.response = std::move(list);
 }
