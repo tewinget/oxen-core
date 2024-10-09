@@ -215,6 +215,8 @@ static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
         "store "
         "the entire history.  Requires considerably more memory and block chain storage.",
         0};
+static const command_line::arg_flag arg_disable_ip_check = {
+        "disable-ip-check", "Disable the periodic Service Node IP check"};
 
 // Loads stubs that fail if invoked.  The stubs are replaced in the
 // cryptonote_protocol/quorumnet.cpp glue code.
@@ -347,6 +349,7 @@ void core::init_options(boost::program_options::options_description& desc) {
 
     command_line::add_arg(desc, arg_store_quorum_history);
     command_line::add_arg(desc, arg_omq_quorumnet_public);
+    command_line::add_arg(desc, arg_disable_ip_check);
 
     miner::init_options(desc);
     BlockchainDB::init_options(desc);
@@ -363,6 +366,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
     test_drop_download_height(command_line::get_arg(vm, arg_test_drop_download_height));
     m_pad_transactions = get_arg(vm, arg_pad_transactions);
     m_offline = get_arg(vm, arg_offline);
+    m_has_ip_check_disabled = get_arg(vm, arg_disable_ip_check);
     if (command_line::get_arg(vm, arg_test_drop_download) == true)
         test_drop_download();
 
@@ -1196,9 +1200,13 @@ void core::start_oxenmq() {
                 std::chrono::milliseconds(500),
                 false,
                 m_pulse_thread_id);
-        m_omq->add_timer([this]() { this->check_service_node_time(); }, 5s, false);
+        m_omq->add_timer([this]() { check_service_node_time(); }, 5s, false);
+        m_omq->add_timer([this]() { check_service_node_ip_address(); }, 15min, false);
     }
     m_omq->start();
+
+    // This forces an IP check after initialization instead of deferring it 15 minutes.
+    check_service_node_ip_address();
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -1792,6 +1800,44 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
     }
 
     return true;
+}
+//-----------------------------------------------------------------------------------------------
+void core::check_service_node_ip_address() {
+    if (!m_service_node || m_has_ip_check_disabled || service_node_list.debug_allow_local_ips) {
+        return;
+    }
+
+    auto service_node_ip = epee::string_tools::get_ip_string_from_int32(m_sn_public_ip);
+    auto service_node_address = "tcp://{}:{}"_format(service_node_ip, m_quorumnet_port);
+    auto connection_error_callback = [service_node_address]() {
+        log::warning(
+                globallogcat,
+                "Unable to ping configured service node address ({})!",
+                service_node_address);
+    };
+
+    m_omq->connect_remote(
+            oxenmq::address{service_node_address, tools::view_guts(m_service_keys.pub_x25519)},
+            [this, connection_error_callback](auto conn) {
+                m_omq->request(
+                        conn,
+                        "ping.ping",
+                        [this, conn, connection_error_callback](
+                                bool success, const std::vector<std::string>& data) {
+                            m_omq->disconnect(conn, 0s);
+                            if (!success || data.empty()) {
+                                connection_error_callback();
+                            } else {
+                                log::debug(
+                                        logcat,
+                                        "Successfully pinged our own service node IP "
+                                        "(received: "
+                                        "{})",
+                                        data.front());
+                            }
+                        });
+            },
+            [connection_error_callback](auto, std::string_view) { connection_error_callback(); });
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_service_node_time() {
