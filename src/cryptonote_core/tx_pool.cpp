@@ -1762,15 +1762,17 @@ bool tx_memory_pool::is_transaction_ready_to_go(
                 m_blockchain.nettype(), version, height, tx))
         return false;
 
-    // If this is a service node purge then check to make sure it's still a valid purge (i.e. that
-    // the service node being purged still actually exists in the SN list and not the contract, in
-    // case something has changed in the meantime).
-    if (tx.type == txtype::ethereum_purge_missing_service_node) {
+    // If this is an event then only include it if we have an active l2 tracker and double-check
+    // that it's an event we would actually vote for, so that we don't propose a block (as a pulse
+    // leader) that we would ourselves reject.  This is important for purge pseudo-events (which can
+    // go into the mempool but might be affected by subsequent SN changes that no longer warrant its
+    // inclusion), but could also matter in weird cases (and never hurts) for other events.
+    if (is_l2_event_tx(tx.type)) {
         auto* l2_tracker = m_blockchain.maybe_l2_tracker();
-        if (!l2_tracker)
-            return false;
-        if (eth::event::ServiceNodePurge purge;
-            !get_field_from_tx_extra(tx.extra, purge) || !l2_tracker->get_vote_for(purge))
+        if (!l2_tracker ||
+            !std::visit(
+                    [&l2_tracker](const auto& e) { return l2_tracker->get_vote_for(e); },
+                    eth::extract_event(tx)))
             return false;
     }
 
