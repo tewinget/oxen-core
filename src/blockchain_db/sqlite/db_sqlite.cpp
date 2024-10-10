@@ -580,7 +580,7 @@ void BlockchainSQLite::add_rewards(
     // Pay the operator fee to the operator
     if (operator_fee > 0) {
         if (use_eth_address) {
-            assert(sn_info.contributors.size()); // NOTE: Be paranoid, check contributors size
+            assert(sn_info.contributors.size());  // NOTE: Be paranoid, check contributors size
             eth::address fee_recipient = sn_info.contributors.size()
                                                ? sn_info.contributors[0].ethereum_beneficiary
                                                : sn_info.operator_ethereum_address;

@@ -426,15 +426,16 @@ static registration_details eth_reg_v2_details(
     return reg;
 }
 
-static eth::event::NewServiceNodeV2 convert_eth_event_new_service_node_to_v2(const eth::event::NewServiceNode& value)
-{
+static eth::event::NewServiceNodeV2 convert_eth_event_new_service_node_to_v2(
+        const eth::event::NewServiceNode& value) {
     auto result = eth::event::NewServiceNodeV2(value.chain_id, value.l2_height);
     result.fee = value.fee;
     result.sn_pubkey = value.sn_pubkey;
     result.bls_pubkey = value.bls_pubkey;
     result.contributors.reserve(value.contributors.size());
     for (auto it : value.contributors)
-        result.contributors.emplace_back(it.address /*address*/, it.address /*beneficiary*/, it.amount);
+        result.contributors.emplace_back(
+                it.address /*address*/, it.address /*beneficiary*/, it.amount);
     result.ed_signature = value.ed_signature;
     return result;
 }

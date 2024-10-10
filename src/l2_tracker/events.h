@@ -30,7 +30,7 @@ struct L2StateChange {
 
 struct Contributor {
     eth::address address;
-    uint64_t     amount;
+    uint64_t amount;
 
     auto operator<=>(const Contributor& o) const = default;
 
@@ -83,14 +83,16 @@ struct ContributorV2 {
 
     eth::address address;
     eth::address beneficiary;
-    uint64_t     amount;
+    uint64_t amount;
 
     auto operator<=>(const ContributorV2& o) const = default;
 
     template <class Archive>
     void serialize_object(Archive& ar) {
         auto version = tools::enum_top<Version>;
-        field_varint(ar, "version", version, [](auto v) { return v > Version::version_invalid && v < Version::_count; });
+        field_varint(ar, "version", version, [](auto v) {
+            return v > Version::version_invalid && v < Version::_count;
+        });
         field(ar, "address", address);
 
         std::optional<eth::address> serialized_beneficiary;
@@ -137,7 +139,6 @@ struct NewServiceNodeV2 : L2StateChange {
     static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node_v2;
     static constexpr std::string_view description = "new SNv2"sv;
 };
-
 
 struct ServiceNodeExitRequest : L2StateChange {
     bls_public_key bls_pubkey = crypto::null<bls_public_key>;

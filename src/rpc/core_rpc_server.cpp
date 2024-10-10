@@ -2989,7 +2989,8 @@ void core_rpc_server::fill_sn_response_entry(
             auto& c = contributors.emplace_back(json{{"amount", contributor.amount}});
             if (contributor.ethereum_address) {
                 json_binary_proxy{c["address"], binary_format} = contributor.ethereum_address;
-                json_binary_proxy{c["beneficiary"], binary_format} = contributor.ethereum_beneficiary;
+                json_binary_proxy{c["beneficiary"], binary_format} =
+                        contributor.ethereum_beneficiary;
             } else
                 c["address"] = cryptonote::get_account_address_as_str(
                         m_core.get_nettype(), false /*subaddress*/, contributor.address);

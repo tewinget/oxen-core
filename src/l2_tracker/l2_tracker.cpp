@@ -494,12 +494,19 @@ void L2Tracker::update_logs() {
                         } catch (const std::exception& e) {
 
                             fmt::memory_buffer buffer{};
-                            fmt::format_to(std::back_inserter(buffer), "The raw blob was (32 byte chunks/line):\n\n");
+                            fmt::format_to(
+                                    std::back_inserter(buffer),
+                                    "The raw blob was (32 byte chunks/line):\n\n");
                             std::string_view hex = log.data;
                             while (hex.size()) {
-                                std::string_view chunk = tools::string_safe_substr(hex, 0, 64); // Grab 32 byte chunk
-                                fmt::format_to(std::back_inserter(buffer), "  {}\n", chunk);    // Output the chunk
-                                hex = tools::string_safe_substr(hex, 64, hex.size());           // Advance the hex
+                                std::string_view chunk = tools::string_safe_substr(
+                                        hex, 0, 64);  // Grab 32 byte chunk
+                                fmt::format_to(
+                                        std::back_inserter(buffer),
+                                        "  {}\n",
+                                        chunk);  // Output the chunk
+                                hex = tools::string_safe_substr(
+                                        hex, 64, hex.size());  // Advance the hex
                             }
 
                             log::error(

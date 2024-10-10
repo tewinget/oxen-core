@@ -717,7 +717,8 @@ BINARY_VARIANT_TAG(cryptonote::tx_extra_burn, cryptonote::TX_EXTRA_TAG_BURN);
 BINARY_VARIANT_TAG(
         cryptonote::tx_extra_oxen_name_system, cryptonote::TX_EXTRA_TAG_OXEN_NAME_SYSTEM);
 BINARY_VARIANT_TAG(eth::event::NewServiceNode, cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);
-BINARY_VARIANT_TAG(eth::event::NewServiceNodeV2, cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE_V2);
+BINARY_VARIANT_TAG(
+        eth::event::NewServiceNodeV2, cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE_V2);
 BINARY_VARIANT_TAG(
         eth::event::ServiceNodeExitRequest,
         cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT_REQUEST);

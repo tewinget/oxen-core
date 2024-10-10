@@ -963,7 +963,9 @@ class service_node_list {
             version_3_eth_beneficiary,
             count,
         };
-        static version_t get_version(cryptonote::hf /*hf_version*/) { return version_t::version_3_eth_beneficiary; }
+        static version_t get_version(cryptonote::hf /*hf_version*/) {
+            return version_t::version_3_eth_beneficiary;
+        }
 
         version_t version{version_t::version_3_eth_beneficiary};
         std::vector<quorum_for_serialization> quorum_states;

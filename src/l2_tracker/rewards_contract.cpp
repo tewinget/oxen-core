@@ -1,7 +1,7 @@
 #include "rewards_contract.h"
 
-#include <common/formattable.h>
 #include <common/bigint.h>
+#include <common/formattable.h>
 #include <common/guts.h>
 #include <common/string_util.h>
 #include <crypto/crypto.h>
@@ -15,46 +15,46 @@
 #include "contracts.h"
 
 namespace {
-    auto logcat = oxen::log::Cat("l2_tracker");
+auto logcat = oxen::log::Cat("l2_tracker");
 
-    enum class EventType {
-        NewServiceNode,
-        NewServiceNodeV2,
-        ServiceNodeExitRequest,
-        ServiceNodeExit,
-        StakingRequirementUpdated,
-        Other
-    };
+enum class EventType {
+    NewServiceNode,
+    NewServiceNodeV2,
+    ServiceNodeExitRequest,
+    ServiceNodeExit,
+    StakingRequirementUpdated,
+    Other
+};
 
-    static constexpr std::string_view to_string(EventType type) {
-        switch (type) {
-            case EventType::NewServiceNode: return "NewServiceNode";
-            case EventType::NewServiceNodeV2: return "NewServiceNodeV2";
-            case EventType::ServiceNodeExitRequest: return "ServiceNodeExitRequest";
-            case EventType::ServiceNodeExit: return "ServiceNodeExit";
-            case EventType::StakingRequirementUpdated: return "StakingRequirementUpdated";
-            case EventType::Other: return "Other";
-        }
-        return "eth_event_type_ERROR";
+static constexpr std::string_view to_string(EventType type) {
+    switch (type) {
+        case EventType::NewServiceNode: return "NewServiceNode";
+        case EventType::NewServiceNodeV2: return "NewServiceNodeV2";
+        case EventType::ServiceNodeExitRequest: return "ServiceNodeExitRequest";
+        case EventType::ServiceNodeExit: return "ServiceNodeExit";
+        case EventType::StakingRequirementUpdated: return "StakingRequirementUpdated";
+        case EventType::Other: return "Other";
     }
+    return "eth_event_type_ERROR";
+}
 
-    EventType get_log_type(const ethyl::LogEntry& log) {
-        if (log.topics.empty())
-            throw std::runtime_error("No topics in log entry");
+EventType get_log_type(const ethyl::LogEntry& log) {
+    if (log.topics.empty())
+        throw std::runtime_error("No topics in log entry");
 
-        auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
-        if (event_sig == eth::contract::event::NewServiceNode)
-            return EventType::NewServiceNode;
-        if (event_sig == eth::contract::event::ServiceNodeExitRequest)
-            return EventType::ServiceNodeExitRequest;
-        if (event_sig == eth::contract::event::ServiceNodeExit)
-            return EventType::ServiceNodeExit;
-        if (event_sig == eth::contract::event::StakingRequirementUpdated)
-            return EventType::StakingRequirementUpdated;
-        if (event_sig == eth::contract::event::NewServiceNodeV2)
-            return EventType::NewServiceNodeV2;
-        return EventType::Other;
-    }
+    auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
+    if (event_sig == eth::contract::event::NewServiceNode)
+        return EventType::NewServiceNode;
+    if (event_sig == eth::contract::event::ServiceNodeExitRequest)
+        return EventType::ServiceNodeExitRequest;
+    if (event_sig == eth::contract::event::ServiceNodeExit)
+        return EventType::ServiceNodeExit;
+    if (event_sig == eth::contract::event::StakingRequirementUpdated)
+        return EventType::StakingRequirementUpdated;
+    if (event_sig == eth::contract::event::NewServiceNodeV2)
+        return EventType::NewServiceNodeV2;
+    return EventType::Other;
+}
 
 }  // namespace
 
@@ -395,7 +395,8 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
                 auto& [addr, amt] = item.contributors.emplace_back();
                 u256 amt256;
                 std::tie(addr, amt256, contrib_hex) =
-                        tools::split_hex_into<skip<12>, eth::address, u256, std::string_view>(contrib_hex);
+                        tools::split_hex_into<skip<12>, eth::address, u256, std::string_view>(
+                                contrib_hex);
                 amt = tools::decode_integer_be(amt256);
             }
 
@@ -455,7 +456,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             // NOTE: Decode version
             int8_t const top_version =
                     static_cast<int8_t>(tools::enum_top<event::NewServiceNodeV2::Version>);
-            int8_t const version     = tools::decode_integer_be(version256);
+            int8_t const version = tools::decode_integer_be(version256);
 
             if (version <= static_cast<int8_t>(event::NewServiceNodeV2::Version::invalid) ||
                 version > top_version) {
@@ -516,7 +517,8 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 
             // NOTE: Verify the length of the contributor blob
             const size_t expected_contrib_hex_size =
-                    2 /*hex*/ * num_contributors * (/*address*/ 32 + /*beneficiary*/ 32 + /*amount*/ 32);
+                    2 /*hex*/ * num_contributors *
+                    (/*address*/ 32 + /*beneficiary*/ 32 + /*amount*/ 32);
             if (contrib_hex.size() != expected_contrib_hex_size) {
                 throw oxen::traced<std::invalid_argument>{
                         "Invalid NewServiceNodeV2 data: The hex payload length ({}) derived for "
@@ -533,8 +535,13 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             for (size_t index = 0; index < num_contributors; index++) {
                 auto& [addr, beneficiary, amt] = item.contributors.emplace_back();
                 u256 amt256;
-                std::tie(addr, beneficiary, amt256, contrib_hex) =
-                        tools::split_hex_into<skip<12>, eth::address, skip<12>, eth::address, u256, std::string_view>(contrib_hex);
+                std::tie(addr, beneficiary, amt256, contrib_hex) = tools::split_hex_into<
+                        skip<12>,
+                        eth::address,
+                        skip<12>,
+                        eth::address,
+                        u256,
+                        std::string_view>(contrib_hex);
                 amt = tools::decode_integer_be(amt256);
             }
 
@@ -798,8 +805,8 @@ ContractServiceNode RewardsContract::service_nodes(
         try {
             auto& [addr, beneficiary, amount] = result.contributors[i];
             u256 amt;
-            std::tie(addr, beneficiary, amt, contrib_data) =
-                    tools::split_hex_into<skip<12>, eth::address, eth::address, u256, std::string_view>(
+            std::tie(addr, beneficiary, amt, contrib_data) = tools::
+                    split_hex_into<skip<12>, eth::address, eth::address, u256, std::string_view>(
                             contrib_data);
             amount = tools::decode_integer_be(amt);
         } catch (const std::exception& e) {
@@ -845,6 +852,3 @@ std::vector<uint64_t> RewardsContract::get_non_signers(
     return result;
 }
 }  // namespace eth
-
-
-
