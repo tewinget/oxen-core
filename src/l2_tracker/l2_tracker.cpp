@@ -351,7 +351,7 @@ void L2Tracker::update_logs() {
         return;
     }
 
-    uint64_t to = std::min(latest_height, from + GETLOGS_MAX_BLOCKS);
+    uint64_t to = std::min(latest_height, from + GETLOGS_MAX_BLOCKS - 1);
 
     log::debug(
             logcat,
