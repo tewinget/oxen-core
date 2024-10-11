@@ -11,7 +11,11 @@ void load_binary_parameter_impl(
     if (allow_raw && bytes.size() == raw_size) {
         std::memcpy(val_data, bytes.data(), bytes.size());
         return;
-    } else if (bytes.size() == raw_size * 2) {
+    } else if (const auto hex_size = oxenc::to_hex_size(raw_size);
+               bytes.size() == hex_size ||
+               (bytes.size() == hex_size + 2 && bytes.starts_with("0x"))) {
+        if (bytes.size() > hex_size)
+            bytes.remove_prefix(2);
         if (oxenc::is_hex(bytes)) {
             oxenc::from_hex(bytes.begin(), bytes.end(), val_data);
             return;
