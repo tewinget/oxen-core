@@ -2831,6 +2831,15 @@ void core_rpc_server::fill_sn_response_entry(
     }
 
     auto& netconf = m_core.get_net_config();
+    auto [hf, snode_rev] = get_network_version_revision(nettype(), top_height);
+
+    if (hf >= feature::SN_PK_IS_ED25519) {
+        set_if_requested(reqed, binary, "pubkey_ed25519", sn_info.pubkey);
+
+        if (requested(reqed, "pubkey_x25519"))
+            binary["pubkey_x25519"] = service_nodes::snpk_to_xpk(sn_info.pubkey);
+    }
+
     // FIXME: accessing proofs one-by-one like this is kind of gross.
     m_core.service_node_list.access_proof(sn_info.pubkey, [&](const auto& proof) {
         if (m_core.service_node() && m_core.get_service_keys().pub == sn_info.pubkey) {
@@ -2883,7 +2892,7 @@ void core_rpc_server::fill_sn_response_entry(
                         proof.proof->storage_omq_port,
                         "quorumnet_port",
                         proof.proof->qnet_port);
-            if (proof.proof->pubkey_ed25519)
+            if (hf < feature::SN_PK_IS_ED25519 && proof.proof->pubkey_ed25519)
                 set_if_requested(
                         reqed,
                         binary,
