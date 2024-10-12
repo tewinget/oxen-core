@@ -5002,7 +5002,7 @@ void service_node_list::state_t::initialize_alt_pk_maps() {
 
 void service_node_list::state_t::insert_info(
         const crypto::public_key& pubkey, std::shared_ptr<service_node_info>&& info_ptr) {
-    auto &info = service_nodes_infos[pubkey];
+    auto& info = service_nodes_infos[pubkey];
     info = std::move(info_ptr);
 
     if (sn_list && cryptonote::is_hard_fork_at_least(
