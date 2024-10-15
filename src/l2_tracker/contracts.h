@@ -11,6 +11,7 @@ namespace eth::contract {
 namespace event {
 
     extern const crypto::hash NewServiceNode;
+    extern const crypto::hash NewServiceNodeV2;
     extern const crypto::hash ServiceNodeExitRequest;
     extern const crypto::hash ServiceNodeExit;
     extern const crypto::hash StakingRequirementUpdated;

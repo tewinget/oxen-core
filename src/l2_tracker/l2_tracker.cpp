@@ -66,6 +66,7 @@ static inline uint64_t reward_height(uint64_t l2_height, uint64_t reward_update_
 void L2Tracker::prune_old_states() {
     const auto expiry = latest_height - std::min(latest_height, HIST_SIZE);
     recent_regs.expire(expiry);
+    recent_regs_v2.expire(expiry);
     recent_unlocks.expire(expiry);
     recent_exits.expire(expiry);
     recent_req_changes.expire(expiry);
@@ -462,20 +463,41 @@ void L2Tracker::update_logs() {
                             add_to_mempool(tx);
                             if (auto* reg = std::get_if<event::NewServiceNode>(&tx))
                                 recent_regs.add(std::move(*reg), *log.blockNumber);
+                            if (auto* reg_v2 = std::get_if<event::NewServiceNodeV2>(&tx))
+                                recent_regs_v2.add(std::move(*reg_v2), *log.blockNumber);
                             else if (auto* ul = std::get_if<event::ServiceNodeExitRequest>(&tx))
                                 recent_unlocks.add(std::move(*ul), *log.blockNumber);
                             else if (auto* exit = std::get_if<event::ServiceNodeExit>(&tx))
                                 recent_exits.add(std::move(*exit), *log.blockNumber);
                             else if (auto* req = std::get_if<event::StakingRequirementUpdated>(&tx))
                                 recent_req_changes.add(std::move(*req), *log.blockNumber);
-                            else
+                            else {
                                 assert(tx.index() == 0);
+                            }
                         } catch (const std::exception& e) {
+
+                            fmt::memory_buffer buffer{};
+                            fmt::format_to(
+                                    std::back_inserter(buffer),
+                                    "The raw blob was (32 byte chunks/line):\n\n");
+                            std::string_view hex = log.data;
+                            while (hex.size()) {
+                                std::string_view chunk = tools::string_safe_substr(
+                                        hex, 0, 64);  // Grab 32 byte chunk
+                                fmt::format_to(
+                                        std::back_inserter(buffer),
+                                        "  {}\n",
+                                        chunk);  // Output the chunk
+                                hex = tools::string_safe_substr(
+                                        hex, 64, hex.size());  // Advance the hex
+                            }
+
                             log::error(
                                     logcat,
                                     "Failed to convert L2 state change transaction to an Oxen "
-                                    "state change transaction: {}",
-                                    e.what());
+                                    "state change transaction: {}\n\n{}",
+                                    e.what(),
+                                    fmt::to_string(buffer));
                             continue;
                         }
                     }
@@ -513,7 +535,7 @@ void L2Tracker::update_purge_list(bool curr_height_fallback) {
 
     if (purge_height > latest_purge_check) {
         provider.callReadFunctionJSONAsync(
-                contract::rewards_address(core.get_nettype()),
+                core.get_net_config().ETHEREUM_REWARDS_CONTRACT,
                 "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs),
                 [this, purge_height, curr_height_fallback](
                         std::optional<nlohmann::json> maybe_result) mutable {
@@ -805,6 +827,9 @@ RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(
 bool L2Tracker::get_vote_for(const event::NewServiceNode& reg) const {
     std::shared_lock lock{mutex};
     return recent_regs.contains(reg);
+}
+bool L2Tracker::get_vote_for(const event::NewServiceNodeV2& reg) const {
+    return recent_regs_v2.contains(reg);
 }
 bool L2Tracker::get_vote_for(const event::ServiceNodeExit& exit) const {
     std::shared_lock lock{mutex};
