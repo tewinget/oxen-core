@@ -242,11 +242,12 @@ namespace {
 
     void log_aggregation_result(
             std::string_view agg_type,
-            [[maybe_unused]] cryptonote::core& core,
             std::span<const bls_public_key> signers,
             std::chrono::high_resolution_clock::time_point started,
-            [[maybe_unused]] std::span<const uint8_t> msg,
-            const bls_signature& sig) {
+            const bls_signature& sig,
+            // Used only in a debug build:
+            [[maybe_unused]] cryptonote::core& core,
+            [[maybe_unused]] std::span<const uint8_t> msg) {
 #ifndef NDEBUG
         eth::bls_public_key agg_pub;
         {
@@ -690,11 +691,11 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
     // NOTE: Dump the aggregate pubkey and other info that was generated
     log_aggregation_result(
             "rewards",
-            core,
             result.signers_bls_pubkeys,
             begin_ts,
-            result.msg_to_sign,
-            result.signature);
+            result.signature,
+            core,
+            result.msg_to_sign);
 
     // NOTE: Store the response in to the cache if the number of non-signers is small enough to
     // constitute a valid signature.
@@ -921,11 +922,11 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     // NOTE: Dump the aggregate pubkey and other info that was generated
     log_aggregation_result(
             type == bls_exit_type::normal ? "exit" : "liquidation",
-            core,
             result.signers_bls_pubkeys,
             begin_ts,
-            result.msg_to_sign,
-            result.signature);
+            result.signature,
+            core,
+            result.msg_to_sign);
 
     // NOTE: Store the response in to the cache if the number of non-signers is small enough to
     // constitute a valid signature.
