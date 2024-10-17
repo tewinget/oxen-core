@@ -717,8 +717,11 @@ bool core::init(
                 }
             }
 
-            if (!command_line::get_arg(vm, arg_l2_skip_chainid) && !m_l2_tracker->check_chain_id())
-                return false;  // the above already logs critical on failure
+            if (!command_line::get_arg(vm, arg_l2_skip_chainid)) {
+                log::info(globallogcat, "Verifying L2 provider chain-id");
+                if (!m_l2_tracker->check_chain_id())
+                    return false;  // the above already logs critical on failure
+            }
         }
     }
 
