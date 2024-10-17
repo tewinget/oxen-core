@@ -18,24 +18,27 @@ enum class txversion : uint16_t {
     v4_tx_types,
     _count,
 };
+// NOTE: the order and underlying values here may not change (the underlying numeric value is
+// serialized directly into the transaction); new entries must always be added to the end (just
+// before _count).
 enum class txtype : uint16_t {
-    standard,
+    standard = 0,
     state_change,
     key_image_unlock,
     stake,
     oxen_name_system,
     ethereum_new_service_node,
-    ethereum_new_service_node_v2,
     ethereum_service_node_exit_request,
     ethereum_service_node_exit,
     ethereum_staking_requirement_updated,
     ethereum_purge_missing_service_node,
+    ethereum_new_service_node_v2,
     _count
 };
 
 inline constexpr bool is_l2_event_tx(txtype type) {
     return type >= txtype::ethereum_new_service_node &&
-           type <= txtype::ethereum_purge_missing_service_node;
+           type <= txtype::ethereum_new_service_node_v2;
 }
 
 inline constexpr std::string_view to_string(txversion v) {
