@@ -3112,7 +3112,11 @@ void service_node_list::state_t::update_from_block(
         auto info_iter = service_nodes_infos.begin();
         while (info_iter != service_nodes_infos.end()) {
             if (!info_iter->second->is_fully_funded()) {
-                log::info(logcat, "Removing partially funded node: {} at hf20", info_iter->first);
+                log::info(
+                        globallogcat,
+                        fg(fmt::terminal_color::yellow) | fmt::emphasis::bold,
+                        "Removing partially funded node: {} at hf20",
+                        info_iter->first);
                 // NOTE: will not be added to recently_removed_nodes, but this argument is required
                 info_iter = erase_info(info_iter, recently_removed_node::type_t::deregister);
                 continue;
