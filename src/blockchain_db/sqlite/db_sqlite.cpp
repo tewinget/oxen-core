@@ -128,6 +128,12 @@ bool BlockchainSQLite::table_exists(const std::string& table_name) {
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", table_name);
 }
 
+bool BlockchainSQLite::trigger_exists(const std::string& trigger_name) {
+    return prepared_get<int>(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?)",
+            trigger_name);
+}
+
 void BlockchainSQLite::upgrade_schema() {
     bool have_offset = false;
     SQLite::Statement msg_cols{db, "PRAGMA main.table_info(batched_payments_accrued)"};
@@ -205,6 +211,18 @@ void BlockchainSQLite::upgrade_schema() {
         FOR EACH ROW BEGIN
             DELETE FROM delayed_payments WHERE payout_height < (NEW.height - 10000);
         END;
+
+        )");
+        transaction.commit();
+    }
+
+    if (!trigger_exists("delayed_payments_after_blocks_removed")) {
+        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
+        db.exec(R"(
+        CREATE TRIGGER delayed_payments_after_blocks_removed AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
+            DELETE FROM delayed_payments WHERE entry_height >= NEW.height;
+        END;
         )");
         transaction.commit();
     }
@@ -272,17 +290,32 @@ void BlockchainSQLite::upgrade_schema() {
             INSERT INTO batched_payments_accrued_recent SELECT *, NEW.height FROM batched_payments_accrued;
             DELETE FROM batched_payments_accrued_recent WHERE height < NEW.height - {};
         END;
-
-        DROP TRIGGER IF EXISTS clear_recent;
-        CREATE TRIGGER clear_recent AFTER UPDATE ON batch_db_info
-        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
-            DELETE FROM batched_payments_accrued_recent WHERE height >= NEW.height;
-        END;
         )",
                 netconf.STORE_RECENT_REWARDS + 1
                 // +1 here because the trigger above copies the *current* height after it's updated,
                 // but we want to store current plus STORE_RECENT_REWARDS recent ones.
                 ));
+        transaction.commit();
+    }
+
+    // This can be moved back into the relevant `if` clauses above eventually,
+    // but the easiest way to make sure existing databases have the corrected triggers
+    // is to just drop and recreate them unconditionally
+    {
+        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
+        db.exec(R"(
+        DROP TRIGGER IF EXISTS clear_archive;
+        CREATE TRIGGER clear_archive AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
+            DELETE FROM batched_payments_accrued_archive WHERE archive_height > NEW.height;
+        END;
+
+        DROP TRIGGER IF EXISTS clear_recent;
+        CREATE TRIGGER clear_recent AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
+            DELETE FROM batched_payments_accrued_recent WHERE height > NEW.height;
+        END;
+        )");
         transaction.commit();
     }
 }
@@ -328,8 +361,8 @@ void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
         return;
     int64_t revert_to_height = new_height - 1;
     auto maybe_prev_interval = prepared_maybe_get<int64_t>(
-            "SELECT DISTINCT archive_height FROM batched_payments_accrued_archive WHERE "
-            "archive_height <= ? ORDER BY archive_height DESC LIMIT 1",
+            "SELECT MAX(archive_height) FROM batched_payments_accrued_archive "
+            "WHERE archive_height <= ?",
             revert_to_height);
 
     if (!maybe_prev_interval) {
@@ -350,10 +383,6 @@ void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
       INSERT INTO batched_payments_accrued
         SELECT address, amount, payout_offset
         FROM batched_payments_accrued_archive WHERE archive_height = {0};
-
-      DELETE FROM batched_payments_accrued_archive WHERE archive_height >= {0};
-
-      DELETE FROM batched_payments_accrued_recent WHERE height >= {0};
       )",
             prev_interval));
     update_height(prev_interval);
@@ -558,7 +587,7 @@ BlockchainSQLite::get_all_accrued_rewards() {
 }
 
 void BlockchainSQLite::add_rewards(
-        hf /*hf_version*/,
+        hf hf_version,
         uint64_t distribution_amount,
         const service_nodes::service_node_info& sn_info,
         block_payments& payments) const {
@@ -569,13 +598,28 @@ void BlockchainSQLite::add_rewards(
 
     assert(operator_fee <= distribution_amount);
 
+    // NOTE: Localdev does not have a cryptonote->ETH address step, so, old pre-ETH SN nodes don't
+    // have an address assigned to it. This breaks tests that expect pre-ETH SN's to receive
+    // funds in order to proceed.
+    bool use_eth_address = hf_version >= hf::hf21_eth;
+    if (use_eth_address && m_nettype == network_type::LOCALDEV) {
+        if (!sn_info.operator_ethereum_address)
+            use_eth_address = false;
+    }
+
     // Pay the operator fee to the operator
     if (operator_fee > 0) {
-        auto& balance = sn_info.operator_ethereum_address
-                              ? payments[sn_info.operator_ethereum_address]
-                              : payments[sn_info.operator_address];
-        balance += operator_fee;
+        if (use_eth_address) {
+            assert(sn_info.contributors.size());  // NOTE: Be paranoid, check contributors size
+            eth::address fee_recipient = sn_info.contributors.size()
+                                               ? sn_info.contributors[0].ethereum_beneficiary
+                                               : sn_info.operator_ethereum_address;
+            payments[fee_recipient] += operator_fee;
+        } else {
+            payments[sn_info.operator_address] += operator_fee;
+        }
     }
+
     // Pay the balance to all the contributors (including the operator again)
     uint64_t total_contributed_to_sn = std::accumulate(
             sn_info.contributors.begin(),
@@ -589,8 +633,10 @@ void BlockchainSQLite::add_rewards(
         uint64_t c_reward = mul128_div64(
                 contributor.amount, distribution_amount - operator_fee, total_contributed_to_sn);
         if (c_reward > 0) {
-            auto& balance = contributor.ethereum_address ? payments[contributor.ethereum_address]
-                                                         : payments[contributor.address];
+            // NOTE: At minimum, when we parsed the contributor if no benficiary is set, it should
+            // be assigned to the ethereum address by default.
+            auto& balance = use_eth_address ? payments[contributor.ethereum_beneficiary]
+                                            : payments[contributor.address];
             balance += c_reward;
         }
     }
@@ -815,6 +861,13 @@ bool BlockchainSQLite::return_staked_amount_to_user(
 
         for (auto& payment : payments) {
             auto amt = static_cast<int64_t>(payment.amount.to_db());
+            if (!payment.eth_address) {
+                constexpr auto error =
+                        "Delayed payments table insert failed: payment does not have an etherum "
+                        "address";
+                log::error(logcat, error);
+                throw oxen::traced<std::runtime_error>{error};
+            }
             const auto address_str = get_address_str(payment);
             log::trace(
                     logcat,

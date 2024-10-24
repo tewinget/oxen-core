@@ -32,6 +32,7 @@ Proof::Proof(
         uint16_t sn_storage_omq_port,
         const std::array<uint16_t, 3> ss_version,
         uint16_t quorumnet_port,
+        uint64_t l2_height,
         const std::array<uint16_t, 3> lokinet_version,
         const service_nodes::service_node_keys& keys) :
         version{OXEN_VERSION},
@@ -41,12 +42,13 @@ Proof::Proof(
         pubkey{keys.pub},
         pubkey_ed25519{keys.pub_ed25519},
         pubkey_bls{keys.pub_bls},
+        l2_height{l2_height},
         public_ip{sn_public_ip},
         storage_https_port{sn_storage_https_port},
         storage_omq_port{sn_storage_omq_port},
         qnet_port{quorumnet_port} {
 
-    if (hardfork == feature::ETH_TRANSITION) {
+    if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV) {
         assert(keys.pub_bls);
         pop_bls = eth::sign(
                 nettype,
@@ -55,7 +57,7 @@ Proof::Proof(
                 &crypto::null<eth::address>);
     }
 
-    serialized_proof = bt_encode_uptime_proof(hardfork);
+    serialized_proof = bt_encode_uptime_proof(hardfork, nettype);
     proof_hash = crypto::keccak(serialized_proof);
 
     if (hardfork < feature::SN_PK_IS_ED25519)
@@ -72,7 +74,10 @@ Proof::Proof(
 }
 
 // Deserialize from a btencoded string into our Proof instance
-Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
+Proof::Proof(
+        cryptonote::hf hardfork,
+        cryptonote::network_type nettype,
+        std::string_view serialized_proof) {
 
     proof_hash = crypto::keccak(serialized_proof);
 
@@ -81,7 +86,7 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
     auto proof = oxenc::bt_dict_consumer{serialized_proof};
     // NB: we must consume in sorted key order
 
-    if (hardfork == feature::ETH_TRANSITION) {
+    if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV) {
         pubkey_bls =
                 tools::make_from_guts<eth::bls_public_key>(proof.require<std::string_view>("bk"sv));
         pop_bls =
@@ -91,6 +96,18 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
     if (auto ip = proof.require<std::string>("ip");
         !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)
         throw oxen::traced<std::runtime_error>{"Invalid IP address in proof"};
+
+    if (hardfork >= feature::ETH_BLS) {
+        l2_height = proof.require<uint64_t>("l2");
+        if (l2_height == 0)
+            throw oxen::traced<std::runtime_error>{"Invalid L2 height in proof"};
+    } else if (hardfork == feature::ETH_TRANSITION) {
+        // l2_height is optional in HF20 (primarily so that we don't break stagenet):
+        if (proof.skip_until("l2"))
+            l2_height = proof.consume_integer<uint64_t>();
+        else
+            l2_height = 0;
+    }
 
     lokinet_version = proof.require<std::array<uint16_t, 3>>("lv");
 
@@ -124,15 +141,24 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
     }
 }
 
-std::string Proof::bt_encode_uptime_proof(hf hardfork) const {
+std::string Proof::bt_encode_uptime_proof(hf hardfork, cryptonote::network_type nettype) const {
+    // NOTE: After Oxen 11, new fields can be added to the encoded proof without breaking older
+    // clients (i.e. no need to hardfork-gate additions): the signature applies over the entire
+    // encoded proof, not just known fields in that proof.  (This is not the case for Oxen 11
+    // itself, however, as it needs to remain compatible with Oxen 10 until after the mandatory
+    // upgrade is complete).
+
     // NB: must append in ascii order
     oxenc::bt_dict_producer proof;
 
-    if (hardfork == cryptonote::feature::ETH_TRANSITION) {
+    if (hardfork == cryptonote::feature::ETH_TRANSITION ||
+        nettype == cryptonote::network_type::LOCALDEV) {
         proof.append("bk", tools::view_guts(pubkey_bls));
         proof.append("bp", tools::view_guts(pop_bls));
     }
     proof.append("ip", epee::string_tools::get_ip_string_from_int32(public_ip));
+    if (hardfork >= cryptonote::feature::ETH_TRANSITION)
+        proof.append("l2", l2_height);
     proof.append("lv", lokinet_version);
     if (auto main_pk = tools::view_guts(pubkey); main_pk != tools::view_guts(pubkey_ed25519))
         proof.append("pk", main_pk);
@@ -173,6 +199,7 @@ inline constexpr static auto proof_tuple(const Proof& p) {
             p.storage_https_port,
             p.storage_omq_port,
             p.qnet_port,
+            p.l2_height,
             p.version,
             p.storage_server_version,
             p.lokinet_version);

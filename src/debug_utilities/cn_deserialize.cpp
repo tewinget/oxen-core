@@ -126,13 +126,13 @@ struct extra_printer {
         return "SN state change: {} for block height {}, SN index {}"_format(
                 type, x.block_height, x.service_node_index);
     }
-    std::string operator()(const eth::event::NewServiceNode& x) {
+    std::string operator()(const eth::event::NewServiceNodeV2& x) {
 
         std::vector<std::string> contributors;
         for (const auto& contributor : x.contributors)
-            contributors.push_back("{{address: {}, amount: {}}}"_format(
-                    contributor.address, print_money(contributor.amount)));
-        return "New Ethereum Service Node: L2 0x{:x}@{}, SN: {}, BLS pub: {}, fee: {}, contributors: [{}], signature: {}"_format(
+            contributors.push_back("{{address: {}, beneficiary: {}, amount: {}}}"_format(
+                    contributor.address, contributor.beneficiary, print_money(contributor.amount)));
+        return "New Ethereum Service Node v2: L2 0x{:x}@{}, SN: {}, BLS pub: {}, fee: {}, contributors: [{}], signature: {}"_format(
                 x.chain_id,
                 x.l2_height,
                 x.sn_pubkey,
@@ -152,6 +152,10 @@ struct extra_printer {
     std::string operator()(const eth::event::StakingRequirementUpdated& x) {
         return "Ethereum Staking Requirement Update: L2 0x{:x}@{}, new staking requirement: {}"_format(
                 x.chain_id, x.l2_height, print_money(x.staking_requirement));
+    }
+    std::string operator()(const eth::event::ServiceNodePurge& x) {
+        return "Ethereum Service Node Purge: L2 0x{:x}@{}, BLS pub: {}"_format(
+                x.chain_id, x.l2_height, x.bls_pubkey);
     }
 };
 

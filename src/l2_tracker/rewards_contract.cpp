@@ -1,6 +1,7 @@
 #include "rewards_contract.h"
 
 #include <common/bigint.h>
+#include <common/formattable.h>
 #include <common/guts.h>
 #include <common/string_util.h>
 #include <crypto/crypto.h>
@@ -13,35 +14,50 @@
 
 #include "contracts.h"
 
-namespace eth {
-
 namespace {
-    auto logcat = oxen::log::Cat("l2_tracker");
+auto logcat = oxen::log::Cat("l2_tracker");
 
-    enum class EventType {
-        NewServiceNode,
-        ServiceNodeExitRequest,
-        ServiceNodeExit,
-        StakingRequirementUpdated,
-        Other
-    };
+enum class EventType {
+    NewServiceNodeV2,
+    ServiceNodeExitRequest,
+    ServiceNodeExit,
+    StakingRequirementUpdated,
+    Other
+};
 
-    EventType get_log_type(const ethyl::LogEntry& log) {
-        if (log.topics.empty())
-            throw std::runtime_error("No topics in log entry");
-
-        auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
-
-        return event_sig == contract::event::NewServiceNode ? EventType::NewServiceNode
-             : event_sig == contract::event::ServiceNodeExitRequest
-                     ? EventType::ServiceNodeExitRequest
-             : event_sig == contract::event::ServiceNodeExit ? EventType::ServiceNodeExit
-             : event_sig == contract::event::StakingRequirementUpdated
-                     ? EventType::StakingRequirementUpdated
-                     : EventType::Other;
+static constexpr std::string_view to_string(EventType type) {
+    switch (type) {
+        case EventType::NewServiceNodeV2: return "NewServiceNodeV2";
+        case EventType::ServiceNodeExitRequest: return "ServiceNodeExitRequest";
+        case EventType::ServiceNodeExit: return "ServiceNodeExit";
+        case EventType::StakingRequirementUpdated: return "StakingRequirementUpdated";
+        case EventType::Other: return "Other";
     }
+    return "eth_event_type_ERROR";
+}
+
+EventType get_log_type(const ethyl::LogEntry& log) {
+    if (log.topics.empty())
+        throw std::runtime_error("No topics in log entry");
+
+    auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
+    if (event_sig == eth::contract::event::ServiceNodeExitRequest)
+        return EventType::ServiceNodeExitRequest;
+    if (event_sig == eth::contract::event::ServiceNodeExit)
+        return EventType::ServiceNodeExit;
+    if (event_sig == eth::contract::event::StakingRequirementUpdated)
+        return EventType::StakingRequirementUpdated;
+    if (event_sig == eth::contract::event::NewServiceNodeV2)
+        return EventType::NewServiceNodeV2;
+    return EventType::Other;
+}
 
 }  // namespace
+
+template <>
+inline constexpr bool formattable::via_to_string<EventType> = true;
+
+namespace eth {
 
 using u256 = std::array<std::byte, 32>;
 using tools::skip;
@@ -74,12 +90,12 @@ static std::string log_more_contributors_than_allowed(
     return result;
 }
 
-static std::string log_new_service_node_tx(
-        const event::NewServiceNode& item, std::string_view hex) {
+static std::string log_new_service_node_v2_tx(
+        const event::NewServiceNodeV2& item, std::string_view hex) {
     fmt::memory_buffer buffer{};
     fmt::format_to(
             std::back_inserter(buffer),
-            "New service node TX components were:\n"
+            "New SNv2 TX components were:\n"
             "- SN Public Key:     {}\n"
             "- BLS Public Key:    {}\n"
             "- ED25519 Signature: {}\n"
@@ -95,9 +111,10 @@ static std::string log_new_service_node_tx(
         const auto& contributor = item.contributors[index];
         fmt::format_to(
                 std::back_inserter(buffer),
-                "  - {:02} [address: {}, amount: {}]\n",
+                "  - {:02} [address: {}, beneficiary: {}, amount: {}]\n",
                 index,
                 contributor.address,
+                contributor.beneficiary,
                 contributor.amount);
     }
 
@@ -219,9 +236,12 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
         return result;
     }
 
-    switch (get_log_type(log)) {
-        case EventType::NewServiceNode: {
-            // event NewServiceNode(
+    EventType event_type = get_log_type(log);
+    log::trace(logcat, "Parsing L2 log {} ({}) at height {}", event_type, log.topics[0], l2_height);
+
+    switch (event_type) {
+        case EventType::NewServiceNodeV2: {
+            // event NewServiceNodeV2(
             //      uint64 indexed serviceNodeID,
             //      address initiator,
             //      { // struct ServiceNodeParams
@@ -230,13 +250,21 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             //          (uint256,uint256) serviceNodeSignature,
             //          uint256 fee,
             //      },
-            //      Contributors[] contributors);
+            //      [ // Contributors contributors[]
+            //        {
+            //          { // struct Staker
+            //            address addr,
+            //            address beneficiary,
+            //          }
+            //          uint256 stakeAmount,
+            //        }
+            //      ]
             //
             // Note:
             // - address is 32 bytes, the first 12 of which are padding
             // - fee is between 0 and 10000, despite being packed into a gigantic 256-bit int.
 
-            auto& item = result.emplace<event::NewServiceNode>(chain_id, l2_height);
+            auto& item = result.emplace<event::NewServiceNodeV2>(chain_id, l2_height);
 
             u256 fee256, c_offset, c_len;
             std::string_view contrib_hex;
@@ -262,7 +290,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             item.fee = tools::decode_integer_be(fee256);
             if (item.fee > cryptonote::STAKING_FEE_BASIS)
                 throw oxen::traced<std::invalid_argument>{
-                        "Invalid NewServiceNode data: fee must be in [0, {}]"_format(
+                        "Invalid NewServiceNodeV2 data: fee must be in [0, {}]"_format(
                                 cryptonote::STAKING_FEE_BASIS)};
 
             // NOTE: Verify that the number of contributors in the blob is
@@ -270,22 +298,22 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             uint64_t num_contributors = tools::decode_integer_be(c_len);
             if (num_contributors > oxen::MAX_CONTRIBUTORS_HF19) {
                 throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNode data: {}\n{}"_format(
+                        "Invalid NewServiceNodeV2 data: {}\n{}"_format(
                                 log_more_contributors_than_allowed(
                                         num_contributors,
                                         oxen::MAX_CONTRIBUTORS_HF19,
                                         item.bls_pubkey,
                                         log.blockNumber,
                                         /*index*/ std::optional<uint64_t>()),
-                                log_new_service_node_tx(item, log.data)));
+                                log_new_service_node_v2_tx(item, log.data)));
             }
 
             // NOTE: Verify that there's atleast one contributor
             if (num_contributors <= 0) {
                 throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNode data: There must be atleast one contributor, "
+                        "Invalid NewServiceNodeV2 data: There must be atleast one contributor, "
                         "received 0\n{}"
-                        ""_format(log_new_service_node_tx(item, log.data)));
+                        ""_format(log_new_service_node_v2_tx(item, log.data)));
             }
             item.contributors.reserve(num_contributors);
 
@@ -296,42 +324,48 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
                                                      32 /*SN Key*/ + 64 /*SN Sig*/ + 32 /*Fee*/;
             if (c_offset_value != expected_c_offset_value) {
                 throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNode data: The offset to the contributor payload ({} "
+                        "Invalid NewServiceNodeV2 data: The offset to the contributor payload ({} "
                         "bytes) did not match the offset we derived {}\n{}"
                         ""_format(
                                 c_offset_value,
                                 expected_c_offset_value,
-                                log_new_service_node_tx(item, log.data)));
+                                log_new_service_node_v2_tx(item, log.data)));
             }
 
             // NOTE: Verify the length of the contributor blob
             const size_t expected_contrib_hex_size =
-                    2 /*hex*/ * num_contributors * (/*address*/ 32 + /*amount*/ 32);
+                    2 /*hex*/ * num_contributors *
+                    (/*address*/ 32 + /*beneficiary*/ 32 + /*amount*/ 32);
             if (contrib_hex.size() != expected_contrib_hex_size) {
                 throw oxen::traced<std::invalid_argument>{
-                        "Invalid NewServiceNode data: The hex payload length ({}) derived for "
+                        "Invalid NewServiceNodeV2 data: The hex payload length ({}) derived for "
                         "{} contributors did not match the size we derived of {} hex characters\n"
                         "{}"_format(
                                 contrib_hex.size(),
                                 num_contributors,
                                 expected_contrib_hex_size,
-                                log_new_service_node_tx(item, log.data))};
+                                log_new_service_node_v2_tx(item, log.data))};
             }
 
             // TODO: Validate the amount, can't be 0, should be min contribution. Is this done in
             // the SNL? Maybe.
             for (size_t index = 0; index < num_contributors; index++) {
-                auto& [addr, amt] = item.contributors.emplace_back();
+                auto& [addr, beneficiary, amt] = item.contributors.emplace_back();
                 u256 amt256;
-                std::tie(addr, amt256, contrib_hex) =
-                        tools::split_hex_into<skip<12>, eth::address, u256, std::string_view>(
-                                contrib_hex);
+                std::tie(addr, beneficiary, amt256, contrib_hex) = tools::split_hex_into<
+                        skip<12>,
+                        eth::address,
+                        skip<12>,
+                        eth::address,
+                        u256,
+                        std::string_view>(contrib_hex);
                 amt = tools::decode_integer_be(amt256);
             }
 
-            oxen::log::debug(logcat, "{}", log_new_service_node_tx(item, log.data));
+            oxen::log::debug(logcat, "{}", log_new_service_node_v2_tx(item, log.data));
             break;
         }
+
         case EventType::ServiceNodeExitRequest: {
             // event ServiceNodeRemovalRequest(
             //      uint64 indexed serviceNodeID,
@@ -379,7 +413,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 }
 
 RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider) :
-        contract_address{contract::rewards_address(nettype)}, provider{provider} {}
+        contract_address{get_config(nettype).ETHEREUM_REWARDS_CONTRACT}, provider{provider} {}
 
 std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t block_number) {
     // Get the sentinel node to start the iteration
@@ -405,15 +439,37 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
         std::optional<uint64_t> height) {
     std::string call_data = "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs);
     std::string block_num_arg = height ? "0x{:x}"_format(*height) : "latest";
-    nlohmann::json call_result =
-            provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
 
-    auto call_result_hex = call_result.get<std::string_view>();
+    ServiceNodeIDs result;
+    result.success = false;
+    try {
+        auto call_result =
+                provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
+        result.success = true;
+        for (const auto& [id, key] :
+             parse_all_service_node_ids(call_result.get<std::string_view>())) {
+            result.ids.push_back(id);
+            result.bls_pubkeys.push_back(key);
+        }
+    } catch (const std::exception& e) {
+        oxen::log::warning(
+                logcat,
+                "Failed to parse contract service node list at block '{}': {}",
+                block_num_arg,
+                e.what());
+    }
+    return result;
+}
+
+std::vector<std::pair<uint64_t, bls_public_key>> RewardsContract::parse_all_service_node_ids(
+        std::string_view call_result_hex) {
+
     if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
         call_result_hex.remove_prefix(2);
 
+    std::vector<std::pair<uint64_t, bls_public_key>> result;
+
     // NOTE: Extract the ID payload
-    ServiceNodeIDs result = {};
     const auto [offset_to_ids_bytes, offset_to_keys_bytes, _unused] =
             tools::split_hex_into<u256, u256, std::string_view>(call_result_hex);
     const uint64_t offset_to_ids = tools::decode_integer_be(offset_to_ids_bytes);
@@ -425,7 +481,7 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
             tools::split_hex_into<u256, std::string_view>(ids_start_hex);
     uint64_t num_ids = tools::decode_integer_be(num_ids_bytes);
 
-    const size_t ID_SIZE_IN_HEX = sizeof(u256) * 2;
+    constexpr size_t ID_SIZE_IN_HEX = oxenc::to_hex_size(sizeof(u256));
     std::string_view ids_payload =
             tools::string_safe_substr(ids_remainder_hex, 0, num_ids * ID_SIZE_IN_HEX);
 
@@ -436,62 +492,41 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
             tools::split_hex_into<u256, std::string_view>(keys_start_hex);
     uint64_t num_keys = tools::decode_integer_be(num_keys_bytes);
 
-    const size_t KEY_SIZE_IN_HEX = sizeof(bls_public_key) * 2;
+    constexpr size_t KEY_SIZE_IN_HEX = oxenc::to_hex_size(sizeof(bls_public_key));
     std::string_view keys_payload =
             tools::string_safe_substr(keys_remainder_hex, 0, num_keys * KEY_SIZE_IN_HEX);
 
     // NOTE: Validate args
-    if (num_keys != num_ids) {
-        oxen::log::warning(
-                logcat,
-                "The number of ids ({}) and bls public keys ({}) returned do not match at block "
-                "'{}'",
-                num_ids,
-                num_keys,
-                block_num_arg);
-        return result;
-    }
+    if (num_keys != num_ids)
+        throw oxen::traced<std::invalid_argument>{
+                "The number of ids ({}) and bls public keys ({}) returned do not match"_format(
+                        num_ids, num_keys)};
 
-    if (ids_payload.size() != (num_ids * ID_SIZE_IN_HEX)) {
-        oxen::log::warning(
-                logcat,
+    if (ids_payload.size() != (num_ids * ID_SIZE_IN_HEX))
+        throw oxen::traced<std::invalid_argument>{
                 "The number of ids ({}) specified when retrieving all SN BLS ids did not "
-                "match the size ({} bytes) of the payload returned at block '{}'",
-                num_ids,
-                ids_payload.size() / 2,
-                block_num_arg);
-        return result;
-    }
+                "match the size ({} bytes) of the response"_format(
+                        num_ids, ids_payload.size() / 2)};
 
-    if (keys_payload.size() != (num_keys * KEY_SIZE_IN_HEX)) {
-        oxen::log::warning(
-                logcat,
+    if (keys_payload.size() != (num_keys * KEY_SIZE_IN_HEX))
+        throw oxen::traced<std::invalid_argument>{
                 "The number of keys ({}) specified when retrieving all SN BLS pubkeys did not "
-                "match the size ({} bytes) of the payload returned at block '{}'",
-                num_keys,
-                keys_payload.size() / 2,
-                block_num_arg);
-        return result;
-    }
+                "match the size ({} bytes) of the response"_format(
+                        num_keys, keys_payload.size() / 2)};
 
-    result.ids.reserve(num_ids);
-    result.bls_pubkeys.reserve(num_keys);
+    result.reserve(num_ids);
     for (size_t index = 0; index < num_ids; index++) {
-        std::string_view id_hex =
-                tools::string_safe_substr(ids_payload, (index * ID_SIZE_IN_HEX), ID_SIZE_IN_HEX);
-        std::string_view key_hex =
-                tools::string_safe_substr(keys_payload, (index * KEY_SIZE_IN_HEX), KEY_SIZE_IN_HEX);
-        auto [id_bytes] = tools::split_hex_into<u256>(id_hex);
-        result.ids.push_back(tools::decode_integer_be(id_bytes));
-        result.bls_pubkeys.push_back(tools::make_from_hex_guts<bls_public_key>(key_hex));
+        result.emplace_back(
+                tools::decode_integer_be(
+                        tools::make_from_hex_guts<u256>(ids_payload.substr(0, ID_SIZE_IN_HEX))),
+                tools::make_from_hex_guts<bls_public_key>(keys_payload.substr(0, KEY_SIZE_IN_HEX)));
+        ids_payload.remove_prefix(ID_SIZE_IN_HEX);
+        keys_payload.remove_prefix(KEY_SIZE_IN_HEX);
 
-#if !defined(NDEBUG)
-        log::trace(
-                logcat, "  {:02d} {{{}, {}}}", index, result.ids.back(), result.bls_pubkeys.back());
-#endif
+        log::trace(logcat, "  {:02d} {{{}, {}}}", index, result.back().first, result.back().second);
     }
+    assert(ids_payload.empty() && keys_payload.empty());
 
-    result.success = true;
     return result;
 }
 
@@ -586,10 +621,10 @@ ContractServiceNode RewardsContract::service_nodes(
 
     for (size_t i = 0; i < result.contributorsSize; i++) {
         try {
-            auto& [addr, amount] = result.contributors[i];
+            auto& [addr, beneficiary, amount] = result.contributors[i];
             u256 amt;
-            std::tie(addr, amt, contrib_data) =
-                    tools::split_hex_into<skip<12>, eth::address, u256, std::string_view>(
+            std::tie(addr, beneficiary, amt, contrib_data) = tools::
+                    split_hex_into<skip<12>, eth::address, eth::address, u256, std::string_view>(
                             contrib_data);
             amount = tools::decode_integer_be(amt);
         } catch (const std::exception& e) {

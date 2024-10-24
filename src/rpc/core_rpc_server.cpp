@@ -758,8 +758,8 @@ namespace {
             _load_owner(ons, "owner", x.owner);
             _load_owner(ons, "backup_owner", x.backup_owner);
         }
-        void operator()(const eth::event::NewServiceNode& x) {
-            set("type", "ethereum_new_service_node");
+        void operator()(const eth::event::NewServiceNodeV2& x) {
+            set("type", "ethereum_new_service_node_v2");
             set("l2_height", x.l2_height);
             set("bls_pubkey", x.bls_pubkey);
             set("service_node_pubkey", x.sn_pubkey);
@@ -769,6 +769,7 @@ namespace {
             for (auto& contributor : x.contributors) {
                 auto& c = contributors.emplace_back();
                 c["address"] = "{}"_format(contributor.address);
+                c["beneficiary"] = "{}"_format(contributor.beneficiary);
                 c["amount"] = contributor.amount;
             }
             set("contributors", contributors);
@@ -788,6 +789,11 @@ namespace {
             set("type", "ethereum_staking_requirement_update");
             set("l2_height", x.l2_height);
             set("staking_requirement", x.staking_requirement);
+        }
+        void operator()(const eth::event::ServiceNodePurge& x) {
+            set("type", "ethereum_service_node_purge");
+            set("l2_height", x.l2_height);
+            set("bls_pubkey", x.bls_pubkey);
         }
 
         // Ignore these fields:
@@ -2589,7 +2595,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
     auto list = nlohmann::json::array();
     using node_t = service_nodes::service_node_list::recently_removed_node;
-    for (const node_t& elem : m_core.service_node_list.recently_removed_nodes()) {
+    m_core.service_node_list.for_each_recently_removed_node([&list](const node_t& elem) {
         // NOTE: Serialise to JSON
         serialization::json_archiver ar;
         serialize(ar, const_cast<node_t&>(elem));
@@ -2631,18 +2637,15 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
 
         // NOTE: Assign the type
         switch (elem.type) {
-            case service_nodes::service_node_list::recently_removed_node::type_t::voluntary_exit:
-                serialized["type"] = "exit";
-                break;
-
-            case service_nodes::service_node_list::recently_removed_node::type_t::deregister:
-                serialized["type"] = "deregister";
-                break;
+            case node_t::type_t::voluntary_exit: serialized["type"] = "exit"; break;
+            case node_t::type_t::deregister: serialized["type"] = "deregister"; break;
+            case node_t::type_t::purged:
+                assert(!"Internal error: found invalid purged node in recently_removed_nodes");
         }
 
         // NOTE: Store the object into the RPC response array
-        list.emplace_back(std::move(serialized));
-    }
+        list.push_back(std::move(serialized));
+    });
 
     rpc.response = std::move(list);
 }
@@ -2982,9 +2985,10 @@ void core_rpc_server::fill_sn_response_entry(
         auto& contributors = (entry["contributors"] = json::array());
         for (const auto& contributor : info.contributors) {
             auto& c = contributors.emplace_back(json{{"amount", contributor.amount}});
-            if (contributor.ethereum_address)
+            if (contributor.ethereum_address) {
                 c["address"] = "{}"_format(contributor.ethereum_address);
-            else
+                c["beneficiary"] = "{}"_format(contributor.ethereum_beneficiary);
+            } else
                 c["address"] = cryptonote::get_account_address_as_str(
                         m_core.get_nettype(), false /*subaddress*/, contributor.address);
             if (contributor.reserved != contributor.amount)
@@ -3098,7 +3102,7 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
                           info.confirmations) /
                                  (double)info.FULL_SCORE}};
 
-                if constexpr (std::is_same_v<Event, eth::event::NewServiceNode>) {
+                if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
                     sns.response["registrations"].push_back(std::move(entry));
                     auto& res = sns.response["registrations"].back();
                     auto res_hex = sns.response_hex["registrations"].back();
@@ -3108,9 +3112,12 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
                     res["fee"] = e.fee * 0.01;
                     res["contributors"] = json::array();
                     auto& contr = res["contributors"];
-                    for (const auto& [addr, amt] : e.contributors) {
-                        contr.push_back(json{{"amount", amt}, {"address", "{}"_format(addr)}});
-                    }
+                    for (const auto& it : e.contributors)
+                        contr.push_back(json{
+                                {"amount", it.amount},
+                                {"address", "{}"_format(it.address)},
+                                {"beneficiary", "{}"_format(it.beneficiary)},
+                        });
                 } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
                     sns.response["unlocks"].push_back(std::move(entry));
                     sns.response_hex["unlocks"].back()["bls_pubkey"] = e.bls_pubkey;

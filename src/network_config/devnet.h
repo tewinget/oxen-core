@@ -6,7 +6,7 @@
 namespace cryptonote::config::devnet {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::DEVNET,
-        .DEFAULT_CONFIG_SUBDIR = "devnet2"sv,
+        .DEFAULT_CONFIG_SUBDIR = "devnet3"sv,
         .HEIGHT_ESTIMATE_HEIGHT = 0,
         .HEIGHT_ESTIMATE_TIMESTAMP = 1597170000,
         .PUBLIC_ADDRESS_BASE58_PREFIX = 3930,             // ~ dV1 .. dV3
@@ -16,7 +16,7 @@ inline constexpr network_config config{
         .RPC_DEFAULT_PORT = 38857,
         .QNET_DEFAULT_PORT = 38859,
         .NETWORK_ID =
-                {{0x02,
+                {{0x03,
                   0xf7,
                   0x5c,
                   0x7d,
@@ -67,10 +67,12 @@ inline constexpr network_config config{
         .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,
         .STORE_RECENT_REWARDS = mainnet::config.STORE_RECENT_REWARDS,
         .ETH_EXIT_BUFFER = testnet::config.ETH_EXIT_BUFFER,
-        .ETHEREUM_CHAIN_ID = 421614,
-        .ETHEREUM_REWARDS_CONTRACT = "0x94d93f4D002d387b7De849f9FB0c4c918867Da78",
-        .ETHEREUM_POOL_CONTRACT = "0x75CA12bC16411443418fddE32bd17D6166E7AA4c",
+        .ETHEREUM_CHAIN_ID = 421614,  // Arbitrum Sepolia
+        .ETHEREUM_REWARDS_CONTRACT = "0x75Dc11700b2D03902FCb5Ca7aFd6A859a1Fa25Cb",
+        .ETHEREUM_POOL_CONTRACT = "0xb515C61DE12f28eE908a905b930aFb80B9bAd7cf",
         .L2_REWARD_POOL_UPDATE_BLOCKS = testnet::config.L2_REWARD_POOL_UPDATE_BLOCKS,
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
+        .L2_NODE_LIST_PURGE_BLOCKS = 10min / L2_BLOCK_TIME,
+        .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = mainnet::config.L2_NODE_LIST_PURGE_MIN_OXEN_AGE,
 };
 }  // namespace cryptonote::config::devnet
