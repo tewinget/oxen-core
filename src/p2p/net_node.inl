@@ -128,7 +128,7 @@ fs::path node_server<t_payload_net_handler>::get_peerlist_file() const {
     fs::path p2p_filename = cryptonote::P2P_NET_DATA_FILENAME;
     if (m_nettype == cryptonote::network_type::STAGENET)
         // Kludge for stagenet reboot
-        p2p_filename += u8".v2";
+        p2p_filename += u8".v3";
     return m_config_folder / p2p_filename;
 }
 
