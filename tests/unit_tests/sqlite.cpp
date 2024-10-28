@@ -105,7 +105,7 @@ TEST(SQLITE, CalculateRewards)
     contributor.reserved = 0;
     contributor.amount = block.reward;
     sqliteDB.add_rewards(block.major_version, block.reward, single_contributor, rewards);
-    EXPECT_EQ(rewards[first_address.address], 66);
+    EXPECT_EQ(rewards[first_address.address], 200);
   }
   auto hf_version = block.major_version;
 
@@ -119,13 +119,13 @@ TEST(SQLITE, CalculateRewards)
   cryptonote::address_parse_info second_address{};
   cryptonote::get_account_address_from_str(second_address, cryptonote::network_type::TESTNET, "T6SjALssDNvPZnTnV7vr459SX632c4X5qjLKfHfzvS32RPuhH3vnJmP9fyiD6ZiMu4XPk8ofH95mNRDg5bUPWkmq1LGAnyP3B");
   auto& contributor2 = multiple_contributors.contributors.emplace_back();
-  contributor1.address = second_address.address;
-  contributor1.reserved = 0;
-  contributor1.amount = 33;
+  contributor2.address = second_address.address;
+  contributor2.reserved = 0;
+  contributor2.amount = 33;
   cryptonote::address_parse_info third_address{};
   cryptonote::get_account_address_from_str(third_address, cryptonote::network_type::TESTNET, "T6SkkovCyLWViVDMgeJoF7X4vFrHnKX5jXyktaoGmRuNTdoFEx1xXu1joXdmeH9mx2LLNPq998fKKcsAHwdRJWhk126SapptR");
   auto& contributor3 = multiple_contributors.contributors.emplace_back();
-  contributor3.address = second_address.address;
+  contributor3.address = third_address.address;
   contributor3.reserved = 0;
   contributor3.amount = 34;
 

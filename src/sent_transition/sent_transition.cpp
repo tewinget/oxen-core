@@ -155,7 +155,7 @@ void transition(
     // Pass one: convert all stakes (of registered users) to our SENT bucket.  We'll leave the
     // values in place for now; we come back and update everything later.
     for (const auto& [pubkey, info] : snl_state.service_nodes_infos) {
-        auto& old_stakes = std::get<std::vector<service_nodes::service_node_info::oxen_contributor>>(info->contributors);
+        auto& old_stakes = info->contributors;
         for (auto& contributor : old_stakes) {
             auto addr = cryptonote::get_account_address_as_str(net, false, contributor.address);
             if (auto it = sent_addrs.find(contributor.address); it != sent_addrs.end()) {
@@ -261,14 +261,7 @@ void transition(
         // is 20k then your SENT stake in this node will become 21% of 20k (4200 SENT).
         std::unordered_map<eth::address, uint64_t> sent_stake;
         if (!zombie) {
-            auto* stakers =
-                    std::get_if<std::vector<service_nodes::service_node_info::oxen_contributor>>(
-                            &sni->contributors);
-            if (!stakers)
-                throw std::runtime_error{
-                        "Unable to perform SENT transition: SN {} has unexpected lack of OXEN contributions!"_format(
-                                pk)};
-            for (auto& contributor : *stakers) {
+            for (auto& contributor : sni->contributors) {
                 auto it = sent_addrs.find(contributor.address);
                 if (it == sent_addrs.end()) {
                     zombie = true;
@@ -290,13 +283,7 @@ void transition(
         // Make sure all the contributors have enough unallocated SENT to actually carry over the
         // stake; if any don't then the SN becomes a zombie to be deregistered.
         if (!zombie) {
-            if (auto* oxen_op_addr =
-                        std::get_if<cryptonote::account_public_address>(&sni->operator_address))
-                sn_op = sent_addrs.at(*oxen_op_addr);
-            else
-                throw std::runtime_error{
-                        "Unable to perform SENT transition: SN {} has a non-OXEN operator address!"_format(
-                                pk)};
+            sn_op = sent_addrs.at(sni->operator_address);
 
             // Our truncating integer divisions above will likely have slightly undercalculated some
             // of the staking requirements, so add the missing atomic amount to the operator
@@ -331,8 +318,7 @@ void transition(
             // Compress the [0, 18446744073709551612] value into a [0, 10000] value:
             sn.portions_for_operator = sni->portions_for_operator / 184467440737095;
 
-            auto& stakers =
-                    sn.contributors.emplace<std::vector<service_nodes::service_node_info::sent_contribution>>();
+            auto& stakers = sn.contributors;
 
             sn.total_contributed = staking_requirement;
             sn.total_reserved = staking_requirement;
@@ -343,7 +329,9 @@ void transition(
             {
                 auto it = sent_stake.find(sn_op);
                 assert(it != sent_stake.end());
-                stakers.emplace_back(it->second, it->first);
+                auto& stake = stakers.emplace_back();
+                stake.ethereum_address = it->first;
+                stake.amount = it->second;
                 sent_stake.erase(it);
             }
             std::vector<std::pair<eth::address, uint64_t>> stakes_desc{
@@ -354,10 +342,13 @@ void transition(
                 return a.first <
                        b.first;  // same value: a comes first if the *address* is "smaller"
             });
-            for (const auto& [address, amount] : stakes_desc)
-                stakers.emplace_back(amount, address);
+            for (const auto& [address, amount] : stakes_desc) {
+                auto& stake = stakers.emplace_back();
+                stake.ethereum_address = address;
+                stake.amount = amount;
+            }
 
-            auto& old_stakes = std::get<std::vector<service_nodes::service_node_info::oxen_contributor>>(sni->contributors);
+            auto& old_stakes = sni->contributors;
             for (const auto& contributor : old_stakes) {
                 for (const auto& contribution : contributor.locked_contributions)
                 {
