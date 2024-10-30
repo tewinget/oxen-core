@@ -79,8 +79,8 @@ inline constexpr network_config config{
         .L2_TRACKER_SAFE_BLOCKS = 70s / L2_BLOCK_TIME,
         // This relatively infrequent check is only for handling highly unusual cleanup cases where
         // a L2 disruption or bug between the contract and oxend results in oxend service nodes
-        // state having nodes that *don't* exist in the contract for some reason.
-        .L2_NODE_LIST_PURGE_BLOCKS = 2h / L2_BLOCK_TIME,
+        // state having nodes that *don't* exist in the contract (or vice versa) for some reason.
+        .L2_NODE_LIST_PURGE_BLOCKS = 1h / L2_BLOCK_TIME,
         .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = 24h / TARGET_BLOCK_TIME,
 };
 }  // namespace cryptonote::config::mainnet

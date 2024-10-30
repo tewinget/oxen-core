@@ -811,10 +811,10 @@ void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, bls_exit_type type
     bool removable = false;
     switch (type) {
         case bls_exit_type::normal: {
-            removable = core.is_node_removable(request.remove_pk);
+            removable = core.blockchain.is_node_removable(request.remove_pk);
         } break;
         case bls_exit_type::liquidate: {
-            removable = core.is_node_liquidatable(request.remove_pk);
+            removable = core.blockchain.is_node_liquidatable(request.remove_pk);
         } break;
     }
 
@@ -904,11 +904,11 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     switch (type) {
         case bls_exit_type::normal: {
             endpoint = OMQ_BLS_EXIT_ENDPOINT;
-            removable = core.is_node_removable(bls_pubkey);
+            removable = core.blockchain.is_node_removable(bls_pubkey);
         } break;
         case bls_exit_type::liquidate: {
             endpoint = OMQ_BLS_LIQUIDATE_ENDPOINT;
-            removable = core.is_node_liquidatable(bls_pubkey);
+            removable = core.blockchain.is_node_liquidatable(bls_pubkey);
         } break;
     }
 

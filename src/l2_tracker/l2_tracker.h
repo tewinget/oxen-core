@@ -160,23 +160,45 @@ class L2Tracker {
     // Returns the latest L2 height we know about, i.e. from previous provider updates.
     uint64_t get_latest_height() const;
 
-    // Returns the latest L2 height that we have known about for at least 30s (SAFE_BLOCKS); when
-    // building a block we use this slight lag so that service nodes that are a few seconds out of
-    // sync won't have trouble accepting our block.
+    // Returns the latest L2 height that we have known about for at least 70s
+    // (L2_TRACKER_SAFE_BLOCKS); when building a block we use this slight lag so that service nodes
+    // that are up to a minute out of sync with the L2 tracker (e.g. because they update once a
+    // minute) won't have trouble accepting our block.
     uint64_t get_safe_height() const;
 
     // Returns the age of the last successful height response we got from an L2 RPC provider.
     std::optional<std::chrono::nanoseconds> latest_height_age() const;
 
+    // Initiates a synchronous request to the current L2 contract to retrieve the current list of
+    // BLS pubkeys, and returns the numeric contract IDs of any contract pubkeys that are not in the
+    // `[begin..end)` input range.
+    //
+    // TODO: make asychronous
     std::vector<uint64_t> get_non_signers(
             const std::unordered_set<bls_public_key>& bls_public_keys);
     template <std::input_iterator It, std::sentinel_for<It> End>
     std::vector<uint64_t> get_non_signers(It begin, End end) {
         return get_non_signers(std::unordered_set<bls_public_key>{begin, end});
     }
-    std::vector<bls_public_key> get_all_bls_public_keys(uint64_t blockNumber);
 
+    // Initiates a synchronous request to the current L2 contract to retrieve the list of contract
+    // numeric IDs and pubkeys of all contract service nodes as of the given height (or as of the
+    // latest height if height is nullopt).
+    //
+    // TODO: make asychronous
     RewardsContract::ServiceNodeIDs get_all_service_node_ids(std::optional<uint64_t> height);
+
+    // Returns true if the given pubkey is in the L2 contract, as of the last contract list update,
+    // false if not in the list.  (This method does not make a new L2 provider request).  Returns
+    // nullopt if the current cache is empty (i.e. indicating that we have not successfully synced
+    // the pubkey purge list recently).  Note that this value is cached and typically somewhat
+    // stale: it is only updated every netconf.L2_NODE_LIST_PURGE_BLOCKS L2 blocks.
+    std::optional<bool> is_in_contract(const eth::bls_public_key& pubkey) const;
+
+    // Returns all contract node BLS pubkeys, as of the last purge list update.  Note that if the
+    // purge list has not been recently successfully updated, this set will be empty (and so an
+    // empty set should be treated specially, but *not* as a contract-has-no-nodes indicator).
+    std::unordered_set<eth::bls_public_key> all_contract_pubkeys() const;
 
     // Returns true/false for whether we have recently observed the given event from the L2 tracker
     // logs.  This is used for pulse confirmation voting.

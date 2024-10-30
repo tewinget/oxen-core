@@ -599,10 +599,6 @@ class core final {
             const crypto::public_key& pubkey, bool liquidate);
     eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 
-    bool is_node_removable(const eth::bls_public_key& node_bls_pubkey);
-
-    bool is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey);
-
     /**
      * @brief Add a service node vote
      *

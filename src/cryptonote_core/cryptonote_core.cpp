@@ -1203,33 +1203,6 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     quorumnet_init(*this, m_quorumnet_state);
 }
 
-bool core::is_node_removable(const eth::bls_public_key& node_bls_pubkey) {
-    auto removable_nodes = blockchain.get_removable_nodes();
-    return std::find(removable_nodes.begin(), removable_nodes.end(), node_bls_pubkey) !=
-           removable_nodes.end();
-}
-
-bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
-    if (!is_node_removable(node_bls_pubkey))
-        return false;
-
-    // NOTE: Node exists in the smart contract but not the oxen service node
-    // list, it's been deregistered from _OR_ it voluntarily exited the SNL.
-    uint64_t height = blockchain.get_current_blockchain_height();
-    bool result = false;
-    service_node_list.for_each_recently_removed_node([&](const auto& node) {
-        assert(node.info.bls_public_key &&
-               "Invalid null key got inserted into the recently removed list");
-        if (node.info.bls_public_key == node_bls_pubkey) {
-            result = height >= node.liquidation_height;
-            return true;
-        }
-        return false;
-    });
-
-    return result;
-}
-
 void core::start_oxenmq() {
     update_omq_sns();  // Ensure we have SNs set for the current block before starting
 

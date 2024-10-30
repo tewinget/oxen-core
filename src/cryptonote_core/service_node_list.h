@@ -1306,8 +1306,12 @@ class service_node_list {
 
     /**
      * @brief iterates through all pending unconfirmed L2 state changes.  `func` should be a generic
-     * lambda that will be called with const reference to an eth::event::NewServiceNodeV2,
-     * eth::event::ServiceNodeExitRequest, or eth::event::ServiceNodeExit.
+     * lambda that will be called with const reference to one of the non-monostate
+     * eth::StateChangeVariant types (e.g. eth::event::NewServiceNodeV2,
+     * eth::event::ServiceNodeExitRequest, etc.).
+     *
+     * If `func` returns a bool then the return value is used to determine whether to break the loop
+     * early: true means break, false means continue.
      */
     template <typename F>
         requires std::invocable<F, const eth::event::NewServiceNodeV2&, const unconfirmed_l2_tx&> &&
@@ -1324,12 +1328,19 @@ class service_node_list {
     void for_each_pending_l2_state(F&& f) const {
         std::lock_guard lock{m_sn_mutex};
         for (auto& [txid, confirm_info] : m_state.unconfirmed_l2_txes) {
-            std::visit(
+            bool done = std::visit(
                     [&f, &confirm_info]<typename T>(const T& evt) {
-                        if constexpr (!std::is_same_v<T, std::monostate>)
-                            f(evt, confirm_info);
+                        if constexpr (!std::is_same_v<T, std::monostate>) {
+                            if constexpr (std::is_same_v<bool, decltype(f(evt, confirm_info))>)
+                                return f(evt, confirm_info);
+                            else
+                                f(evt, confirm_info);
+                        }
+                        return false;
                     },
                     eth::extract_event(blockchain, txid));
+            if (done)
+                break;
         }
     }
 
