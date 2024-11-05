@@ -106,8 +106,6 @@ void transition(
     std::unordered_map<cryptonote::account_public_address, eth::address> sent_addrs;
     for (const auto& [o, s] : unparsed_sent_addrs) {
         auto parsed_addr_info = address_info_from_str(net, o);
-        auto addr = cryptonote::get_account_address_as_str(net, false, parsed_addr_info.address);
-        log::warning(logcat, "{} {} {}", o, o == addr ? "==" : "!=", addr);
         sent_addrs[parsed_addr_info.address] = s;
     }
 
@@ -123,6 +121,10 @@ void transition(
     // stakes.  Then, once we know each address's total, we'll go back and try to re-fill as many
     // SNs as we can from the unallocated amounts.
     std::unordered_map<eth::address, uint64_t> unallocated = transition_bonus(net);
+    for (const auto& [eth, amount] : unallocated) {
+        log::debug(logcat, "transition bonuses:");
+        log::debug(logcat, "\tSENT {} has {}", eth, amount);
+    }
 
     // Convert any balances for registered accounts in the batching db, removing it from the
     // batching db.  (If there is SENT left over at the end we'll put it back in, but under the
@@ -144,14 +146,19 @@ void transition(
 
         const auto& eth_addr = it->second;
         unallocated[eth_addr] += oxen_to_sent(val);
-        log::warning(logcat, "oxen -> sent ({} -> {}) accrued unpaid oxen rewards: {}", addr, eth_addr, val);
+        log::debug(logcat, "oxen -> sent ({} -> {}) accrued unpaid oxen rewards: {}", addr, eth_addr, val);
         converted_rewards[oxen_addr] = val;
+    }
+
+    for (const auto& [eth, amount] : unallocated) {
+        log::debug(logcat, "SENT {} has unallocated {}", eth, amount);
     }
 
     // Clear out all the old OXEN rewards that we've now converted (into `unallocated`).  We'll add
     // anything left over back in (under the ETH address) at the end.
     sql.subtract_sn_rewards(converted_rewards);
 
+    std::vector<crypto::key_image> permanent_stakes;
     // Pass one: convert all stakes (of registered users) to our SENT bucket.  We'll leave the
     // values in place for now; we come back and update everything later.
     for (const auto& [pubkey, info] : snl_state.service_nodes_infos) {
@@ -164,13 +171,15 @@ void transition(
                 // would show up in the locked amounts but not the aggregate amount (for example: if
                 // a SN has 123.456 available and someone contributes 123.5)
                 uint64_t total = 0;
-                for (const auto& lc : contributor.locked_contributions)
+                for (const auto& lc : contributor.locked_contributions) {
+                    permanent_stakes.push_back(lc.key_image);
                     total += lc.amount;
+                }
                 unallocated[it->second] += oxen_to_sent(total);
-                log::warning(logcat, "old stake from {} of amount {} -> SENT {} of amount {}, SENT balance {}", addr, total, it->second, oxen_to_sent(total), unallocated[it->second]);
+                log::debug(logcat, "old stake from {} of amount {} -> SENT {} of amount {}, SENT balance {}", addr, total, it->second, oxen_to_sent(total), unallocated[it->second]);
             }
             else
-                log::warning(logcat, "no SENT address for OXEN wallet {}", addr);
+                log::debug(logcat, "no SENT address for OXEN wallet {}", addr);
         }
     }
 
@@ -228,7 +237,6 @@ void transition(
     const auto& staking_ratio = net == network_type::MAINNET ? OXEN_SENT_STAKING_RATIO
                                                              : OXEN_SENT_TESTNET_STAKING_RATIO;
 
-    std::vector<crypto::key_image> permanent_stakes;
     for (const auto& [pk, sni] : sorted_sns) {
         bool zombie = false;
 
@@ -251,10 +259,25 @@ void transition(
                     (SENT_STAKING_REQUIREMENT * 7 + 5) / 6 /* ceiling division */);
         }
 
+        // Nodes with old monero-style key which did not broadcast a proper ed25519 key
+        // shouldn't make it this far, but check just in case and zombie if so
+        if (!remapped.contains(pk)) {
+            log::debug(logcat, "Node {} (monero-ed) not transitioning because there is no mapped proper ed25519 key", pk);
+            zombie = true;
+        }
+
+        // Nodes with no ed->bls key mapping do not get transitioned
+        else if (!node_bls_keys.contains(remapped[pk])) {
+            log::debug(logcat, "Node {} (ed) not transitioning because there is no mapped bls key", remapped[pk]);
+            zombie = true;
+        }
+
         // Partially funded nodes at the time of transition just get dropped and will have to be
         // re-registered via a SENT multi-contributor contract.
-        if (!sni->is_fully_funded())
+        else if (!sni->is_fully_funded()) {
+            log::debug(logcat, "Node {} (ed) not transitioning because it is not fully funded", remapped[pk]);
             zombie = true;
+        }
 
         // Now compute how much SENT must be staked in order to maintain the same relative stake in
         // this SN.  E.g. if you had a 21% stake before (3150 OXEN) and the SENT staking requirement
@@ -262,8 +285,10 @@ void transition(
         std::unordered_map<eth::address, uint64_t> sent_stake;
         if (!zombie) {
             for (auto& contributor : sni->contributors) {
+                auto addr = cryptonote::get_account_address_as_str(net, false, contributor.address);
                 auto it = sent_addrs.find(contributor.address);
                 if (it == sent_addrs.end()) {
+                    log::debug(logcat, "no sent addr for oxen wallet {}", addr);
                     zombie = true;
                     break;
                 }
@@ -274,7 +299,7 @@ void transition(
                     sent_required = sent_required * extra_ratio->first / extra_ratio->second;
 
                 sent_stake[it->second] += sent_required;
-                log::warning(logcat, "have {} from SENT {} for node {}", sent_required, it->second, pk);
+                log::debug(logcat, "have {} from SENT {} for node {}", sent_required, it->second, pk);
             }
         }
 
@@ -296,13 +321,22 @@ void transition(
             if (deficit)
                 sent_stake[sn_op] += deficit;
 
+            std::unordered_map<eth::address, uint64_t> allocated;
             for (const auto& [eth, reqd] : sent_stake) {
                 assert(unallocated.count(eth));
-                if (unallocated[eth] < reqd) {
+                if (unallocated[eth] - allocated[eth] < reqd) {
+                    log::debug(logcat, "insufficient sent from {}, have {} need {}", eth, unallocated[eth] - allocated[eth], reqd);
                     zombie = true;
                     break;
                 }
-                log::warning(logcat, "allocated {} from SENT {} for node {}, new SENT balance {}", reqd, eth, pk, unallocated[eth]);
+                allocated[eth] += reqd;
+            }
+
+            if (!zombie) {
+                for (auto& [eth, amt] : allocated) {
+                    unallocated[eth] -= amt;
+                    log::debug(logcat, "allocated {} from SENT {} for node {}, new SENT balance {}", amt, eth, pk, unallocated[eth]);
+                }
             }
         }
 
@@ -314,11 +348,11 @@ void transition(
 
 
         if (!zombie) {
-            sn.version = service_nodes::service_node_info::version_t::v8_ethereum_address;
             // Compress the [0, 18446744073709551612] value into a [0, 10000] value:
             sn.portions_for_operator = sni->portions_for_operator / 184467440737095;
 
             auto& stakers = sn.contributors;
+            stakers.clear();
 
             sn.total_contributed = staking_requirement;
             sn.total_reserved = staking_requirement;
@@ -331,7 +365,9 @@ void transition(
                 assert(it != sent_stake.end());
                 auto& stake = stakers.emplace_back();
                 stake.ethereum_address = it->first;
+                stake.ethereum_beneficiary = it->first;
                 stake.amount = it->second;
+                sn.operator_ethereum_address = it->first;
                 sent_stake.erase(it);
             }
             std::vector<std::pair<eth::address, uint64_t>> stakes_desc{
@@ -345,15 +381,8 @@ void transition(
             for (const auto& [address, amount] : stakes_desc) {
                 auto& stake = stakers.emplace_back();
                 stake.ethereum_address = address;
+                stake.ethereum_beneficiary = address;
                 stake.amount = amount;
-            }
-
-            auto& old_stakes = sni->contributors;
-            for (const auto& contributor : old_stakes) {
-                for (const auto& contribution : contributor.locked_contributions)
-                {
-                    permanent_stakes.push_back(contribution.key_image);
-                }
             }
 
             sn.bls_public_key = node_bls_keys.at(remapped[pk]); // operator [] and const being weird
@@ -367,16 +396,26 @@ void transition(
             sn.total_contributed = 0;
             sn.total_reserved = 0;
             sn.staking_requirement = 0;
+            sn.contributors.clear();
             post_transition_sns.emplace_back(pk, new_state);
         }
     }
 
-// First, clear the old key image blacklist so we don't leave unconverted stakes locked
-// any longer than necessary (and can re-use the blacklist for perma-locks)
-//
-// Then *permanently* blacklist the key images of all converted stakes (but not
-// unconverted ones), so that you can't go back to the OXEN wallet and then convert
-// them through the external SENT conversion process.
+    // Any yet-unallocated SENT balance goes in the rewards db to be claimed
+    cryptonote::block_payments returned_unallocated;
+    for (const auto& [eth, amt] : unallocated) {
+        log::debug(logcat, "SENT {} had {} tokens unallocated, adding to rewards db.", eth, amt);
+        returned_unallocated[eth] = amt;
+    }
+
+    sql.add_sn_rewards(returned_unallocated);
+
+    // First, clear the old key image blacklist so we don't leave unconverted stakes locked
+    // any longer than necessary (and can re-use the blacklist for perma-locks)
+    //
+    // Then *permanently* blacklist the key images of all converted stakes (but not
+    // unconverted ones), so that you can't go back to the OXEN wallet and then convert
+    // them through the external SENT conversion process.
     snl_state.key_image_blacklist.clear();
     for (const crypto::key_image& img : permanent_stakes)
     {

@@ -368,7 +368,19 @@ class Wallet(RPCDaemon):
 
     def address(self):
         if not self.wallet_address:
-            self.wallet_address = self.json_rpc("get_address").json()["result"]["address"]
+            retry_count = 0
+            while True: # loop exits when done or too many retries (raises)
+                retry_count += 1
+                r = self.json_rpc("get_address").json()
+                try:
+                    self.wallet_address = r["result"]["address"]
+                    break
+                except Exception as e:
+                    print(f"wallet {self.name} get_address: wallet not ready yet.  Trying again...")
+                    if retry_count >= 5:
+                        raise
+                    else:
+                        time.sleep(1)
 
         return self.wallet_address
 
