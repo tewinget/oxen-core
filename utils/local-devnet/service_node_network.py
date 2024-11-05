@@ -87,7 +87,7 @@ class SNNetwork:
     all_nodes = []
     wallets   = []
 
-    def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3):
+    def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3, keep_data_dir=False, start_at_hf20=False, stop_at_hf20=False):
         begin_time = time.perf_counter()
 
         # Setup Ethereum ###########################################################################
@@ -184,7 +184,8 @@ class SNNetwork:
                 node=self.nodes[len(self.wallets) % len(self.nodes)],
                 name=name,
                 rpc_wallet=str(self.oxen_bin_dir/'oxen-wallet-rpc'),
-                datadir=datadir))
+                datadir=datadir,
+                existing_wallet=keep_data_dir))
 
         self.alice, self.bob, self.mike = self.wallets
 
@@ -194,7 +195,8 @@ class SNNetwork:
                 node=self.nodes[len(self.extrawallets) % len(self.nodes)],
                 name="extrawallet-"+str(name),
                 rpc_wallet=str(self.oxen_bin_dir/'oxen-wallet-rpc'),
-                datadir=datadir))
+                datadir=datadir,
+                existing_wallet=keep_data_dir))
 
         # Interconnections
         for i in range(len(self.all_nodes)):
@@ -277,58 +279,65 @@ class SNNetwork:
         with open(configfile, 'w') as filetowrite:
             filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
-        # Start blockchain setup ###################################################################
-        # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
-        # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
-        # SN (at height 40, which is the earliest we can submit them without getting an occasional
-        # spurious "Not enough outputs to use" error).
-        # to unlock and the rest to have enough unlocked outputs for mixins), then more some more to
-        # earn SN rewards.  We need 100 per SN registration, and each mined block gives us an input
-        # of 18.9, which means each registration requires 6 inputs.  Thus we need a bare minimum of
-        # 6(N-5) blocks, plus the 30 lock time on coinbase TXes = 6N more blocks (after the initial
-        # 5 registrations).
-        self.sync_nodes(self.mine(46), timeout=120)
-        vprint("Submitting first round of service node registrations:", flush=True)
-        self.mike.refresh()
-        for sn in self.sns[0:5]:
-            self.mike.register_sn(sn, self.sns[0].get_staking_requirement())
-            vprint(".", end="", flush=True, timestamp=False)
-        vprint(timestamp=False)
-        if len(self.sns) > 5:
-            vprint("Going back to mining", flush=True)
-
-            self.mine(6*len(self.sns))
-
-            self.print_wallet_balances()
-            self.mike.transfer(self.alice, coins(150))
-            self.mike.transfer(self.bob, coins(150))
-            vprint("Submitting more service node registrations: ", end="", flush=True)
-            for sn in self.sns[5:-1]:
+        if not start_at_hf20:
+            # Start blockchain setup ###################################################################
+            # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
+            # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
+            # SN (at height 40, which is the earliest we can submit them without getting an occasional
+            # spurious "Not enough outputs to use" error).
+            # to unlock and the rest to have enough unlocked outputs for mixins), then more some more to
+            # earn SN rewards.  We need 100 per SN registration, and each mined block gives us an input
+            # of 18.9, which means each registration requires 6 inputs.  Thus we need a bare minimum of
+            # 6(N-5) blocks, plus the 30 lock time on coinbase TXes = 6N more blocks (after the initial
+            # 5 registrations).
+            self.sync_nodes(self.mine(46), timeout=120)
+            vprint("Submitting first round of service node registrations:", flush=True)
+            self.mike.refresh()
+            for sn in self.sns[0:5]:
                 self.mike.register_sn(sn, self.sns[0].get_staking_requirement())
                 vprint(".", end="", flush=True, timestamp=False)
             vprint(timestamp=False)
-            vprint("Done.")
+            if len(self.sns) > 5:
+                vprint("Going back to mining", flush=True)
 
-        self.print_wallet_balances()
+                self.mine(6*len(self.sns))
 
-        vprint("Mining 30 blocks to height 149 (registrations + blink quorum lag) and waiting for nodes to sync")
-        self.sync_nodes(self.mine(29), timeout=120)
-        for wallet in self.extrawallets:
-            self.mike.transfer(wallet, coins(11))
-        self.sync_nodes(self.mine(1), timeout=120) # Height 149
+                self.print_wallet_balances()
+                self.mike.transfer(self.alice, coins(150))
+                self.mike.transfer(self.bob, coins(150))
+                vprint("Submitting more service node registrations: ", end="", flush=True)
+                for sn in self.sns[5:-1]:
+                    self.mike.register_sn(sn, self.sns[0].get_staking_requirement())
+                    vprint(".", end="", flush=True, timestamp=False)
+                vprint(timestamp=False)
+                vprint("Done.")
 
-        self.print_wallet_balances()
+            self.print_wallet_balances()
 
-        # Register the last SN through Bobs wallet (Has not done any others)
-        # and also get 9 other wallets to contribute the rest of the node with a 10% operator fee
-        self.bob.register_sn_for_contributions(sn=self.sns[-1], cut=10, amount=coins(28), staking_requirement=self.sns[0].get_staking_requirement())
-        self.sync_nodes(self.mine(20), timeout=120) # Height 169
-        self.print_wallet_balances()
-        for wallet in self.extrawallets:
-            wallet.contribute_to_sn(self.sns[-1], coins(8))
+            vprint("Mining 30 blocks to height 149 (registrations + blink quorum lag) and waiting for nodes to sync")
+            self.sync_nodes(self.mine(29), timeout=120)
+            for wallet in self.extrawallets:
+                self.mike.transfer(wallet, coins(11))
+            self.sync_nodes(self.mine(1), timeout=120) # Height 149
 
-        # Submit block to enter the BLS transition ##################################################
-        self.sync_nodes(self.mine(1), timeout=120) # Height 170
+            self.print_wallet_balances()
+
+            # Register the last SN through Bobs wallet (Has not done any others)
+            # and also get 9 other wallets to contribute the rest of the node with a 10% operator fee
+            self.bob.register_sn_for_contributions(sn=self.sns[-1], cut=10, amount=coins(28), staking_requirement=self.sns[0].get_staking_requirement())
+            self.sync_nodes(self.mine(20), timeout=120) # Height 169
+            self.print_wallet_balances()
+            for wallet in self.extrawallets:
+                wallet.contribute_to_sn(self.sns[-1], coins(8))
+
+            # Submit block to enter the BLS transition ##################################################
+            self.sync_nodes(self.mine(1), timeout=120) # Height 170
+
+            if stop_at_hf20:
+                # FIXME: cleaner way to exit here
+                assert False, "stopping at hf20"
+        else:
+            time.sleep(2) # if starting from hf20, give it a couple seconds to make sure oxend and wallets are all ready to go
 
         vprint("Sending fake lokinet/ss pings")
         for sn in self.sns:
@@ -344,6 +353,7 @@ class SNNetwork:
         vprint(timestamp=False)
 
         # Pull out some useful keys to local variables
+        transition_eth_addr_no_0x = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
         staker_eth_addr       = self.sn_contract.hardhat_account0.address
         staker_eth_addr_no_0x = self.sn_contract.hardhat_account0.address[2:42]
         assert len(staker_eth_addr) == 42, "Expected Eth address w/ 0x prefix + 40 hex characters. Account was {} ({} chars)".format(staker_eth_addr, len(staker_eth_addr))
@@ -383,8 +393,27 @@ class SNNetwork:
         self.sn_contract.start()
         prev_contract_sn_count = self.sn_contract.totalNodes()
 
-        # Wait for pulse to make block to enter BLS hardfork (height 171) ##########################
-        self.sync_nodes(171, timeout=120)
+        try:
+            self.sync_nodes(171, timeout=10)
+        except:
+            # if restarting saved chain old enough, gotta kickstart with a mined block, as every
+            # pulse quorum will have timed out
+            self.sync_nodes(self.mine(1), timeout=10)
+
+        # Wait for pulse to make block to enter BLS hardfork (height 171 (172 "length", ugh)) ##########################
+        # Wait for one specific node to hit HF21 and check post-fork eth balance
+        h = self.eth_sns[0].height()
+        while h < 172:
+            time.sleep(0.25)
+            h = self.eth_sns[0].height()
+
+        rewards_response = self.eth_sns[0].get_accrued_rewards([transition_eth_addr_no_0x])[0]
+        transition_balance_expected = 40840330916 # 40840330916520 but RPC divides by 1000
+        assert rewards_response.address == transition_eth_addr_no_0x, "Expected one SENT address with a balance, {}".format(transition_eth_addr_no_0x)
+        assert rewards_response.balance == transition_balance_expected, "Expected {} to have balance {}".format(transition_addr_expected, transition_balance_expected)
+
+        # Wait for all nodes to sync up
+        self.sync_nodes(172, timeout=120)
 
         # Register a SN via the Ethereum smart contract, half as multi-contrib,
         # half as solo nodes.
@@ -511,6 +540,7 @@ class SNNetwork:
         sleep_time       = 4
         while self.eth_sns[0].sn_is_payable() == False:
             total_sleep_time += sleep_time
+            vprint(f"Still waiting, height = {self.eth_sns[0].height()}");
             time.sleep(sleep_time)
 
         # Wait 1 block to receive rewards
@@ -1001,7 +1031,7 @@ class SNNetwork:
             n.terminate()
         for w in self.wallets:
             w.terminate()
-        if self.anvil is not None:
+        if hasattr(self, 'anvil') and self.anvil is not None:
             self.anvil.terminate()
 
 snn = None
@@ -1025,7 +1055,27 @@ def run():
                                   'private Ethereum blockchain must already be deployed with the '
                                   'smart contracts prior to invoking this script.'),
                             type=pathlib.Path)
+    arg_parser.add_argument('--keep-data-dir',
+                            help=('If unset (default) and global snn is not set up, '
+                                  'delete the existing datadir if present.  If set, '
+                                  'use the existing directory (caveat emptor)'),
+                            default=False,
+                            action='store_true')
+    arg_parser.add_argument('--start-at-hf20',
+                            help=('With --keep-data-dir, assume the data dir used has a chain '
+                                  'which is at the block before the hf21 transition.  This is '
+                                  'for faster iteration of testing said transition.'),
+                            default=False,
+                            action='store_true')
+    arg_parser.add_argument('--stop-at-hf20',
+                            help=('With --keep-data-dir, stop the script when hf20 is reached. '
+                                  'This is to set the chain up for --start-at-hf20 later.'),
+                            default=False,
+                            action='store_true')
     args = arg_parser.parse_args()
+
+    if args.start_at_hf20 and args.stop_at_hf20:
+        raise RuntimeError("--start-at-hf20 and --stop-at-hf20 are mutually exclusive")
 
     if args.anvil_path is not None:
         if args.eth_sn_contracts_dir is None:
@@ -1034,13 +1084,17 @@ def run():
     atexit.register(cleanup)
     global snn, verbose
     if not snn:
-        if os.path.isdir(datadirectory+'/'):
+        if os.path.isdir(datadirectory+'/') and not args.keep_data_dir:
+            vprint("Removing existing directory at " + datadirectory + "/")
             shutil.rmtree(datadirectory+'/')
         vprint("new SNN")
         snn = SNNetwork(oxen_bin_dir=args.oxen_bin_dir,
                         anvil_path=args.anvil_path,
                         eth_sn_contracts_dir=args.eth_sn_contracts_dir,
-                        datadir=datadirectory+'/')
+                        datadir=datadirectory+'/',
+                        keep_data_dir=args.keep_data_dir,
+                        start_at_hf20=args.start_at_hf20,
+                        stop_at_hf20=args.stop_at_hf20)
     else:
         vprint("reusing SNN")
         snn.alice.new_wallet()
