@@ -57,6 +57,7 @@
 #include "common/threadpool.h"
 #include "common/varint.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
@@ -3312,118 +3313,203 @@ void Blockchain::flush_invalid_blocks() {
     std::unique_lock lock{*this};
     m_invalid_blocks.clear();
 }
-//------------------------------------------------------------------
-std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
-    assert(m_l2_tracker);
 
-    // TODO: Just calculate an acceleration structure on block receive.
-    std::vector<eth::bls_public_key> bls_pubkeys_in_snl;
-    std::vector<eth::bls_public_key> bls_pubkeys_in_smart_contract;
-    {
-        // NOTE: Extract all the service nodes from the Oxen work-chain _excluding_ those that have
-        // been recently removed (e.g. voluntarily exited or dereg by protocol). Recently removed
-        // nodes on the Oxen side need to be removed from the smart contract side and this and can
-        // be done by aggregating a signature (or without if the wait time has elapsed) from the
-        // network to be removed from the smart contract (which gets re-witnessed by Oxen thereby
-        // removing it from the 'recently_removed_nodes' list).
-        auto sns = service_node_list.get_service_node_list_state();
-        bls_pubkeys_in_snl.reserve(sns.size());
-        for (const auto& sni : sns)
-            bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
+bool Blockchain::is_node_removable(const eth::bls_public_key& bls_pubkey, bool liquidatable) const {
+    // Case 1: recently removed nodes
+    bool recently_removed = false;
+    uint64_t liquid_height = 0;
+    service_node_list.for_each_recently_removed_node([&](const auto& node) {
+        assert(node.info.bls_public_key &&
+               "Invalid null key got inserted into the recently removed list");
+        if (bls_pubkey == node.info.bls_public_key) {
+            recently_removed = true;
+            liquid_height = node.liquidation_height;
+            return true;
+        }
+        return false;
+    });
 
-        // NOTE: Because of vote confirmations, we have nodes that can exist in the smart contract
-        // but not the service node list for awhile until they get confirmed at which point they get
-        // added to the SNL.
-        //
-        // We assume that these nodes will be added to the SNL. If it does, it will eventually be
-        // removed from this list and show up in the 'get_service_node_list_state()' branch above.
-        //
-        // If the node gets denied, it will be removed from this list and never added to the SNL.
-        service_node_list.for_each_pending_l2_state(
-                [&bls_pubkeys_in_snl]<typename Event>(
-                        const Event& e,
-                        const service_nodes::service_node_list::unconfirmed_l2_tx&) {
-                    if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
-                        bls_pubkeys_in_snl.push_back(e.bls_pubkey);
-                    } else {
-                        static_assert(
-                                std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
-                                std::is_same_v<Event, eth::event::ServiceNodeExit> ||
-                                std::is_same_v<Event, eth::event::StakingRequirementUpdated> ||
-                                std::is_same_v<Event, eth::event::ServiceNodePurge>);
-                    }
-                });
+    if (recently_removed) {
+        if (liquidatable) {
+            bool is_liq = get_current_blockchain_height() >= liquid_height;
+            log::debug(
+                    logcat,
+                    "{} is removable {} liquidatable: recently removed node with liq. height {}",
+                    bls_pubkey,
+                    is_liq ? "and" : "but not",
+                    liquid_height);
+            // The only difference between liquidatable and removable is that a non-liquidatable but
+            // removal node is one that exists in recently removed nodes, and the liquidation height
+            // is not yet reached.  (If we didn't find it in recently_removed, then removable and
+            // liquidatable status are the same and so we don't have to worry about liquidatable
+            // below this).
+            return is_liq;
+        }
 
-        // NOTE: Extract all service nodes from the smart contract
-        eth::RewardsContract::ServiceNodeIDs smart_contract_ids =
-                m_l2_tracker->get_all_service_node_ids(std::nullopt);
-        if (!smart_contract_ids.success)
-            throw oxen::traced<std::runtime_error>(
-                    "Querying of service node IDs from smart contract failed");
-        bls_pubkeys_in_smart_contract = std::move(smart_contract_ids.bls_pubkeys);
+        log::debug(logcat, "{} is a removable, recently removed node", bls_pubkey);
+        return true;
     }
 
-    // NOTE: Ensure lists are sorted as required for 'set_difference'
-    std::sort(bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end());
-    std::sort(bls_pubkeys_in_smart_contract.begin(), bls_pubkeys_in_smart_contract.end());
-
-    // NOTE: Find BLS keys that are in the smart contract but not in the Oxen SNL.
-    std::vector<eth::bls_public_key> result;
-    std::set_difference(
-            bls_pubkeys_in_smart_contract.begin(),
-            bls_pubkeys_in_smart_contract.end(),
-            bls_pubkeys_in_snl.begin(),
-            bls_pubkeys_in_snl.end(),
-            std::back_inserter(result));
-
-    // NOTE: Print the reason that each node in the list is removable for
-    fmt::memory_buffer buffer;
-    fmt::format_to(std::back_inserter(buffer), "Found {} nodes that are removable", result.size());
-    if (oxen::log::get_level(logcat) <= oxen::log::Level::debug) {
-        if (result.size())
-            fmt::format_to(std::back_inserter(buffer), "\n");
-
-        for (size_t index = 0; index < result.size(); index++) {
-            if (index)
-                fmt::format_to(std::back_inserter(buffer), "\n");
-
-            // NOTE: Determine if the node was unlocked/deregistered or only exists in the contract
-            const eth::bls_public_key& it = result[index];
-            bool protocol_dereg = false;
-            std::optional<uint64_t> unlock_or_dereg_height = {};
-            uint32_t ip = 0;
-            uint16_t port = 0;
-            service_node_list.for_each_recently_removed_node([&](const auto& node) {
-                if (it != node.info.bls_public_key)
+    bool pending_reg = false;
+    service_node_list.for_each_pending_l2_state(
+            [&]<typename Event>(const Event& e, const auto& /*vote_info*/) {
+                if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
+                    if (e.bls_pubkey == bls_pubkey) {
+                        pending_reg = true;
+                        return true;
+                    }
                     return false;
-                protocol_dereg =
-                        node.type ==
-                        service_nodes::service_node_list::recently_removed_node::type_t::deregister;
-                unlock_or_dereg_height = node.height;
-                ip = node.public_ip;
-                port = node.qnet_port;
-                return true;
+                } else {
+                    static_assert(
+                            std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
+                            std::is_same_v<Event, eth::event::ServiceNodeExit> ||
+                            std::is_same_v<Event, eth::event::StakingRequirementUpdated> ||
+                            std::is_same_v<Event, eth::event::ServiceNodePurge>);
+                }
             });
 
-            // NOTE: Generate a reason string
-            std::string removable_reason;
-            if (unlock_or_dereg_height) {
-                removable_reason = "node {}; height {} {}:{}"_format(
-                        protocol_dereg ? "dereg" : "expired",
-                        *unlock_or_dereg_height,
-                        epee::string_tools::get_ip_string_from_int32(ip),
-                        port);
-            } else {
-                removable_reason = "node exists only in contract";
-            }
-
-            fmt::format_to(
-                    std::back_inserter(buffer), " {:04d} {} ({})", index, it, removable_reason);
-        }
+    // Incoming, unconfirmed registrations are not removable:
+    if (pending_reg) {
+        log::debug(
+                logcat,
+                "{} is not removable: found a pending but unconfirmed new service node event with "
+                "that BLS pubkey",
+                bls_pubkey);
+        return false;
     }
 
-    std::string log = fmt::to_string(buffer);
-    oxen::log::debug(logcat, "{}", fmt::to_string(buffer));
+    // Case 2: not in the registered SN list, recently removed, or incoming unconfirmed, but *is* in
+    // the contract: this is both removable and liquidatable.
+    if (service_node_list.find_public_key_registered(bls_pubkey)) {
+        log::debug(
+                logcat,
+                "{} is not removable: pubkey belongs to a registered service node",
+                bls_pubkey);
+        return false;
+    }
+
+    if (!m_l2_tracker) {
+        log::debug(
+                logcat,
+                "No L2 tracker configured; skipping in-contract-but-not-oxend removable check of "
+                "{}",
+                bls_pubkey);
+        return false;
+    }
+
+    if (m_l2_tracker->is_in_contract(bls_pubkey).value_or(false)) {
+        log::debug(
+                logcat, "{} is removable: found in contract but not in oxend SN list", bls_pubkey);
+        return true;
+    }
+
+    log::debug(
+            logcat,
+            "{} is not removable: BLS pubkey is neither registered, nor found in L2 contract",
+            bls_pubkey);
+    return false;
+}
+
+std::unordered_map<eth::bls_public_key, bool> Blockchain::get_removable_nodes() const {
+    std::unordered_map<eth::bls_public_key, bool> result;
+
+    const uint64_t height = get_current_blockchain_height();
+
+    log::debug(logcat, "Looking for removable nodes @ height {}", height);
+
+    // Case 1: recently removed nodes
+    size_t liq_count = 0;
+    service_node_list.for_each_recently_removed_node([&](const auto& node) {
+        assert(node.info.bls_public_key &&
+               "Invalid null key got inserted into the recently removed list");
+        const auto& blspk = node.info.bls_public_key;
+        bool liquidatable = height >= node.liquidation_height;
+        result.emplace(blspk, liquidatable);
+        if (liquidatable)
+            ++liq_count;
+        log::trace(
+                logcat,
+                "- {} @ {}:{} is {} (recently {} node @ height {})",
+                blspk,
+                epee::string_tools::get_ip_string_from_int32(node.public_ip),
+                node.qnet_port,
+                liquidatable ? "removable & liquidatable (since {})"_format(node.liquidation_height)
+                             : "removable",
+                node.type == service_nodes::service_node_list::recently_removed_node::type_t::
+                                        deregister
+                        ? "dereg"
+                        : "expired",
+                node.height);
+    });
+
+    log::debug(
+            logcat,
+            "Found {} removable ({} liquidatable) recently removed nodes",
+            result.size(),
+            liq_count);
+
+    if (!m_l2_tracker)
+        return result;
+
+    // Case 2: missing-from-oxend SN list pubkeys
+    auto contract_extra = m_l2_tracker->all_contract_pubkeys();
+
+    const auto n_contract = contract_extra.size();
+
+    // Remove anything we found via recently removed nodes:
+    for (const auto& [blspk, _liq] : result)
+        contract_extra.erase(blspk);
+
+    // Remove registered service nodes:
+    service_node_list.for_each_service_node([&](const auto& /*snpk*/, const auto& sni) {
+        contract_extra.erase(sni.bls_public_key);
+    });
+
+    const auto n_post_reg = contract_extra.size();
+
+    // Remove unconfirmed, incoming new service nodes:
+    service_node_list.for_each_pending_l2_state(
+            [&]<typename Event>(const Event& e, const auto& /*vote_info*/) {
+                if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
+                    contract_extra.erase(e.bls_pubkey);
+                } else {
+                    static_assert(
+                            std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
+                            std::is_same_v<Event, eth::event::ServiceNodeExit> ||
+                            std::is_same_v<Event, eth::event::StakingRequirementUpdated> ||
+                            std::is_same_v<Event, eth::event::ServiceNodePurge>);
+                }
+            });
+
+    // Everything left is something we don't have or a recently removed node; we emplace here with
+    // true (for liquidatable), but rely on emplace failing in the case of a recently removed nodes
+    // we already recorded (so that we don't flip a non-liquidatable node's value to true).
+    for (const auto& blspk : contract_extra)
+        if (result.emplace(blspk, true).second /*inserted*/)
+            ++liq_count;
+
+    const auto n_post_unconf = contract_extra.size();
+
+    log::debug(
+            logcat,
+            "Found {}/{} removable contract nodes: {} registered or recent, {} unconfirmed "
+            "registrations",
+            n_post_unconf,
+            n_contract,
+            n_post_reg - n_contract,
+            n_post_unconf - n_post_reg);
+    log::debug(
+            logcat, "Total removable node count: {} ({} liquidatable)", result.size(), liq_count);
+
+#ifndef NDEBUG
+    for (const auto& extra : contract_extra)
+        log::trace(
+                logcat,
+                "- {} is removable (found in contract but not found in "
+                "registered/recent/unconfirmed  registrations)",
+                extra);
+#endif
+
     return result;
 }
 //------------------------------------------------------------------

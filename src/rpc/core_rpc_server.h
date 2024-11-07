@@ -39,6 +39,7 @@
 #include "common/json_binary_proxy.h"
 #include "core_rpc_server_binary_commands.h"
 #include "core_rpc_server_commands_defs.h"
+#include "crypto/eth.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "p2p/net_node.h"
@@ -232,7 +233,8 @@ class core_rpc_server {
             bool is_bt,
             const std::unordered_set<std::string>& requested,
             const service_nodes::service_node_pubkey_info& sn_info,
-            uint64_t top_height);
+            uint64_t top_height,
+            const std::unordered_map<eth::bls_public_key, bool>* removable);
 
     core& m_core;
     nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>>& m_p2p;

@@ -814,14 +814,21 @@ std::vector<uint64_t> L2Tracker::get_non_signers(
     return rewards_contract.get_non_signers(bls_public_keys);
 }
 
-std::vector<bls_public_key> L2Tracker::get_all_bls_public_keys(uint64_t blockNumber) {
-    return rewards_contract.get_all_bls_pubkeys(blockNumber);
-}
-
 RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(
         std::optional<uint64_t> height) {
-    RewardsContract::ServiceNodeIDs result = rewards_contract.all_service_node_ids(height);
-    return result;
+    return rewards_contract.all_service_node_ids(height);
+}
+
+std::optional<bool> L2Tracker::is_in_contract(const eth::bls_public_key& pubkey) const {
+    std::shared_lock lock{mutex};
+    if (in_contract.empty())
+        return std::nullopt;
+    return in_contract.count(pubkey);
+}
+
+std::unordered_set<eth::bls_public_key> L2Tracker::all_contract_pubkeys() const {
+    std::shared_lock lock{mutex};
+    return in_contract;
 }
 
 bool L2Tracker::get_vote_for(const event::NewServiceNodeV2& reg) const {

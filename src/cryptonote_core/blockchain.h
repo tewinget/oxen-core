@@ -55,6 +55,7 @@
 #include "blockchain_db/blockchain_db.h"
 #include "checkpoints/checkpoints.h"
 #include "common/util.h"
+#include "crypto/eth.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/difficulty.h"
@@ -1162,22 +1163,73 @@ class Blockchain {
     void flush_invalid_blocks();
 
     /**
-     * @brief Get the list of nodes that are removable from the network by creating a diff comparing
-     * the nodes that are present in the smart contract but _not_ in the Oxen service node list.
+     * @brief returns true if the given pubkey is removable (according to oxend) from the L2
+     * contract.
      *
-     * @return all the service nodes bls keys that should be removed from the smart contract
+     * To be removable, the node must either be:
      *
-     * TODO: This API is awkward right now because we generate a full-diff of nodes to remove but we
-     * only use this in an RPC call that selects 1 BLS public key at a time to aggregate a signature
-     * for removal. However we were interested in providing a batch API where the network aggregates
-     * a signature over a batch of nodes to liquidate. This would reduce churn but this also makes
-     * this function in its current form more appropriate for the problem we're trying to solve
-     * sensible to call for that purpose.
+     * 1) In the oxend recently removed nodes list.  These are nodes that the oxend network has
+     *    removed from service, either by failing requirements and getting deregistered, or by
+     *    successfully reaching the end of a requested unlock period.
      *
-     * This TODO is a reminder that we should utilise the full output of this function instead of
-     * using it in a single-object-at-a-time mindset.
+     * 2) Nodes that are in the contract but neither in the current registered service node list nor
+     *    with an incoming but not-yet-confirmed new service node registration event working its way
+     *    through the Oxen chain.  This is not a normal case: it indicates that some network
+     *    failure, bug, or partially invalid registration (such as an invalid Ed25519 signature)
+     *    resulting in the entry missing from oxend's service node list.  Note that this case relies
+     *    on infrequently updated cached contract service node pubkey lists; it will not reliably
+     *    include a node until at least an hour has passed (or, more precisely,
+     *    `netconf.L2_NODE_LIST_PURGE_BLOCKS` L2 blocks) since the event that triggered it (but in
+     *    general this is okay because the contract also requires a 2 hour post-registration delay
+     *    before a liquidation signature will be accepted).
+     *
+     *    Note also that there are false positives possible with this second case: in particular a
+     *    brand new registration that has not yet been observed and mined into a pulse block will
+     *    get returned as a true "case 2" result.  We do not worry about that case here, however, as
+     *    such a signature is made useless by the contract refusing to accept removals within two
+     *    hours of a contract service node registration, nor can it be saved for submission later
+     *    (as the signature embeds a timestamp that must be close to current for the contract to
+     *    accept).
+     *
+     *    Note also that "Case 2" removable nodes are only available if this oxend is running with a
+     *    working L2 tracker.
+     *
+     * Note that both cases can return true for nodes that aren't in the contract anymore: in
+     * particular, case 1 nodes might return true for an emitted but not yet confirmed final removal
+     * event; and case 2 could return true due to using a cached, potentially outdated contract node
+     * list.
+     *
+     * The `liquidatable` parameter can be specified as true to query for removable and liquidatable
+     * (and is equivalent to using the `is_node_liquidatable` method).
      */
-    std::vector<eth::bls_public_key> get_removable_nodes() const;
+    bool is_node_removable(const eth::bls_public_key& bls_pubkey, bool liquidatable = false) const;
+
+    /**
+     * @brief Returns true if the node is liquidatable -- that is, removable (see
+     * `is_node_removable`) but not in the recently removed node removable-but-not-liquidating
+     * waiting period.  (Liquidatable is always a subset of removable).
+     */
+    bool is_node_liquidatable(const eth::bls_public_key& bls_pubkey) const {
+        return is_node_removable(bls_pubkey, true);
+    }
+
+    /**
+     * @brief Get the sets of nodes that are removable or liquidatable from the L2 contract.
+     *
+     * @return unordered map of removable nodes.  A key being present (regardless of value)
+     * indicates the node is removable; the value being true indicates the node is also
+     * liquidatable.
+     *
+     * This function is effectively an enumerable version of
+     * `is_node_removable`/`is_node_liquidatable`: it returns all nodes in the recently removed
+     * list, plus all nodes that are in the contract but *not* in the current registered service
+     * node list.  See `is_node_removable` and `is_node_liquidatable` for more details on these
+     * conditions.
+     *
+     * TODO: create a batch removal mechanism using this to allow less churn/lower tx fees when
+     * there are multiple liquidatable or removable nodes.
+     */
+    std::unordered_map<eth::bls_public_key, bool> get_removable_nodes() const;
 
     tx_memory_pool& tx_pool;
 

@@ -55,6 +55,7 @@
 #include "core_rpc_server_command_parser.h"
 #include "core_rpc_server_error_codes.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
@@ -1951,7 +1952,8 @@ void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, rpc_context) {
                 sns.is_bt(),
                 {} /*all fields*/,
                 sn_infos.front(),
-                top_height);
+                top_height,
+                nullptr);
     else {
         sns.response["service_node_state"] = json{
                 {"public_ip", epee::string_tools::get_ip_string_from_int32(m_core.sn_public_ip())},
@@ -2737,7 +2739,8 @@ void core_rpc_server::fill_sn_response_entry(
         bool is_bt,
         const std::unordered_set<std::string>& reqed,
         const service_nodes::service_node_pubkey_info& sn_info,
-        uint64_t top_height) {
+        uint64_t top_height,
+        const std::unordered_map<eth::bls_public_key, bool>* removable) {
 
     auto binary_format = is_bt ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex;
     json_binary_proxy binary{entry, binary_format};
@@ -2746,18 +2749,23 @@ void core_rpc_server::fill_sn_response_entry(
     set_if_requested(reqed, binary, "service_node_pubkey", sn_info.pubkey);
     if (info.bls_public_key) {
         set_if_requested(reqed, binary, "pubkey_bls", info.bls_public_key);
-        // FIXME: these calls are failing, but also we can't do this in the middle of an rpc
-        // request, so we either need to pre-cache the info, or else just leave it off (and you can
-        // fetch it via arbitrum calls instead).
-        /*
-        set_if_requested(
-                reqed,
-                entry,
-                "is_removable",
-                m_core.is_node_removable(info.bls_public_key),
-                "is_liquidatable",
-                m_core.is_node_liquidatable(info.bls_public_key));
-        */
+        if (removable) {
+            auto it = removable->find(info.bls_public_key);
+            set_if_requested(
+                    reqed,
+                    entry,
+                    "is_removable",
+                    it != removable->end(),
+                    "is_liquidatable",
+                    it != removable->end() && it->second);
+        } else {
+            // No pre-computed removable list, so query it if needed:
+            if (requested(reqed, "is_removable"))
+                entry["is_removable"] = m_core.blockchain.is_node_removable(info.bls_public_key);
+            if (requested(reqed, "is_liquidatable"))
+                entry["is_liquidatable"] =
+                        m_core.blockchain.is_node_liquidatable(info.bls_public_key);
+        }
     }
     set_if_requested(
             reqed,
@@ -3073,13 +3081,15 @@ void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
     }
 
     auto& sn_states = (sns.response["service_node_states"] = json::array());
+    const auto removable = m_core.blockchain.get_removable_nodes();
     for (auto& pubkey_info : sn_infos)
         fill_sn_response_entry(
                 sn_states.emplace_back(json::object()),
                 sns.is_bt(),
                 req.fields,
                 pubkey_info,
-                top_height);
+                top_height,
+                &removable);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
