@@ -3388,12 +3388,14 @@ bool Blockchain::is_node_removable(const eth::bls_public_key& bls_pubkey, bool l
         return false;
     }
 
-    if (!m_l2_tracker)
+    if (!m_l2_tracker) {
         log::debug(
                 logcat,
                 "No L2 tracker configured; skipping in-contract-but-not-oxend removable check of "
                 "{}",
                 bls_pubkey);
+        return false;
+    }
 
     if (m_l2_tracker->is_in_contract(bls_pubkey).value_or(false)) {
         log::debug(
@@ -3429,7 +3431,7 @@ std::unordered_map<eth::bls_public_key, bool> Blockchain::get_removable_nodes() 
                 logcat,
                 "- {} @ {}:{} is {} (recently {} node @ height {})",
                 blspk,
-                node.public_ip,
+                epee::string_tools::get_ip_string_from_int32(node.public_ip),
                 node.qnet_port,
                 liquidatable ? "removable & liquidatable (since {})"_format(node.liquidation_height)
                              : "removable",
