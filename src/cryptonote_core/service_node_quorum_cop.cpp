@@ -80,13 +80,7 @@ std::optional<std::vector<std::string_view>> service_node_test_results::why() co
     return results;
 }
 
-quorum_cop::quorum_cop(cryptonote::core& core) :
-        m_core(core), m_obligations_height(0), m_last_checkpointed_height(0) {}
-
-void quorum_cop::init() {
-    m_obligations_height = 0;
-    m_last_checkpointed_height = 0;
-}
+quorum_cop::quorum_cop(cryptonote::core& core) : m_core(core) {}
 
 // Perform service node tests -- this returns true is the server node is in a good state, that is,
 // has submitted uptime proofs, participated in required quorums, etc.
