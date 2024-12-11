@@ -113,7 +113,6 @@ class quorum_cop {
   public:
     explicit quorum_cop(cryptonote::core& core);
 
-    void init();
     void block_add(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
     void blockchain_detached(uint64_t height, bool by_pop_blocks);
 
@@ -136,8 +135,8 @@ class quorum_cop {
 
     cryptonote::core& m_core;
     voting_pool m_vote_pool;
-    uint64_t m_obligations_height;
-    uint64_t m_last_checkpointed_height;
+    uint64_t m_obligations_height = 0;
+    uint64_t m_last_checkpointed_height = 0;
     mutable std::recursive_mutex m_lock;
 };
 
