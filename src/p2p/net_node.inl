@@ -1362,6 +1362,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                 use_white_list,
                 [this, &seen, &filtered, &idx, next_needed_pruning_stripe](
                         const peerlist_entry& pe) {
+                    ++idx;
                     // Skip peers we're already connected to:
                     if (seen.peer.count(pe.id) || seen.addr.count(pe.adr))
                         return true;
@@ -1378,12 +1379,11 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                                     0x0000ffff);
 
                     if (next_needed_pruning_stripe == 0 || pe.pruning_seed == 0)
-                        filtered.emplace_back(idx, have_net16);
+                        filtered.emplace_back(idx - 1, have_net16);
                     else if (
                             next_needed_pruning_stripe ==
                             tools::get_pruning_stripe(pe.pruning_seed))
-                        filtered.emplace_front(idx, have_net16);
-                    ++idx;
+                        filtered.emplace_front(idx - 1, have_net16);
                     return true;
                 });
 
