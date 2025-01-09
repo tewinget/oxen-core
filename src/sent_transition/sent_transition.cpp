@@ -138,10 +138,6 @@ void transition(
         log::debug(logcat, "SENT {} has unallocated {}", eth, amount);
     }
 
-    // Clear out all the old OXEN rewards that we've now converted (into `unallocated`).  We'll add
-    // anything left over back in (under the ETH address) at the end.
-    sql.subtract_sn_rewards(converted_rewards);
-
     std::vector<crypto::key_image> permanent_stakes;
     // Pass one: convert all stakes (of registered users) to our SENT bucket.  We'll leave the
     // values in place for now; we come back and update everything later.
@@ -386,13 +382,8 @@ void transition(
     }
 
     // Any yet-unallocated SENT balance goes in the rewards db to be claimed
-    cryptonote::block_payments returned_unallocated;
-    for (const auto& [eth, amt] : unallocated) {
-        log::debug(logcat, "SENT {} had {} tokens unallocated, adding to rewards db.", eth, amt);
-        returned_unallocated[eth] = amt;
-    }
-
-    sql.add_sn_rewards(returned_unallocated);
+    // All OXEN rewards are wiped first
+    sql.set_rewards_hf21(unallocated);
 
     // First, clear the old key image blacklist so we don't leave unconverted stakes locked
     // any longer than necessary (and can re-use the blacklist for perma-locks)
