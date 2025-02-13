@@ -4512,6 +4512,10 @@ bool service_node_list::store() {
     if (hf_version < hf::hf9_service_nodes)
         return true;
 
+using clock = std::chrono::steady_clock;
+using dseconds = std::chrono::duration<double>;
+auto last_time = clock::now();
+
     // NOTE: Data storage is kept around to reuse heap memory allocated from prior 'store'
     // invocations, cleared on entry and results in faster syncing of the chain.
     m_transient->long_term_data.clear();
@@ -4520,11 +4524,20 @@ bool service_node_list::store() {
     // NOTE: Convert the runtime SNL data into a format suitable for serialization into the DB
     std::lock_guard lock(m_sn_mutex);
 
+auto new_time = clock::now();
+dseconds dur = new_time - last_time;
+last_time = new_time;
+log::warning(logcat, "checkpoint time: {}s", dur.count());
+
     // NOTE: Serialize quorum data
     m_transient->short_term_data.quorum_states.reserve(m_transient->old_quorum_states.size());
     for (const quorums_by_height& entry : m_transient->old_quorum_states)
         m_transient->short_term_data.quorum_states.push_back(
                 serialize_quorum_state(hf_version, entry.height, entry.quorums));
+new_time = clock::now();
+dur = new_time - last_time;
+last_time = new_time;
+log::warning(logcat, "checkpoint time: {}s", dur.count());
 
     // NOTE: Serialize archive SNL state (but only if the dirty flag was set)
     if (m_transient->long_term_data_dirty) {
@@ -4533,11 +4546,19 @@ bool service_node_list::store() {
                     serialize_service_node_state_object(hf_version, it));
     }
 
+new_time = clock::now();
+dur = new_time - last_time;
+last_time = new_time;
+log::warning(logcat, "checkpoint time: {}s", dur.count());
     // NOTE: Serialize recent SNL state(s)
     for (const auto& it : m_transient->state_history)
         m_transient->short_term_data.states.push_back(
                 serialize_service_node_state_object(hf_version, it));
 
+new_time = clock::now();
+dur = new_time - last_time;
+last_time = new_time;
+log::warning(logcat, "checkpoint time: {}s", dur.count());
     // NOTE: Serialize current state into the recent store
     m_transient->short_term_data.states.push_back(
             serialize_service_node_state_object(hf_version, m_state));
@@ -4559,6 +4580,10 @@ bool service_node_list::store() {
         cryptonote::db_wtxn_guard txn_guard{db};
         db.set_service_node_data(ba.str(), true /*long_term*/);
     }
+new_time = clock::now();
+dur = new_time - last_time;
+last_time = new_time;
+log::warning(logcat, "checkpoint time: {}s", dur.count());
 
     {
         serialization::binary_string_archiver ba;
@@ -4571,11 +4596,21 @@ bool service_node_list::store() {
                     e.what());
             return false;
         }
+new_time = clock::now();
+dur = new_time - last_time;
+last_time = new_time;
+log::warning(logcat, "checkpoint time: {}s", dur.count());
 
         auto& db = blockchain.db();
         cryptonote::db_wtxn_guard txn_guard{db};
-        db.set_service_node_data(ba.str(), false /*long_term*/);
+auto str_to_set = ba.str();
+log::warning(logcat, "ba.str().size(): {}", str_to_set.size());
+        db.set_service_node_data(std::move(str_to_set), false /*long_term*/);
     }
+new_time = clock::now();
+dur = new_time - last_time;
+last_time = new_time;
+log::warning(logcat, "checkpoint time: {}s", dur.count());
 
     m_transient->long_term_data_dirty = false;
     return true;

@@ -387,6 +387,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     load_context.height = start_height;
 
     auto get_block_data = [&](uint64_t height, uint64_t end_height) -> block_data {
+        auto start_time = clock::now();
         block_data next_chunk{};
         next_chunk.height = height;
         size_t blocks_size;
@@ -422,6 +423,8 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
             }
             next_chunk.size += txs_size;
         }
+        dseconds dur = clock::now() - start_time;
+        log::warning(logcat, "time to load data for {} blocks: {}s", block_load_context::CHUNK_SIZE, dur.count());
         return next_chunk;
     };
 
@@ -488,6 +491,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
         block_data chunk;
         if (use_threaded_load) {
             {
+                auto wait_start = clock::now();
                 std::unique_lock lock{load_context.block_mut};
                 load_context.block_cv.wait(lock, [&] {
                     return load_context.failed || (abort && *abort) || load_context.finished ||
@@ -500,6 +504,8 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
                 if (load_context.finished && load_context.next_blocks.empty())
                     break;
 
+                dseconds wait_time{clock::now() - wait_start};
+                log::warning(logcat, "wait time for block chunk loading: {}s", wait_time.count());
                 chunk = std::move(load_context.next_blocks.front());
                 load_context.next_blocks.pop();
             }
@@ -519,7 +525,13 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
         bool every_10s = duration >= 10s;
 
         if (height + chunk.blocks.size() >= end_height || every_10s) {
-            service_node_list.store();
+            auto start_time = clock::now();
+            if (height % 100'000 < 100) {
+                log::warning(logcat, "load missing blocks into subsystems calling service_node_list.store()");
+                service_node_list.store();
+            }
+            dseconds dur = clock::now() - start_time;
+            log::warning(logcat, "time for service_node_list.store(): {}s", dur.count());
 
             float blocks_per_s = work_blocks / duration.count();
             float bytes_per_s = work_bytes / duration.count();
