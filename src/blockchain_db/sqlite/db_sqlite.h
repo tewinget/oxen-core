@@ -33,6 +33,7 @@
 #include <cryptonote_core/service_node_list.h>  // service_node_list::state_t...
 
 #include <filesystem>
+#include <optional>
 #include <sqlitedb/database.hpp>
 #include <string>
 
@@ -45,6 +46,10 @@ class BlockchainSQLite : public db::Database {
   public:
     explicit BlockchainSQLite(cryptonote::network_type nettype, std::filesystem::path db_path);
     BlockchainSQLite(const BlockchainSQLite&) = delete;
+
+    ~BlockchainSQLite() {
+      rescan_stop();
+    }
 
     // Database management functions. Should be called on creation of BlockchainSQLite
     void create_schema();
@@ -66,7 +71,7 @@ class BlockchainSQLite : public db::Database {
 
     // Rewinds the SQL DB to the specified height. This function is called internally by the SNL on
     // detach.
-    void blockchain_detached(PaymentTableType type, uint64_t height);
+    void blockchain_detached(PaymentTableType type, uint64_t height, uint64_t target_height = 0);
 
     // Return the number of rows for the desired batched payments accrued table. The row count will
     // be for the 'height' specified. 'height' is ignored if type is nil as the default accrued
@@ -77,6 +82,9 @@ class BlockchainSQLite : public db::Database {
     // Add payments to the specified addresses to the SQL rewards table. The function throws if
     // insertion into the DB fails.
     void add_sn_rewards(const block_payments& payments);
+
+    void rescan_start();
+    void rescan_stop();
 
   private:
     // This function throws if adding the rewards to the SQL tables for 'block'
@@ -104,6 +112,8 @@ class BlockchainSQLite : public db::Database {
 
     bool table_exists(const std::string& name);
     bool trigger_exists(const std::string& name);
+
+    std::optional<SQLite::Transaction> rescan_tx{std::nullopt};
 
   public:
     // Retrieves the amount (in atomic SENT) that has been accrued to the Ethereum `address`.

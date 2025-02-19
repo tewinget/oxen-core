@@ -727,6 +727,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
         assert(load_context.finished);
         load_context.thread.join();
     }
+    m_sqlite_db->rescan_stop();
     return true;
 }
 
