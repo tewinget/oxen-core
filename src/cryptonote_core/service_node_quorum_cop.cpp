@@ -281,8 +281,8 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                                       ? REORG_SAFETY_BUFFER_BLOCKS_POST_HF12
                                                       : REORG_SAFETY_BUFFER_BLOCKS_PRE_HF12;
     const auto& my_keys = m_core.get_service_keys();
-    bool voting_enabled =
-            m_core.service_node() && m_core.service_node_list.is_active_service_node(my_keys.pub);
+    bool voting_enabled = true;
+            //m_core.service_node() && m_core.service_node_list.is_active_service_node(my_keys.pub);
 
     uint64_t const height = block.get_height();
     uint64_t const latest_height = std::max(
@@ -357,9 +357,6 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                     if (live_time < m_core.get_net_config().UPTIME_PROOF_VALIDITY)
                         continue;
 
-                    if (!m_core.service_node())
-                        continue;
-
                     auto quorum = m_core.service_node_list.get_quorum(
                             quorum_type::obligations, m_obligations_height);
                     if (!quorum) {
@@ -370,6 +367,9 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                 m_obligations_height);
                         continue;
                     }
+log::error(logcat, "Obligations quorum for height: {} *WAS* cached in daemon", m_obligations_height);
+                    if (!m_core.service_node())
+                        continue;
 
                     if (quorum->workers.empty())
                         continue;
@@ -616,6 +616,8 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                     m_last_checkpointed_height);
                             continue;
                         }
+log::error(logcat, "Checkpoint quorum for height: {} *WAS* cached in daemon", m_last_checkpointed_height);
+                        continue;
 
                         int index_in_group =
                                 find_index_in_quorum_group(quorum->validators, my_keys.pub);

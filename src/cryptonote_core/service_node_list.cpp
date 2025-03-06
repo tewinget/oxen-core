@@ -372,7 +372,10 @@ std::shared_ptr<const quorum> service_node_list::get_quorum(
         uint64_t height,
         bool include_old,
         std::vector<std::shared_ptr<const quorum>>* alt_quorums) const {
+    auto passed_height = height;
     height = offset_testing_quorum_height(type, height);
+if (type == quorum_type::checkpointing)
+log::error(logcat, "SNL::get_quorum passed height {}, looking for height {}", passed_height, height);
     std::lock_guard lock(m_sn_mutex);
     quorum_manager const* quorums = nullptr;
     if (height == m_state.height)
@@ -4020,6 +4023,7 @@ block_add_result service_node_list::process_block(
 
     // NOTE: Store the state into the recent history
     TracyCZoneN(store_state_into_recent, "Store recent state history", true);
+log::error(logcat, "Storing state into state_history at height {}", m_state.height);
     m_transient->state_history.insert(m_transient->state_history.end(), m_state);
     TracyCZoneEnd(store_state_into_recent);
 
@@ -4065,6 +4069,7 @@ block_add_result service_node_list::process_block(
         bool store = m_state.height == archive_height || quorums_only;
 
         if (store) {
+log::error(logcat, "Storing state into state_archive at height {}", m_state.height);
             m_transient->long_term_data_dirty = true;  // Set the dirty flag
             if (quorums_only) {
                 auto copy = state_t(this);
@@ -4089,8 +4094,10 @@ block_add_result service_node_list::process_block(
     {
         ZoneScopedN("Cull recent history");
         state_set& set = m_transient->state_history;
-        while (set.size() && set.begin()->height < cull_recent_height)
+        while (set.size() && set.begin()->height < cull_recent_height) {
+log::error(logcat, "Culling state from state_history at height {}", set.begin()->height);
             set.erase(set.begin());
+        }
     }
 
     // NOTE: Cull archive history
@@ -4111,8 +4118,10 @@ block_add_result service_node_list::process_block(
             cull_height -= keep_quorum_offset;
 
         state_set& set = m_transient->state_archive;
-        while (set.size() && set.begin()->height < cull_height)
+        while (set.size() && set.begin()->height < cull_height) {
+log::error(logcat, "Culling state from state_archive at height {}", set.begin()->height);
             set.erase(set.begin());
+        }
     }
 
     // NOTE: Cull alt-chain state history
@@ -4942,6 +4951,7 @@ static std::string serialize_snl_directly(Archive& ar, service_node_list::state_
 }
 
 bool service_node_list::store(uint64_t state_height) {
+log::error(logcat, "SNL::store({})", state_height);
     ZoneScoped;
     if (!blockchain.has_db())
         return false;  // Haven't been initialized yet
@@ -4968,6 +4978,8 @@ bool service_node_list::store(uint64_t state_height) {
         size_t archive_index = 0;
         long_term_size = m_transient->state_archive.size();
         for (auto& it : m_transient->state_archive) {
+if (m_state.height - it.height < 100)
+log::error(logcat, "storing archive state at height {}", it.height);
             std::string& dest = archive_blob_list[archive_index++];
             tpool.submit(&tpool_waiter, [&dest, &it, &long_term_count]() {
                 serialization::binary_string_archiver ba;
@@ -4981,6 +4993,8 @@ bool service_node_list::store(uint64_t state_height) {
     {
         size_t history_index = 0;
         for (auto& it : m_transient->state_history) {
+if (m_state.height - it.height < 100)
+log::error(logcat, "storing archive state at height {}", it.height);
             std::string& dest = history_blob_list[history_index++];
             tpool.submit(&tpool_waiter, [&dest, &it]() {
                 serialization::binary_string_archiver ba;
@@ -6122,6 +6136,8 @@ static try_load_blobs_result try_load_as_new_style_blobs(
         if (sn_blob_index == sn_blob_list.size() - 1) {
             m_state = std::move(state);
         } else {
+if (state.height > 1797550)
+log::error(logcat, "loaded state into state_history for height {}", state.height);
             m_transient->state_history.emplace_hint(
                     m_transient->state_history.end(), std::move(state));
         }
