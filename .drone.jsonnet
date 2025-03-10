@@ -325,11 +325,7 @@ local gui_wallet_step_darwin = {
   debian_pipeline('Debian sid Debug (amd64)', docker_base + 'debian-sid', build_type='Debug', build_everything=true, cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
   clang(18),
 
-
-  // Android builds; we do them all in one image because the android NDK is huge
-
-  // TODO FIXME: both android and iOS wallet builds need fixes for recent Oxen 11 changes!
-] + if true then [] else [
+  // Android builds; we do all architecture builds within in one single step because the android NDK is huge
   {
     name: 'Android wallet_api',
     kind: 'pipeline',
