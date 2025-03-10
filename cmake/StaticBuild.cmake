@@ -108,11 +108,11 @@ set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
 set(OPENSSL_HASH SHA256=57e03c50feab5d31b152af2b764f10379aecd8ee92f16c985983ce4a99f7ef86
     CACHE STRING "openssl source hash")
 
-set(LIBICONV_VERSION 1.17 CACHE STRING "libiconv version")
+set(LIBICONV_VERSION 1.18 CACHE STRING "libiconv version")
 set(LIBICONV_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libiconv
     CACHE STRING "libiconv mirror(s)")
 set(LIBICONV_SOURCE libiconv-${LIBICONV_VERSION}.tar.gz)
-set(LIBICONV_HASH SHA512=18a09de2d026da4f2d8b858517b0f26d853b21179cf4fa9a41070b2d140030ad9525637dc4f34fc7f27abca8acdc84c6751dfb1d426e78bf92af4040603ced86
+set(LIBICONV_HASH SHA512=a55eb3b7b785a78ab8918db8af541c9e11deb5ff4f89d54483287711ed797d87848ce0eafffa7ce26d9a7adb4b5a9891cb484f94bd4f51d3ce97a6a47b4c719a
     CACHE STRING "libiconv source hash")
 
 set(LIBUNISTRING_VERSION 1.1 CACHE STRING "libunistring version")
