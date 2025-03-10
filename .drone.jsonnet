@@ -372,14 +372,14 @@ local gui_wallet_step_darwin = {
           'cmake ../.. -G Ninja ' +
           '-DCMAKE_TOOLCHAIN_FILE=../../cmake/ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
           '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
-          '-DRANDOMX_ENABLE_JIT=OFF -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
-          'ninja -j6 -v wallet_merged',
+          '-DRANDOMX_ENABLE_JIT=ON -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
+          'ninja -j1 -v wallet_merged',
           'cd ../sim64',
           'cmake ../.. -G Ninja ' +
           '-DCMAKE_TOOLCHAIN_FILE=../../cmake/ios.toolchain.cmake -DPLATFORM=SIMULATOR64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
           '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
-          '-DRANDOMX_ENABLE_JIT=OFF -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
-          'ninja -j6 -v wallet_merged',
+          '-DRANDOMX_ENABLE_JIT=ON -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
+          'ninja -j1 -v wallet_merged',
           'cd ../..',
           './utils/build_scripts/drone-ios-static-upload.sh',
         ],
