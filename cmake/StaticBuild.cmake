@@ -612,9 +612,9 @@ add_static_target(sodium sodium_external libsodium.a)
 
 
 set(zmq_cross_host "${cross_host}")
-if(IOS AND cross_host MATCHES "-ios$")
+if(IOS AND cross_host MATCHES "-ios[^-]*$")
   # zmq doesn't like "-ios" for the host, so replace it with -darwin
-  string(REGEX REPLACE "-ios$" "-darwin" zmq_cross_host ${cross_host})
+  string(REGEX REPLACE "-ios[^-]*$" "-darwin" zmq_cross_host ${cross_host})
 endif()
 
 build_external(zmq
