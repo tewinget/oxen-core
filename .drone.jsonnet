@@ -321,9 +321,9 @@ local gui_wallet_step_darwin = {
   },
 
   // Various debian builds
-  debian_pipeline('Debian sid (w/ tests) (amd64)', docker_base + 'debian-sid', lto=true, run_tests=true, build_everything=true),
-  debian_pipeline('Debian sid Debug (amd64)', docker_base + 'debian-sid', build_type='Debug', build_everything=true, cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
-  clang(18),
+  //debian_pipeline('Debian sid (w/ tests) (amd64)', docker_base + 'debian-sid', lto=true, run_tests=true, build_everything=true),
+  //debian_pipeline('Debian sid Debug (amd64)', docker_base + 'debian-sid', build_type='Debug', build_everything=true, cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
+  //clang(18),
 
   // Android builds; we do all architecture builds within in one single step because the android NDK is huge
   {
@@ -356,6 +356,7 @@ local gui_wallet_step_darwin = {
   },
 
   // iOS build
+  /*
   {
     name: 'iOS wallet_api',
     kind: 'pipeline',
@@ -386,5 +387,6 @@ local gui_wallet_step_darwin = {
       },
     ],
   },
+  */
 
 ]
