@@ -414,7 +414,7 @@ build_external(boost
   #  PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam tools/build/src/user-config.jam
   ${boost_patch_commands}
   CONFIGURE_COMMAND
-    ./tools/build/src/engine/build.sh ${boost_toolset} ${boost_bootstrap_cxx}
+    ./tools/build/src/engine/build.sh --verbose ${boost_toolset} ${boost_bootstrap_cxx}
   BUILD_COMMAND
     cp tools/build/src/engine/b2 .
   INSTALL_COMMAND
