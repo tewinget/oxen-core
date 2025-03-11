@@ -393,10 +393,8 @@ if(IOS)
   <threading>multi
   ;")
 else()
-  message(WARNING "Outputting to user-config.bjam: using ${boost_toolset} : oxencmake : ${deps_cxx} ;")
-  message(WARNING "CMAKE_CXX_COMPILER : ${CMAKE_CXX_COMPILER}")
-  message(WARNING "CMAKE_C_COMPILER : ${CMAKE_C_COMPILER}")
-  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam "using ${boost_toolset} : oxencmake : ${deps_cxx} ;")
+  message(WARNING "Outputting to user-config.bjam: using oxencmake : ${boost_toolset} : ${deps_cxx} ;")
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam "using oxencmake : ${boost_toolset} : ${deps_cxx} ;")
 endif()
 
 set(boost_patch_commands "")
@@ -427,7 +425,7 @@ build_external(boost
   INSTALL_COMMAND
     ./b2 -d0 variant=release link=static runtime-link=static optimization=speed ${boost_extra}
       threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=17 visibility=global
-      --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam --toolset=${boost_toolset}-oxencmake --verbose
+      --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam --toolset=oxencmake-${boost_toolset} --verbose
       --prefix=${DEPS_DESTDIR} --exec-prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib --includedir=${DEPS_DESTDIR}/include
       --with-program_options --with-system --with-thread --with-serialization --layout=system
       install
