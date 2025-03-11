@@ -393,6 +393,9 @@ if(IOS)
   <threading>multi
   ;")
 else()
+  message(WARNING "Outputting to user-config.bjam: using ${boost_toolset} : : ${deps_cxx} ;")
+  message(WARNING "CMAKE_CXX_COMPILER : ${CMAKE_CXX_COMPILER}")
+  message(WARNING "CMAKE_C_COMPILER : ${CMAKE_C_COMPILER}")
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam "using ${boost_toolset} : : ${deps_cxx} ;")
 endif()
 
