@@ -423,7 +423,7 @@ build_external(boost
   INSTALL_COMMAND
     ./b2 -d0 variant=release link=static runtime-link=static optimization=speed ${boost_extra}
       threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=17 visibility=global
-      --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam --toolset=clang
+      --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam --toolset=clang --verbose
       --prefix=${DEPS_DESTDIR} --exec-prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib --includedir=${DEPS_DESTDIR}/include
       --with-program_options --with-system --with-thread --with-serialization --layout=system
       install
