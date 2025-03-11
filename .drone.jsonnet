@@ -246,7 +246,7 @@ local static_build_deps = [
 ];
 
 
-local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra='') = [
+local android_build_steps(android_abi, android_platform=21, jobs=1, cmake_extra='') = [
   'mkdir build-' + android_abi,
   'cd build-' + android_abi,
   'cmake .. -DCMAKE_CXX_FLAGS=-fdiagnostics-color=always -DCMAKE_C_FLAGS=-fdiagnostics-color=always ' +
