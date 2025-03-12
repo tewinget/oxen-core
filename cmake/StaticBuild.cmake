@@ -161,29 +161,32 @@ if (ANDROID)
   endif()
   if(CMAKE_ANDROID_ARCH_ABI MATCHES x86_64)
     set(android_clang x86_64-linux-android${ANDROID_PLATFORM_LEVEL}-clang)
-    set(android_machine x86_64)
+    set(android_machine x86_64-linux-android)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES x86)
     set(android_clang i686-linux-android${ANDROID_PLATFORM_LEVEL}-clang)
-    set(android_machine i686)
+    set(android_machine i686-linux-android)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES armeabi-v7a)
     set(android_clang armv7a-linux-androideabi${ANDROID_PLATFORM_LEVEL}-clang)
-    set(android_machine armv7)
+    set(android_machine arm-linux-androideabi)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES arm64-v8a)
     set(android_clang aarch64-linux-android${ANDROID_PLATFORM_LEVEL}-clang)
-    set(android_machine aarch64)
+    set(android_machine aarch64-linux-android)
   else()
     message(FATAL_ERROR "Don't know how to build for android arch abi ${CMAKE_ANDROID_ARCH_ABI}")
   endif()
-  set(deps_cc "${ANDROID_TOOLCHAIN_ROOT}/bin/${android_clang}")
-  set(deps_cxx "${deps_cc}++")
+  set(CMAKE_C_COMPILER_TARGET ${android_machine})
+  set(CMAKE_CXX_COMPILER_TARGET ${android_machine})
+  set(android_full_clang "${ANDROID_TOOLCHAIN_ROOT}/bin/${android_clang}")
+  set(deps_cc "${android_full_clang}")
+  set(deps_cxx "${android_full_clang}++")
 endif()
 
 if(CMAKE_C_COMPILER_LAUNCHER)
   set(deps_cc "${CMAKE_C_COMPILER_LAUNCHER} ${deps_cc}")
 endif()
-#if(CMAKE_CXX_COMPILER_LAUNCHER)
-#  set(deps_cxx "${CMAKE_CXX_COMPILER_LAUNCHER} ${deps_cxx}")
-#endif()
+if(CMAKE_CXX_COMPILER_LAUNCHER)
+  set(deps_cxx "${CMAKE_CXX_COMPILER_LAUNCHER} ${deps_cxx}")
+endif()
 
 function(expand_urls output source_file)
   set(expanded)
@@ -395,10 +398,12 @@ if(IOS)
 else()
   set(boost_android_nonsense "")
   if(ANDROID)
-    set(boost_android_nonsense ": <compileflags>--sysroot=${ANDROID_TOOLCHAIN_ROOT} <linkflags>--sysroot=${ANDROID_TOOLCHAIN_ROOT} ")
+    # 4.9.x include hard-coded, not sure how best to detect that
+    set(boost_android_nonsense ": <compileflags>-I${ANDROID_TOOLCHAIN_ROOT}/include/ <compileflags>-I${ANDROID_TOOLCHAIN_ROOT}/sysroot/usr/include/c++/v1/ <compileflags>-I${ANDROID_TOOLCHAIN_ROOT}/lib/clang/19/include/ <compileflags>-I${ANDROID_TOOLCHAIN_ROOT}/sysroot/usr/include/${android_machine}/ <compileflags>-I${ANDROID_TOOLCHAIN_ROOT}/sysroot/usr/include/ ")
+#set(boost_android_nonsense ": <compileflags>--sysroot=${ANDROID_TOOLCHAIN_ROOT}/sysroot <compileflags>-I${ANDROID_TOOLCHAIN_ROOT}/include/ <compileflags>-I${ANDROID_TOOLCHAIN_ROOT}/lib/clang/17/include/ <compileflags>-I${ANDROID_TOOLCHAIN_ROOT}/sysroot/usr/include/c++/v1/ <compileflags>-I${ANDROID_TOOLCHAIN_ROOT}/sysroot/usr/include/${android_machine}/ <linkflags>--sysroot=${ANDROID_TOOLCHAIN_ROOT}/sysroot ")
   endif()
-  message(WARNING "Outputting to user-config.bjam: using ${boost_toolset} : : ${deps_cxx} ${boost_android_nonsense};")
-  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam "using ${boost_toolset} : : ${deps_cxx} ${boost_android_nonsense};")
+  message(WARNING "Outputting to user-config.bjam: using ${boost_toolset} : : ${deps_cxx} -nostdinc --target=${android_machine} ${boost_android_nonsense} ;")
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam "using ${boost_toolset} : : ${deps_cxx} -nostdinc --target=${android_machine} ${boost_android_nonsense} ;")
 endif()
 
 set(boost_patch_commands "")
@@ -427,9 +432,9 @@ build_external(boost
   BUILD_COMMAND
     cp tools/build/src/engine/b2 .
   INSTALL_COMMAND
-    ./b2 -d0 variant=release link=static runtime-link=static optimization=speed ${boost_extra}
-      threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=17 visibility=global --cxx=/usr/lib/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++ --cxxflags="${CMAKE_CXX_FLAGS}"
-      --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam --toolset=${boost_toolset} --verbose
+    ./b2 -d2 variant=release link=static runtime-link=static optimization=speed ${boost_extra}
+      threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=17 visibility=global
+      --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam --toolset=${boost_toolset} --verbose cxxflags=-D__ANDROID__
       --prefix=${DEPS_DESTDIR} --exec-prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib --includedir=${DEPS_DESTDIR}/include
       --with-program_options --with-system --with-thread --with-serialization --layout=system
       install
