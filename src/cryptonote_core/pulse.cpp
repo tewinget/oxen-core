@@ -1433,6 +1433,8 @@ namespace {
             round_context& context,
             void* quorumnet_state,
             service_nodes::service_node_keys const& key) {
+// XXX TESTING CODE, DO NOT MERGE
+return goto_preparing_for_next_round(context);
         try {
             relay_validator_handshake_bit_or_bitset(
                     context, quorumnet_state, key, true /*sending_bitset*/);
