@@ -79,7 +79,7 @@ Proof::Proof(
 Proof::Proof(
         cryptonote::hf hardfork,
         cryptonote::network_type nettype,
-        std::string_view serialized_proof) {
+        std::string_view serialized_proof) : serialized_proof{serialized_proof} {
 
     proof_hash = crypto::keccak(serialized_proof);
 
